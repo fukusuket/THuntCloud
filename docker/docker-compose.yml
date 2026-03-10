@@ -1,0 +1,107 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────
+# AWS Log Threat Hunting Tool — Docker Compose
+# ─────────────────────────────────────────────
+# DuckDB access model:
+#   ingester  → READ_WRITE  (exclusive writer)
+#   agent     → READ_ONLY   (reader)
+#   dashboard → READ_ONLY   (reader)
+#
+# Always run ingester FIRST, then start agent/dashboard.
+# ─────────────────────────────────────────────
+
+services:
+
+  # ── ingester ──────────────────────────────
+  ingester:
+    build:
+      context: ../ingester
+      dockerfile: Dockerfile
+    container_name: threat-hunting-ingester
+    volumes:
+      - duckdb_data:/data/db          # READ_WRITE
+      - ./logs:/data/logs:ro          # Source log directory (read-only bind)
+    environment:
+      - DUCKDB_PATH=/data/db/threat_hunting.db
+      - RUST_LOG=${RUST_LOG:-info}
+    profiles:
+      - ingest                        # Run only when explicitly invoked
+    # Usage: docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+  # ── agent (Streamlit AI UI) ───────────────
+  agent:
+    build:
+      context: ../agent
+      dockerfile: Dockerfile
+    container_name: threat-hunting-agent
+    ports:
+      - "8501:8501"
+    volumes:
+      - duckdb_data:/data/db:ro       # READ_ONLY
+    environment:
+      - DUCKDB_PATH=/data/db/threat_hunting.db
+      - DUCKDB_READONLY=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4.1}
+      - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-4.1-mini}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Superset dashboard ────────────────────
+  superset:
+    image: apache/superset:latest
+    container_name: threat-hunting-dashboard
+    ports:
+      - "8088:8088"
+    volumes:
+      - duckdb_data:/data/db:ro                    # READ_ONLY
+      - superset_home:/app/superset_home
+      - ../dashboards:/app/dashboards:ro           # Pre-built dashboard ZIPs
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
+      - DUCKDB_PATH=/data/db/threat_hunting.db
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+
+  # ── Superset initializer (run-once) ───────
+  superset-init:
+    image: apache/superset:latest
+    container_name: threat-hunting-superset-init
+    volumes:
+      - superset_home:/app/superset_home
+      - ../dashboards:/app/dashboards:ro
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
+    entrypoint: >
+      /bin/bash -c "
+        superset db upgrade &&
+        superset fab create-admin
+          --username admin
+          --firstname Admin
+          --lastname User
+          --email admin@localhost
+          --password admin &&
+        superset init &&
+        superset import_dashboards -p /app/dashboards/cloudtrail_default.zip || true
+      "
+    restart: "no"
+
+# ── Volumes ───────────────────────────────────
+volumes:
+  duckdb_data:
+    name: threat-hunting-duckdb
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DUCKDB_HOST_PATH:-./data/db}   # Bind to host SSD path for best I/O
+
+  superset_home:
+    name: threat-hunting-superset-home

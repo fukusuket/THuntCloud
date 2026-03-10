@@ -1,0 +1,73 @@
+# Built-in Threat Hunting Prompts
+# Each entry: label (shown in sidebar) + prompt (sent to AI agent)
+
+- label: "🔑 Root Account Activity"
+  prompt: |
+    List all API calls made by the root account. Include event_time, event_name,
+    source_ip_address, and aws_region. Order by most recent first.
+
+- label: "🚫 Access Denied Errors"
+  prompt: |
+    Show all AccessDenied and UnauthorizedAccess errors in the logs.
+    Group by user identity and event_name to find the top offenders.
+    This can indicate credential misuse or privilege escalation attempts.
+
+- label: "👤 New IAM Users / Keys"
+  prompt: |
+    Identify all IAM CreateUser, CreateAccessKey, and CreateLoginProfile events.
+    Show who created them, when, and from which IP. Flag anything created outside
+    business hours or from unexpected IPs.
+
+- label: "🌐 Console Logins"
+  prompt: |
+    List all ConsoleLogin events including successes and failures.
+    Identify accounts with multiple failed attempts followed by a success
+    (possible brute force). Include source IP and user agent.
+
+- label: "🕵️ First-Time API Calls (24h)"
+  prompt: |
+    Find API calls that appear in the last 24 hours but have never been seen
+    before in the entire log dataset. These novel operations may indicate
+    attacker reconnaissance or tooling.
+
+- label: "🔄 Privilege Escalation (IAM)"
+  prompt: |
+    Detect potential IAM privilege escalation: look for PutUserPolicy,
+    AttachUserPolicy, PutRolePolicy, AttachRolePolicy, CreatePolicyVersion,
+    and SetDefaultPolicyVersion events. Show caller, target resource, and time.
+
+- label: "🪣 S3 Data Access Anomalies"
+  prompt: |
+    Find unusual S3 activity: large numbers of GetObject calls from a single
+    IP or user within a short time window (potential exfiltration).
+    Also flag DeleteBucket, DeleteObject, and PutBucketPolicy events.
+
+- label: "🛑 CloudTrail Tampering"
+  prompt: |
+    Check for any attempts to disable or modify CloudTrail:
+    StopLogging, DeleteTrail, UpdateTrail, PutEventSelectors.
+    Also check for CloudWatch Logs deletion or GuardDuty DisableDetector.
+
+- label: "🔐 AssumeRole Cross-Account"
+  prompt: |
+    Show all AssumeRole events where the assumed role ARN is in a different
+    AWS account than the caller. Include session duration and external ID if present.
+    Cross-account role assumptions can indicate lateral movement.
+
+- label: "🌙 Off-Hours Activity"
+  prompt: |
+    Find API calls made between 10 PM and 6 AM local time (UTC 13:00–23:00 JST).
+    Filter for write/mutating operations (read_only = false).
+    Off-hours activity by human users may indicate compromise.
+
+- label: "📊 Top Callers This Week"
+  prompt: |
+    Show the top 20 most active IAM entities (by event count) in the past 7 days.
+    Break down by read vs write operations. Flag any service accounts performing
+    an unusually high number of mutating calls.
+
+- label: "🔍 Reconnaissance Pattern"
+  prompt: |
+    Identify potential reconnaissance: callers who executed 10 or more distinct
+    Describe*, List*, or Get* API calls within any 1-hour window.
+    This pattern is common in the early stages of an attack.
