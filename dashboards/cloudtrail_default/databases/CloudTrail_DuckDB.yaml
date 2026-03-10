@@ -1,0 +1,17 @@
+# Superset database connection definition for CloudTrail DuckDB.
+# This file is imported by register_dataset.py and referenced by chart/dataset YAMLs.
+database_name: CloudTrail DuckDB
+sqlalchemy_uri: "duckdb:////data/db/threat_hunting.db?read_only=true"
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: true
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_multi_schema_metadata_fetch: false
+impersonate_user: false
+extra:
+  metadata_params: {}
+  engine_params: {}
+  schemas_allowed_for_file_upload: []
+

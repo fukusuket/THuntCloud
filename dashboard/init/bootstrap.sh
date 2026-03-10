@@ -23,6 +23,9 @@ echo "==> Registering DuckDB database connection..."
 # Use the Python API (DatabaseDAO) to register the DuckDB connection idempotently.
 python3 /app/register_duckdb.py
 
+echo "==> Registering cloudtrail_events dataset..."
+python3 /app/register_dataset.py
+
 echo "==> Importing pre-built dashboard (if available)..."
 if [ -f /app/dashboards/cloudtrail_default.zip ]; then
   superset import_dashboards -p /app/dashboards/cloudtrail_default.zip || true
