@@ -54,14 +54,17 @@ services:
 
   # ── Superset dashboard ────────────────────
   superset:
-    image: apache/superset:latest
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
     container_name: threat-hunting-dashboard
     ports:
       - "8088:8088"
     volumes:
-      - duckdb_data:/data/db:ro                    # READ_ONLY
+      - duckdb_data:/data/db:ro                                                    # READ_ONLY
       - superset_home:/app/superset_home
-      - ../dashboards:/app/dashboards:ro           # Pre-built dashboard ZIPs
+      - ../dashboards:/app/dashboards:ro                                           # Pre-built dashboard ZIPs
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro     # Config overrides
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
       - DUCKDB_PATH=/data/db/threat_hunting.db
@@ -72,25 +75,21 @@ services:
 
   # ── Superset initializer (run-once) ───────
   superset-init:
-    image: apache/superset:latest
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
     container_name: threat-hunting-superset-init
     volumes:
       - superset_home:/app/superset_home
       - ../dashboards:/app/dashboards:ro
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro     # Config overrides
+      - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                       # Init script
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
-    entrypoint: >
-      /bin/bash -c "
-        superset db upgrade &&
-        superset fab create-admin
-          --username admin
-          --firstname Admin
-          --lastname User
-          --email admin@localhost
-          --password admin &&
-        superset init &&
-        superset import_dashboards -p /app/dashboards/cloudtrail_default.zip || true
-      "
+      - SUPERSET_ADMIN_USERNAME=${SUPERSET_ADMIN_USERNAME:-admin}
+      - SUPERSET_ADMIN_PASSWORD=${SUPERSET_ADMIN_PASSWORD:-admin}
+      - SUPERSET_ADMIN_EMAIL=${SUPERSET_ADMIN_EMAIL:-admin@localhost}
+    entrypoint: ["/bin/bash", "/app/bootstrap.sh"]
     restart: "no"
 
 # ── Volumes ───────────────────────────────────
