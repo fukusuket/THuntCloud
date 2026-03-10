@@ -84,11 +84,13 @@ services:
       - ../dashboards:/app/dashboards:ro
       - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro     # Config overrides
       - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                       # Init script
+      - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro           # DuckDB registration script
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
       - SUPERSET_ADMIN_USERNAME=${SUPERSET_ADMIN_USERNAME:-admin}
       - SUPERSET_ADMIN_PASSWORD=${SUPERSET_ADMIN_PASSWORD:-admin}
       - SUPERSET_ADMIN_EMAIL=${SUPERSET_ADMIN_EMAIL:-admin@localhost}
+      - DUCKDB_PATH=/data/db/threat_hunting.db
     entrypoint: ["/bin/bash", "/app/bootstrap.sh"]
     restart: "no"
 

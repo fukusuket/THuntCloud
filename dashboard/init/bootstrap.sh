@@ -18,10 +18,10 @@ superset fab create-admin \
 echo "==> Initializing Superset roles and permissions..."
 superset init
 
-echo "==> Importing DuckDB database connection..."
-superset set_database_uri \
-  --database_name "CloudTrail DuckDB" \
-  --uri "duckdb:////data/db/threat_hunting.db?read_only=true" 2>/dev/null || true
+echo "==> Registering DuckDB database connection..."
+# superset set_database_uri was removed in Superset 4.x.
+# Use the Python API (DatabaseDAO) to register the DuckDB connection idempotently.
+python3 /app/register_duckdb.py
 
 echo "==> Importing pre-built dashboard (if available)..."
 if [ -f /app/dashboards/cloudtrail_default.zip ]; then
