@@ -3,17 +3,18 @@
 //! This is the top-level entry point for the ingestion pipeline.
 //! It ties together [`crate::decompressor`], [`crate::parser`], and [`crate::db`].
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use duckdb::Connection;
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::db::{ensure_table, insert_events};
 use crate::decompressor::read_file_content;
-use crate::parser::parse_cloudtrail_log;
+use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::progress::ProgressReporter;
 
 /// Statistics returned after a completed ingestion run.
@@ -54,11 +55,54 @@ pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
     ingest_with_progress(path, conn, false)
 }
 
+/// A file that has passed the duplicate-check and is ready to be parsed.
+struct FileToProcess {
+    path: PathBuf,
+    sha256: String,
+}
+
+/// The parsed result of a single CloudTrail log file.
+struct ParsedFile {
+    path: PathBuf,
+    sha256: String,
+    records: Vec<CloudTrailEvent>,
+}
+
+/// Read a file, compute its SHA-256 digest, and parse the CloudTrail records.
+///
+/// Returns `(sha256_hex, records)`. This function is CPU/IO-bound and is
+/// designed to be called from a `rayon` parallel iterator.
+pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)> {
+    let bytes =
+        std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let sha256 = hex::encode(Sha256::digest(&bytes));
+
+    let content = if path.extension().and_then(|e| e.to_str()) == Some("gz") {
+        use flate2::bufread::GzDecoder;
+        use std::io::{BufReader, Read};
+        let mut decoder = GzDecoder::new(BufReader::new(bytes.as_slice()));
+        let mut s = String::new();
+        decoder
+            .read_to_string(&mut s)
+            .with_context(|| format!("Failed to decompress {}", path.display()))?;
+        s
+    } else {
+        String::from_utf8(bytes)
+            .with_context(|| format!("File is not valid UTF-8: {}", path.display()))?
+    };
+
+    let log = parse_cloudtrail_log(&content)
+        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    Ok((sha256, log.records))
+}
+
 /// Same as [`ingest_with_conn`] but controls whether the progress bar is
 /// displayed on the terminal.
 ///
-/// - `show_progress = true`  — displays an `indicatif` progress bar on stderr.
-/// - `show_progress = false` — runs silently (suitable for tests and piped output).
+/// Processing is split into three phases:
+/// 1. **Serial** — SHA-256 + duplicate check per file.
+/// 2. **Parallel** — file read, gz decompress, JSON parse (via `rayon`).
+/// 3. **Serial** — DuckDB INSERT + mark-ingested + stats update.
 pub fn ingest_with_progress(
     path: &Path,
     conn: &Connection,
@@ -69,7 +113,7 @@ pub fn ingest_with_progress(
     let start = Instant::now();
     let mut stats = IngestStats::default();
 
-    // Collect files to process (skip non-CloudTrail extensions up front).
+    // Collect candidate files.
     let files: Vec<_> = WalkDir::new(path)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -83,24 +127,72 @@ pub fn ingest_with_progress(
         ProgressReporter::hidden()
     };
 
+    // ── Phase 1: serial duplicate check (sha256 only — fast path) ─────────
+    // We only compute the sha256 here to decide which files to parse.
+    // The actual read+parse happens in parallel in Phase 2.
+    let mut to_process: Vec<FileToProcess> = Vec::new();
     for entry in &files {
         let file_path = entry.path();
-
-        match ingest_file(file_path, conn) {
-            Ok(0) => {
-                // File was already ingested (duplicate); counts as processed.
-                stats.files_processed += 1;
-            }
-            Ok(n) => {
-                stats.files_processed += 1;
-                stats.records_inserted += n;
-            }
+        match sha256_of_file(file_path) {
             Err(e) => {
                 stats.errors += 1;
-                eprintln!("Error ingesting {}: {e:#}", file_path.display());
+                eprintln!("Error hashing {}: {e:#}", file_path.display());
+                reporter.inc(stats.records_inserted);
+            }
+            Ok(sha256) => {
+                if is_already_ingested(file_path, &sha256, conn) {
+                    // Already in DB — count as processed, skip re-insert.
+                    stats.files_processed += 1;
+                    reporter.inc(stats.records_inserted);
+                } else {
+                    to_process.push(FileToProcess {
+                        path: file_path.to_path_buf(),
+                        sha256,
+                    });
+                }
             }
         }
+    }
 
+    // ── Phase 2: parallel decompress + parse (reuses bytes already on disk) -
+    // Files are read a second time here, but now in parallel across all cores.
+    // The sha256 from Phase 1 is kept to avoid a third read in Phase 3.
+    let parse_results: Vec<Result<ParsedFile>> = to_process
+        .into_par_iter()
+        .map(|f| {
+            let content = read_file_content(&f.path)?;
+            let log = parse_cloudtrail_log(&content)
+                .with_context(|| format!("Failed to parse {}", f.path.display()))?;
+            Ok(ParsedFile {
+                path: f.path,
+                sha256: f.sha256,
+                records: log.records,
+            })
+        })
+        .collect();
+
+    // ── Phase 3: serial INSERT + mark-ingested + stats ─────────────────────
+    for result in parse_results {
+        match result {
+            Err(e) => {
+                stats.errors += 1;
+                eprintln!("Error processing file: {e:#}");
+            }
+            Ok(parsed) => {
+                match insert_events(conn, &parsed.records)
+                    .and_then(|n| mark_ingested(&parsed.path, &parsed.sha256, conn).map(|_| n))
+                {
+                    Err(e) => {
+                        stats.errors += 1;
+                        eprintln!("Error inserting {}: {e:#}", parsed.path.display());
+                    }
+                    Ok(n) => {
+                        stats.files_processed += 1;
+                        stats.records_inserted += n;
+                    }
+                }
+            }
+        }
         reporter.inc(stats.records_inserted);
     }
 
@@ -151,24 +243,6 @@ fn mark_ingested(path: &Path, sha256: &str, conn: &Connection) -> Result<()> {
     )
     .with_context(|| format!("Failed to record ingested file {}", path.display()))?;
     Ok(())
-}
-
-/// Ingest a single file. Returns the number of records inserted, or `0` if
-/// the file was skipped as a duplicate.
-fn ingest_file(path: &Path, conn: &Connection) -> Result<usize> {
-    let sha256 = sha256_of_file(path)?;
-
-    if is_already_ingested(path, &sha256, conn) {
-        return Ok(0);
-    }
-
-    let content = read_file_content(path)?;
-    let log = parse_cloudtrail_log(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
-
-    let n = insert_events(conn, &log.records)?;
-    mark_ingested(path, &sha256, conn)?;
-    Ok(n)
 }
 
 #[cfg(test)]
@@ -383,5 +457,58 @@ mod tests {
         assert_eq!(stats.files_processed, 1);
         assert_eq!(stats.records_inserted, 1);
         assert_eq!(stats.errors, 0);
+    }
+
+    // Test #24: Parallel ingestion of 10 files produces correct aggregate stats.
+    // This is the primary correctness guard for the parallel implementation.
+    #[test]
+    fn test_ingest_parallel_correctness_10_files() {
+        let dir = TempDir::new().unwrap();
+
+        // Write 10 single-event JSON files.
+        for i in 0..10 {
+            std::fs::write(
+                dir.path().join(format!("event_{i:02}.json")),
+                SINGLE_EVENT_JSON,
+            )
+            .unwrap();
+        }
+
+        let conn = setup_db();
+        let stats = ingest_with_conn(dir.path(), &conn).expect("parallel ingest should succeed");
+
+        assert_eq!(
+            stats.files_processed, 10,
+            "all 10 files should be processed"
+        );
+        assert_eq!(stats.records_inserted, 10, "10 records total (1 per file)");
+        assert_eq!(stats.errors, 0, "no errors expected");
+        assert_eq!(row_count(&conn), 10, "10 rows in DB");
+    }
+
+    // Test #25: parse_file_content correctly reads and parses a plain JSON file.
+    #[test]
+    fn test_parse_file_content_json() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+
+        let (sha256, records) =
+            parse_file_content(tmp.path()).expect("parse_file_content should succeed");
+
+        assert!(!sha256.is_empty(), "sha256 must not be empty");
+        assert_eq!(sha256.len(), 64, "SHA-256 hex digest is 64 chars");
+        assert_eq!(records.len(), 1, "one record in the file");
+        assert_eq!(records[0].event_name, "DescribeInstances");
+    }
+
+    // Test #26: parse_file_content correctly reads and parses a .json.gz file.
+    #[test]
+    fn test_parse_file_content_gz() {
+        let tmp = write_gz_file(SINGLE_EVENT_JSON);
+
+        let (sha256, records) =
+            parse_file_content(tmp.path()).expect("parse_file_content should handle .gz");
+
+        assert_eq!(sha256.len(), 64);
+        assert_eq!(records.len(), 1);
     }
 }
