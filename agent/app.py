@@ -13,7 +13,6 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-from config import load_config
 from llm import generate_analysis, generate_sql
 from query import QueryValidationError, connect_duckdb, execute_query
 from report import ReportEntry, generate_report
@@ -25,16 +24,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Path to the built-in threat hunting prompts YAML file.
-_BUILTIN_PROMPTS_PATH = Path(__file__).parent.parent / "dashboards" / "builtin_hunts.yaml"
+_BUILTIN_PROMPTS_PATH = (
+    Path(__file__).parent.parent / "dashboards" / "builtin_hunts.yaml"
+)
 
 # Session state keys and their default values.
 SESSION_STATE_DEFAULTS: dict = {
-    "messages": [],       # chat history: list of {role, content}
+    "messages": [],  # chat history: list of {role, content}
     "query_history": [],  # list of ReportEntry for report generation
-    "last_sql": "",       # most recently generated SQL (editable)
-    "last_results": None, # pandas DataFrame or None
+    "last_sql": "",  # most recently generated SQL (editable)
+    "last_results": None,  # pandas DataFrame or None
     "last_analysis": "",  # AI analysis text
-    "api_key": "",        # entered in sidebar (AGT-09)
+    "api_key": "",  # entered in sidebar (AGT-09)
     "model": "gpt-5.4",  # selected model
 }
 
@@ -91,7 +92,9 @@ def _load_builtin_prompts() -> list[dict]:
     ]
 
 
-def _export_session(entries: list[ReportEntry], title: str = "Threat Hunting Session") -> str:
+def _export_session(
+    entries: list[ReportEntry], title: str = "Threat Hunting Session"
+) -> str:
     """Export the current session as a JSON string.
 
     Serialises all ReportEntry objects to a JSON payload for download
@@ -153,9 +156,11 @@ def render_sidebar() -> None:
         selected_model = st.selectbox(
             "Model",
             options=model_options,
-            index=model_options.index(st.session_state.model)
-            if st.session_state.model in model_options
-            else 0,
+            index=(
+                model_options.index(st.session_state.model)
+                if st.session_state.model in model_options
+                else 0
+            ),
         )
         if selected_model != st.session_state.model:
             st.session_state.model = selected_model
@@ -353,14 +358,23 @@ def render_chat() -> None:
                             }
                         )
                         st.session_state.query_history.append(
-                            ReportEntry(sql=edited_sql, results=results, analysis=analysis)
+                            ReportEntry(
+                                sql=edited_sql, results=results, analysis=analysis
+                            )
                         )
                         st.rerun()
-                    except (QueryValidationError, TimeoutError, Exception) as exc:  # noqa: BLE001
+                    except (
+                        QueryValidationError,
+                        TimeoutError,
+                        Exception,
+                    ) as exc:  # noqa: BLE001
                         st.error(f"Error: {exc}")
 
     # ---- Latest results table (AGT-04) ----
-    if st.session_state.last_results is not None and not st.session_state.last_results.empty:
+    if (
+        st.session_state.last_results is not None
+        and not st.session_state.last_results.empty
+    ):
         with st.expander("📋 Latest Query Results", expanded=True):
             st.dataframe(st.session_state.last_results, use_container_width=True)
 
@@ -396,4 +410,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -4,10 +4,9 @@ Test #22: session state initialization (Phase 6 of TDD plan).
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 
 def test_session_state_initialization():
@@ -87,14 +86,13 @@ def test_load_builtin_prompts_includes_root_account():
 
     prompts = _load_builtin_prompts()
     labels = [p["label"] for p in prompts]
-    assert any("Root" in label for label in labels), (
-        "Expected a 'Root Account' entry in built-in prompts"
-    )
+    assert any(
+        "Root" in label for label in labels
+    ), "Expected a 'Root Account' entry in built-in prompts"
 
 
 def test_export_session_returns_valid_json():
     """_export_session() must return a JSON-serialisable string."""
-    import pandas as pd
 
     from app import _export_session
     from report import ReportEntry
@@ -122,4 +120,3 @@ def test_export_session_empty_entries():
     result = _export_session([], title="Empty Hunt")
     parsed = json.loads(result)
     assert parsed["queries"] == []
-

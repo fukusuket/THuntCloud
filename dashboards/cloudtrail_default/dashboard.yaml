@@ -1,0 +1,118 @@
+# CloudTrail Threat Hunting — Dashboard Definition (DSH-06/07)
+# Assembled from 5 charts defined in the charts/ directory.
+# Import via: superset import_dashboards -p cloudtrail_default.zip
+dashboard_title: CloudTrail Threat Hunting
+description: >
+  Pre-built threat hunting dashboard for AWS CloudTrail logs stored in DuckDB.
+  Covers event volume trends, top API calls, IAM entity activity, error patterns,
+  and source IP analysis. Use SQL Lab for ad-hoc investigation queries (DSH-06).
+  Export to PNG/PDF via the dashboard Download menu (DSH-07).
+published: true
+css: ""
+slug: cloudtrail-threat-hunting
+
+# Dashboard layout: 3-row grid
+# Row 1: Full-width event time-series (DSH-01)
+# Row 2: Top API calls (DSH-02) | IAM entity table (DSH-03)
+# Row 3: Error trend (DSH-04)   | Source IP table  (DSH-05)
+position_json: |
+  {
+    "DASHBOARD_VERSION_KEY": "v2",
+    "ROOT_ID": {
+      "type": "ROOT",
+      "id": "ROOT_ID",
+      "children": ["GRID_ID"]
+    },
+    "GRID_ID": {
+      "type": "GRID",
+      "id": "GRID_ID",
+      "children": ["ROW-1", "ROW-2", "ROW-3"]
+    },
+    "ROW-1": {
+      "type": "ROW",
+      "id": "ROW-1",
+      "children": ["CHART-timeseries"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "ROW-2": {
+      "type": "ROW",
+      "id": "ROW-2",
+      "children": ["CHART-top-api", "CHART-iam-entity"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "ROW-3": {
+      "type": "ROW",
+      "id": "ROW-3",
+      "children": ["CHART-error-trend", "CHART-source-ip"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "CHART-timeseries": {
+      "type": "CHART",
+      "id": "CHART-timeseries",
+      "meta": {
+        "chartId": 1,
+        "width": 12,
+        "height": 50,
+        "sliceName": "CloudTrail Events Over Time"
+      }
+    },
+    "CHART-top-api": {
+      "type": "CHART",
+      "id": "CHART-top-api",
+      "meta": {
+        "chartId": 2,
+        "width": 6,
+        "height": 50,
+        "sliceName": "Top 20 API Calls"
+      }
+    },
+    "CHART-iam-entity": {
+      "type": "CHART",
+      "id": "CHART-iam-entity",
+      "meta": {
+        "chartId": 3,
+        "width": 6,
+        "height": 50,
+        "sliceName": "IAM Entity Activity"
+      }
+    },
+    "CHART-error-trend": {
+      "type": "CHART",
+      "id": "CHART-error-trend",
+      "meta": {
+        "chartId": 4,
+        "width": 6,
+        "height": 50,
+        "sliceName": "Error Occurrence Trend"
+      }
+    },
+    "CHART-source-ip": {
+      "type": "CHART",
+      "id": "CHART-source-ip",
+      "meta": {
+        "chartId": 5,
+        "width": 6,
+        "height": 50,
+        "sliceName": "Top Source IP Addresses"
+      }
+    }
+  }
+
+metadata:
+  charts:
+    - slice_name: CloudTrail Events Over Time
+      viz_type: echarts_timeseries_bar
+      description: DSH-01 — Hourly event volume time-series.
+    - slice_name: Top 20 API Calls
+      viz_type: bar
+      description: DSH-02 — Most frequently called AWS API actions.
+    - slice_name: IAM Entity Activity
+      viz_type: table
+      description: DSH-03 — IAM entities ranked by API call volume.
+    - slice_name: Error Occurrence Trend
+      viz_type: echarts_timeseries_bar
+      description: DSH-04 — Hourly error counts by error code.
+    - slice_name: Top Source IP Addresses
+      viz_type: table
+      description: DSH-05 — External source IPs ranked by request count.
+

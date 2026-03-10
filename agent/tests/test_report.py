@@ -73,4 +73,3 @@ def test_report_sanitizes_sensitive_data():
     assert secret not in report
     assert key_id not in report
     assert "REDACTED" in report
-

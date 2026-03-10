@@ -1,0 +1,93 @@
+THuntCloud
+Copyright 2026 The THuntCloud Authors
+
+This product includes software developed by the following third-party projects.
+
+---
+
+Apache Superset
+Copyright 2016-2026 The Apache Software Foundation
+Licensed under the Apache License, Version 2.0
+https://superset.apache.org/
+https://github.com/apache/superset
+
+---
+
+DuckDB
+Copyright 2018-2026 DuckDB Labs BV
+Licensed under the MIT License
+https://duckdb.org/
+https://github.com/duckdb/duckdb
+
+---
+
+duckdb-engine (SQLAlchemy dialect for DuckDB)
+Copyright 2021-2026 Tobias Gunkel and contributors
+Licensed under the MIT License
+https://github.com/Mause/duckdb_engine
+
+---
+
+Streamlit
+Copyright 2019-2026 Streamlit Inc.
+Licensed under the Apache License, Version 2.0
+https://streamlit.io/
+https://github.com/streamlit/streamlit
+
+---
+
+OpenAI Python SDK
+Copyright 2023-2026 OpenAI
+Licensed under the Apache License, Version 2.0
+https://github.com/openai/openai-python
+
+---
+
+pandas
+Copyright 2008-2026 AQR Capital Management, LLC, Lambda Foundry, Inc., PyData Development Team
+Licensed under the BSD 3-Clause License
+https://pandas.pydata.org/
+https://github.com/pandas-dev/pandas
+
+---
+
+Rayon (Rust data parallelism library)
+Copyright 2010 The Rust Project Developers
+Licensed under the Apache License, Version 2.0 / MIT License
+https://github.com/rayon-rs/rayon
+
+---
+
+Serde (Rust serialisation framework)
+Copyright 2014-2026 David Tolnay and contributors
+Licensed under the Apache License, Version 2.0 / MIT License
+https://serde.rs/
+https://github.com/serde-rs/serde
+
+---
+
+anyhow (Rust error-handling library)
+Copyright 2019-2026 David Tolnay
+Licensed under the Apache License, Version 2.0 / MIT License
+https://github.com/dtolnay/anyhow
+
+---
+
+clap (Rust CLI argument parser)
+Copyright 2015-2026 Kevin K. and contributors
+Licensed under the Apache License, Version 2.0 / MIT License
+https://github.com/clap-rs/clap
+
+---
+
+indicatif (Rust progress bar library)
+Copyright 2017-2026 Armin Ronacher and contributors
+Licensed under the MIT License
+https://github.com/console-rs/indicatif
+
+---
+
+Full license texts for Apache License 2.0 and MIT License are available at:
+https://www.apache.org/licenses/LICENSE-2.0
+https://opensource.org/licenses/MIT
+

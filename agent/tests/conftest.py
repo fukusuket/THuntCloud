@@ -60,4 +60,3 @@ def tmp_duckdb(tmp_path):
     """)
     conn.close()
     yield str(db_path)
-

@@ -16,4 +16,3 @@ Rules:
 7. Limit results to 1000 rows unless the user specifically asks for more.
 8. Never generate INSERT, UPDATE, DELETE, DROP, or any DDL/DML statements.
 """
-

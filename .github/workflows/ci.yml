@@ -1,0 +1,172 @@
+# CI — THuntCloud
+# Runs on every push and pull request to main / develop branches.
+# Checks: Rust (cargo test + clippy + fmt) and Python (pytest + ruff + black).
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ── Rust ingester ──────────────────────────────────────────────────────────
+  ingester:
+    name: ingester (Rust)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ingester/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ingester/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting (rustfmt)
+        working-directory: ingester
+        run: cargo fmt --all -- --check
+
+      - name: Lint (clippy)
+        working-directory: ingester
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        working-directory: ingester
+        run: cargo test --all
+
+  # ── Python agent ───────────────────────────────────────────────────────────
+  agent:
+    name: agent (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('agent/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install runtime and dev dependencies
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check formatting (black)
+        working-directory: agent
+        run: black --check .
+
+      - name: Lint (ruff)
+        working-directory: agent
+        run: ruff check .
+
+      - name: Run tests (pytest)
+        working-directory: agent
+        run: pytest -v --tb=short
+
+  # ── YAML validation ────────────────────────────────────────────────────────
+  dashboard-yaml:
+    name: dashboard YAML validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate all dashboard YAML files are well-formed
+        run: |
+          python3 - <<'EOF'
+          import sys
+          import yaml
+          from pathlib import Path
+
+          errors = []
+          yaml_files = list(Path("dashboards").rglob("*.yaml"))
+          print(f"Validating {len(yaml_files)} YAML file(s)...")
+
+          for f in yaml_files:
+              try:
+                  with open(f) as fh:
+                      yaml.safe_load(fh)
+                  print(f"  OK  {f}")
+              except yaml.YAMLError as exc:
+                  errors.append((f, exc))
+                  print(f"  ERR {f}: {exc}")
+
+          if errors:
+              print(f"\n{len(errors)} YAML file(s) failed validation.")
+              sys.exit(1)
+          else:
+              print(f"\nAll {len(yaml_files)} YAML files are valid.")
+          EOF
+
+      - name: Verify ZIP contains all required files
+        run: |
+          python3 - <<'EOF'
+          import zipfile
+          import sys
+          from pathlib import Path
+
+          zip_path = Path("dashboards/cloudtrail_default.zip")
+          if not zip_path.exists():
+              print("ERROR: cloudtrail_default.zip not found")
+              sys.exit(1)
+
+          required = {
+              "cloudtrail_default/metadata.yaml",
+              "cloudtrail_default/dashboard.yaml",
+              "cloudtrail_default/databases/CloudTrail_DuckDB.yaml",
+              "cloudtrail_default/datasets/cloudtrail_events.yaml",
+              "cloudtrail_default/charts/event_timeseries.yaml",
+              "cloudtrail_default/charts/top_api_calls.yaml",
+              "cloudtrail_default/charts/iam_entity_activity.yaml",
+              "cloudtrail_default/charts/error_trend.yaml",
+              "cloudtrail_default/charts/source_ip_requests.yaml",
+          }
+
+          with zipfile.ZipFile(zip_path) as zf:
+              names = set(zf.namelist())
+
+          missing = required - names
+          if missing:
+              print(f"ERROR: ZIP is missing required files: {missing}")
+              sys.exit(1)
+          else:
+              print(f"ZIP contains all {len(required)} required files. OK")
+          EOF
+

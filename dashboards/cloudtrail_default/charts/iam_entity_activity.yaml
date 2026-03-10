@@ -1,0 +1,45 @@
+# DSH-03: Activity Aggregation by IAM Entity
+# Table showing top 50 IAM entities ranked by total API calls,
+# with write-event and error-event breakdowns for quick threat prioritisation.
+slice_name: IAM Entity Activity
+viz_type: table
+description: >
+  Top 50 IAM entities ranked by total API calls, with write and error breakdowns (DSH-03).
+  Entities with disproportionate write_events or error_events relative to total_events
+  may indicate credential abuse or privilege escalation.
+dataset_name: cloudtrail_events
+params:
+  metrics:
+    - total_events
+    - write_events
+    - error_events
+  groupby:
+    - iam_entity
+    - identity_type
+  row_limit: 50
+  order_desc: true
+  table_timestamp_format: smart_date
+  conditional_formatting:
+    - col: write_events
+      operator: ">"
+      targetValue: 100
+      colorScheme: red_white
+    - col: error_events
+      operator: ">"
+      targetValue: 10
+      colorScheme: orange_white
+  page_size: 25
+cache_timeout: null
+
+# SQL used to power this chart:
+# SELECT
+#     COALESCE(user_identity_arn, 'Unknown')           AS iam_entity,
+#     user_identity_type                                AS identity_type,
+#     COUNT(*)                                          AS total_events,
+#     COUNT(CASE WHEN read_only = false THEN 1 END)     AS write_events,
+#     COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END) AS error_events
+# FROM cloudtrail_events
+# GROUP BY 1, 2
+# ORDER BY total_events DESC
+# LIMIT 50
+
