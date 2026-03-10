@@ -6,7 +6,7 @@ including queries, results, analysis, and sensitive data redaction.
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -110,7 +110,7 @@ def generate_report(
     Returns:
         A complete Markdown document as a string.
     """
-    timestamp = datetime.now().astimezone().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     header = f"# {title}\n\n**Generated:** {timestamp}\n\n---\n"
     sections = [_render_entry(i + 1, entry) for i, entry in enumerate(entries)]

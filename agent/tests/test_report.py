@@ -1,5 +1,8 @@
 """Tests for report.py — Threat hunting report generation."""
 
+from datetime import datetime, timezone
+from unittest.mock import patch
+
 import pandas as pd
 
 from report import ReportEntry, generate_report
@@ -28,7 +31,10 @@ def test_report_includes_timestamp():
         analysis="No results.",
     )
 
-    report = generate_report([entry])
+    fixed_dt = datetime(2026, 3, 11, 12, 0, 0, tzinfo=timezone.utc)
+    with patch("report.datetime") as mock_dt:
+        mock_dt.now.return_value = fixed_dt
+        report = generate_report([entry])
 
     # ISO 8601 date portion (YYYY-MM-DD) must appear in the header
     assert "2026-03-11" in report
