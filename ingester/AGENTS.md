@@ -2,6 +2,7 @@
 
 > This file provides GitHub Copilot with module-specific context for the `ingester` crate.
 > For project-wide instructions, see [../.github/AGENTS.md](../.github/AGENTS.md).
+> For feature requirements and priorities, see [../doc/PRD.md](../doc/PRD.md) — Section 6.1 (ingester Module).
 
 ## Module Purpose
 

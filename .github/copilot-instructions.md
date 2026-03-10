@@ -28,6 +28,7 @@ Every feature must be implemented using the Red-Green-Refactor cycle:
 ## Reference Documentation
 
 - [.github/AGENTS.md](.github/AGENTS.md) — Full Copilot agent instructions
+- [doc/PRD.md](doc/PRD.md) — Product Requirements Document (source of truth for scope and priorities)
 - [doc/TDD_GUIDE.md](doc/TDD_GUIDE.md) — TDD methodology and examples
 - [doc/TESTING.md](doc/TESTING.md) — Testing strategy per module
 - [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) — System architecture

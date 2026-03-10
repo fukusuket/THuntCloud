@@ -12,7 +12,7 @@
 This tool enables fast, AI-powered threat hunting against AWS CloudTrail logs directly on a local PC.
 
 - **No SIEM required** — all analysis runs locally via DuckDB
-- **AI-assisted** — natural language → SQL generation via OpenAI API (gpt-5.2)
+- **AI-assisted** — natural language → SQL generation via OpenAI API (gpt-5.4)
 - **High performance** — ingest 10 GB in under 5 minutes; supports 50 GB on 16 GB RAM
 - **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
 

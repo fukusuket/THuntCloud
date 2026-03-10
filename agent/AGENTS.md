@@ -2,6 +2,7 @@
 
 > This file provides GitHub Copilot with module-specific context for the `agent` module.
 > For project-wide instructions, see [../.github/AGENTS.md](../.github/AGENTS.md).
+> For feature requirements and priorities, see [../doc/PRD.md](../doc/PRD.md) — Section 6.2 (agent Module).
 
 ## Module Purpose
 
@@ -15,7 +16,7 @@ The agent provides an interactive Streamlit UI for AI-assisted threat hunting. U
 | ----------------- | ---------------------------------------- |
 | Language          | Python 3.12+                             |
 | Framework         | Streamlit                                |
-| AI Integration    | OpenAI API (`gpt-5.4` default)           |
+| AI Integration    | OpenAI API (`gpt-5.4` default, see PRD §11.2) |
 | DB Client         | `duckdb` Python package                  |
 | Data Processing   | `pandas`                                 |
 | Test Framework    | `pytest`, `pytest-mock`                  |
@@ -196,8 +197,8 @@ Rules:
 | `DUCKDB_PATH`      | (required)    | Path to the DuckDB database file         |
 | `DUCKDB_READONLY`  | `true`        | Must be `true` for agent                 |
 | `OPENAI_API_KEY`   | (required)    | OpenAI API key                           |
-| `OPENAI_MODEL`     | `gpt-5.4`    | Model for SQL generation and analysis    |
-| `OPENAI_MODEL_LITE`| `gpt-5.4-mini`| Lightweight model for quick tasks       |
+| `OPENAI_MODEL`     | `gpt-5.4`     | Model for SQL generation and analysis    |
+| `OPENAI_MODEL_LITE`| `gpt-5.4-mini`| Lightweight model for quick tasks        |
 
 ## Dependencies (requirements.txt)
 

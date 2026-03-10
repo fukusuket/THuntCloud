@@ -64,6 +64,20 @@ When asked to implement a feature:
 
 See [doc/TDD_GUIDE.md](../doc/TDD_GUIDE.md) for detailed examples.
 
+## Key Documents
+
+| Document | Purpose |
+| -------- | ------- |
+| [doc/PRD.md](../doc/PRD.md) | **Source of truth** for scope, priorities, and feature requirements |
+| [doc/ARCHITECTURE.md](../doc/ARCHITECTURE.md) | System design and architectural decisions |
+| [doc/TDD_GUIDE.md](../doc/TDD_GUIDE.md) | TDD methodology and worked examples |
+| [doc/TESTING.md](../doc/TESTING.md) | Testing strategy per module |
+| [doc/DEVELOPMENT.md](../doc/DEVELOPMENT.md) | Development setup guide |
+| [ingester/AGENTS.md](../ingester/AGENTS.md) | Rust ingester module instructions |
+| [agent/AGENTS.md](../agent/AGENTS.md) | Python agent module instructions |
+
+> When in doubt about scope or priority, **always refer to the PRD first**.
+
 ## Module Reference
 
 ### ingester (Rust)
