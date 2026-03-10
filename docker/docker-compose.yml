@@ -43,8 +43,8 @@ services:
       - DUCKDB_PATH=/data/db/threat_hunting.db
       - DUCKDB_READONLY=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4.1}
-      - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-4.1-mini}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4}
+      - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-5.4-mini}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
