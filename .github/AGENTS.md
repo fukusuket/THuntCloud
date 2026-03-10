@@ -118,6 +118,11 @@ See [agent/AGENTS.md](../agent/AGENTS.md) for module-specific instructions.
 
 ## Coding Conventions
 
+### Language Policy
+
+- **All code comments, doc comments (`///`, `//!`), docstrings, inline comments, commit messages, PR titles, and PR descriptions MUST be written in English.**
+- Non-English text is not permitted anywhere in the codebase, documentation, or version control history.
+
 ### Rust (ingester)
 
 - **Formatter**: `rustfmt` (default settings)

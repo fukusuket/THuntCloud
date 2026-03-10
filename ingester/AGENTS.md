@@ -202,6 +202,11 @@ fn create_test_gz(json_content: &str, path: &std::path::Path) {
 }
 ```
 
+## Language Policy
+
+- **All Rust doc comments (`///`, `//!`), inline comments, and documentation MUST be written in English.**
+- Non-English text is not permitted in code comments, commit messages, or PR descriptions.
+
 ## Error Handling
 
 - Use `anyhow::Result` as the return type for all functions.

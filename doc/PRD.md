@@ -1,5 +1,6 @@
 # Product Requirements Document (PRD)
-## AWS Log Threat Hunting Tool
+
+## THuntCloud - AWS Log Threat Hunting Tool
 
 | Field | Details |
 |-------|---------|

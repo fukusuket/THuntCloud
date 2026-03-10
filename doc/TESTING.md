@@ -1,5 +1,9 @@
 # Testing Strategy
 
+## Language Policy
+
+All test code, comments, docstrings, and test descriptions MUST be written in English.
+
 ## Overview
 
 Every module in THuntCloud must have comprehensive test coverage. Tests are written **before** implementation following TDD (see [TDD_GUIDE.md](TDD_GUIDE.md)).

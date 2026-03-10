@@ -19,6 +19,7 @@ Every feature must be implemented using the Red-Green-Refactor cycle:
 
 ## Key Rules
 
+- **Language:** All code comments, documentation, docstrings, commit messages, and PR descriptions MUST be written in English.
 - **Rust (ingester):** Use `cargo test`, `clippy`, `rustfmt`. Error handling with `anyhow`. Unit tests in `#[cfg(test)] mod tests`.
 - **Python (agent):** Use `pytest`, `ruff`, `black`. Type hints required. Mock all OpenAI API calls in tests.
 - **DuckDB:** ingester = `READ_WRITE`, agent/dashboard = `READ_ONLY`. Tests use temporary databases (`tempfile` / `tmp_path`).

@@ -1,5 +1,9 @@
 # TDD Guide — Test-Driven Development
 
+## Language Policy
+
+All test names, test comments, docstrings, and documentation in this project MUST be written in English.
+
 ## Philosophy
 
 This project follows the TDD methodology, based on Kent Beck's _Test-Driven Development: By Example_. The core belief is:

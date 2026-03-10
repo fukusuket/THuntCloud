@@ -200,6 +200,11 @@ Rules:
 | `OPENAI_MODEL`     | `gpt-5.4`     | Model for SQL generation and analysis    |
 | `OPENAI_MODEL_LITE`| `gpt-5.4-mini`| Lightweight model for quick tasks        |
 
+## Language Policy
+
+- **All Python docstrings, inline comments, type annotations, and documentation MUST be written in English.**
+- Non-English text is not permitted in code comments, commit messages, or PR descriptions.
+
 ## Dependencies (requirements.txt)
 
 ```

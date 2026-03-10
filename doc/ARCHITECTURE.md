@@ -1,5 +1,9 @@
 # Architecture
 
+## Language Policy
+
+All architectural documentation, comments, and code annotations in this project MUST be written in English.
+
 ## System Overview
 
 THuntCloud is a locally-executed, AI-assisted threat hunting tool for AWS CloudTrail logs. It consists of three independent containers orchestrated by Docker Compose, sharing a DuckDB database via a Docker Named Volume.

@@ -1,5 +1,15 @@
 # Development Guide
 
+## Language Policy
+
+All contributions to this project MUST use English for:
+
+- Source code comments (`//`, `///`, `//!` in Rust; `#` and docstrings in Python)
+- Documentation files (`.md`, `.txt`, `.rst`)
+- Commit messages and PR descriptions
+
+Non-English text anywhere in the codebase or version history is not permitted.
+
 ## Prerequisites
 
 | Tool              | Version      | Purpose                              |
