@@ -4,4 +4,6 @@
 
 pub mod db;
 pub mod decompressor;
+pub mod ingest;
 pub mod parser;
+pub mod progress;
