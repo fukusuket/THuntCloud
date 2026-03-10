@@ -1,0 +1,249 @@
+# dashboard Module — THuntCloud
+
+BI dashboard module for AWS CloudTrail logs powered by Apache Superset.
+Visualizes log data stored in DuckDB, providing an intuitive interface for security analysts to perform threat hunting.
+
+---
+
+## Overview
+
+| Item | Value |
+|------|-------|
+| BI Tool | Apache Superset 4.1.2 |
+| DB Connector | `duckdb-engine` (SQLAlchemy dialect) |
+| DB Access | DuckDB `READ_ONLY` |
+| Default Port | `8088` |
+
+> **Important**: This module always opens DuckDB in `READ_ONLY` mode.  
+> All writes are performed exclusively by the `ingester` module.
+
+---
+
+## Directory Structure
+
+```
+dashboard/
+├── Dockerfile               # Custom Superset image with duckdb-engine
+├── superset_config.py       # Superset configuration overrides (mounted into container)
+├── init/
+│   ├── bootstrap.sh         # Idempotent initialization script (run on first startup)
+│   ├── register_duckdb.py   # DuckDB database connection registration script
+│   └── register_dataset.py  # cloudtrail_events dataset registration script
+└── README.md                # This file
+```
+
+Related directories (repository root):
+
+```
+dashboards/
+├── builtin_hunts.yaml           # Built-in threat hunting prompt definitions
+└── cloudtrail_default/          # Dashboard definitions (Superset export format)
+    ├── metadata.yaml
+    ├── databases/
+    │   └── CloudTrail_DuckDB.yaml
+    └── datasets/
+        └── cloudtrail_events.yaml
+```
+
+---
+
+## Feature List (PRD Section 6.3)
+
+| ID | Feature | Priority |
+|----|---------|----------|
+| DSH-01 | CloudTrail events time-series chart | Must |
+| DSH-02 | Top-N API calls ranking | Must |
+| DSH-03 | Activity aggregation by IAM entity | Must |
+| DSH-04 | Error (AccessDenied, etc.) occurrence trend | Must |
+| DSH-05 | Source IP address geo-map visualization | Should |
+| DSH-06 | Ad-hoc visualization via custom SQL | Must |
+| DSH-07 | Dashboard export (PNG / PDF) | Should |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose must be installed
+- Log ingestion by `ingester` must be complete (DuckDB file must exist)
+
+### Startup
+
+```bash
+# Run from the repository root
+cd docker
+
+# 1. (First time only) Ingest logs
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+# 2. Start the dashboard
+docker compose up superset
+```
+
+Open http://localhost:8088 in your browser.
+
+### Default Login Credentials
+
+| Item | Default Value |
+|------|--------------|
+| Username | `admin` |
+| Password | `admin` |
+
+> **Security Notice**: Always change these in a `.env` file for any non-local environment.
+
+---
+
+## Configuration
+
+### Environment Variables
+
+The following variables can be set in `docker/docker-compose.yml` or a `.env` file.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUPERSET_SECRET_KEY` | `change-me-in-production` | Secret key for session signing (**must be changed**) |
+| `SUPERSET_ADMIN_USERNAME` | `admin` | Admin username |
+| `SUPERSET_ADMIN_PASSWORD` | `admin` | Admin password (**must be changed**) |
+| `SUPERSET_ADMIN_EMAIL` | `admin@localhost` | Admin email address |
+| `DUCKDB_PATH` | `/data/db/threat_hunting.db` | DuckDB file path (inside container) |
+| `DUCKDB_HOST_PATH` | `./data/db` | Host-side DuckDB directory path |
+
+### Example `.env` File
+
+```dotenv
+SUPERSET_SECRET_KEY=your-strong-random-secret
+SUPERSET_ADMIN_USERNAME=admin
+SUPERSET_ADMIN_PASSWORD=your-secure-password
+SUPERSET_ADMIN_EMAIL=you@example.com
+DUCKDB_HOST_PATH=/path/to/your/duckdb/directory
+```
+
+---
+
+## Initialization Flow
+
+On first startup, the `superset-init` container executes the following steps in order (all idempotent):
+
+```
+bootstrap.sh
+  ├── superset db upgrade        # Run metadata DB migrations
+  ├── superset fab create-admin  # Create admin user
+  ├── superset init              # Initialize roles and permissions
+  ├── register_duckdb.py         # Register DuckDB database connection
+  ├── register_dataset.py        # Register cloudtrail_events dataset
+  └── import_dashboards          # Import pre-built dashboards (if ZIP exists)
+```
+
+The `superset` service starts only after `superset-init` exits successfully (`depends_on: condition: service_completed_successfully`).
+
+---
+
+## DuckDB Connection Details
+
+The DuckDB connection is registered in Superset with the following settings:
+
+| Item | Value |
+|------|-------|
+| Connection Name | `CloudTrail DuckDB` |
+| SQLAlchemy URI | `duckdb:////data/db/threat_hunting.db` |
+| Access Mode | `READ_ONLY` (enforced via `connect_args`) |
+| SQL Lab Exposed | Enabled |
+| DML Operations | Disabled |
+
+---
+
+## Architecture
+
+```
+ingester (Rust)       agent (Python/Streamlit)
+    │ READ_WRITE            │ READ_ONLY
+    ▼                       ▼
+DuckDB (threat_hunting.db) ──────────────▶ dashboard (Superset)
+                                                  │ READ_ONLY
+                                                  ▼
+                                       CloudTrail visualizations
+                                       + SQL Lab (ad-hoc analysis)
+```
+
+- **ingester**: The sole process that writes data into DuckDB
+- **agent**: AI-assisted interactive query UI
+- **dashboard**: BI dashboard and visualization layer
+
+---
+
+## Custom Docker Image
+
+`dashboard/Dockerfile` extends `apache/superset:4.1.2` with the packages required for DuckDB support:
+
+```dockerfile
+FROM apache/superset:4.1.2
+USER root
+RUN pip install --no-cache-dir \
+    "duckdb>=1.2.0" \
+    "duckdb-engine>=0.13.0"
+USER superset
+```
+
+The official image does not include `duckdb-engine`, so this custom build is required.
+
+---
+
+## Troubleshooting
+
+### Dashboard not displayed
+
+1. Check the `superset-init` container logs:
+   ```bash
+   docker compose logs superset-init
+   ```
+2. Confirm that `superset-init` exited with `Bootstrap complete.`
+3. Confirm that the `superset` container is running:
+   ```bash
+   docker compose ps
+   ```
+
+### DuckDB connection error
+
+- Confirm that log ingestion by `ingester` has completed.
+- Confirm that `DUCKDB_HOST_PATH` points to the correct host directory.
+- Confirm that the DuckDB file exists:
+  ```bash
+  ls -lh docker/data/db/threat_hunting.db
+  ```
+
+### Column metadata not visible
+
+`register_dataset.py` may fail to sync column metadata if the DuckDB file is empty.  
+After ingestion, run the following in SQL Lab to trigger auto-sync:
+
+```sql
+SELECT * FROM cloudtrail_events LIMIT 1;
+```
+
+---
+
+## Development & Testing
+
+### Local Build Verification
+
+```bash
+cd docker
+
+# Build the custom image
+docker compose build superset
+
+# Verify duckdb-engine is installed correctly
+docker compose run --rm superset python -c "import duckdb_engine; print('duckdb-engine OK')"
+
+# Verify the config file syntax
+docker compose run --rm superset python -c "import superset_config; print('config OK')"
+```
+
+### Re-running the Initialization Script
+
+The script is idempotent and safe to run multiple times:
+
+```bash
+docker compose run --rm superset-init
+```
