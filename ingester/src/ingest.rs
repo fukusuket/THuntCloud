@@ -48,7 +48,22 @@ pub fn ingest_path(path: &Path, db_path: &Path) -> Result<IngestStats> {
 ///
 /// Separated from [`ingest_path`] so that tests can pass an in-memory
 /// connection without touching the filesystem for the database file.
+/// The progress bar is always hidden; use [`ingest_with_progress`] when
+/// a visible bar is desired.
 pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
+    ingest_with_progress(path, conn, false)
+}
+
+/// Same as [`ingest_with_conn`] but controls whether the progress bar is
+/// displayed on the terminal.
+///
+/// - `show_progress = true`  — displays an `indicatif` progress bar on stderr.
+/// - `show_progress = false` — runs silently (suitable for tests and piped output).
+pub fn ingest_with_progress(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+) -> Result<IngestStats> {
     ensure_table(conn)?;
 
     let start = Instant::now();
@@ -62,7 +77,11 @@ pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
         .filter(|e| is_cloudtrail_file(e.path()))
         .collect();
 
-    let reporter = ProgressReporter::hidden();
+    let reporter = if show_progress {
+        ProgressReporter::new(files.len() as u64)
+    } else {
+        ProgressReporter::hidden()
+    };
 
     for entry in &files {
         let file_path = entry.path();
@@ -334,5 +353,35 @@ mod tests {
             stats.elapsed_secs >= 0.0,
             "elapsed_secs should be non-negative"
         );
+    }
+
+    // Test #22: ingest_with_progress uses a visible reporter when show_progress=true.
+    // The ProgressReporter::new() path is exercised (no panic, correct stats).
+    #[test]
+    fn test_ingest_with_progress_show_true() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        // show_progress=true should not panic and should return correct stats.
+        let stats = ingest_with_progress(tmp.path(), &conn, true)
+            .expect("ingest with visible progress should succeed");
+
+        assert_eq!(stats.files_processed, 1);
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(stats.errors, 0);
+    }
+
+    // Test #23: ingest_with_progress uses a hidden reporter when show_progress=false.
+    #[test]
+    fn test_ingest_with_progress_show_false() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        let stats = ingest_with_progress(tmp.path(), &conn, false)
+            .expect("ingest with hidden progress should succeed");
+
+        assert_eq!(stats.files_processed, 1);
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(stats.errors, 0);
     }
 }

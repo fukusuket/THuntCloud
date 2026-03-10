@@ -5,9 +5,10 @@
 use std::path::PathBuf;
 use std::process;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use ingester::ingest::{IngestStats, ingest_path};
+use duckdb::Connection;
+use ingester::ingest::{IngestStats, ingest_with_progress};
 
 /// THuntCloud ingester — ingest AWS CloudTrail logs into DuckDB.
 #[derive(Debug, Parser)]
@@ -38,7 +39,15 @@ enum Commands {
 fn run() -> Result<IngestStats> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Ingest { path, db, .. } => ingest_path(&path, &db),
+        Commands::Ingest {
+            path,
+            db,
+            no_progress,
+        } => {
+            let conn = Connection::open(&db)
+                .with_context(|| format!("Failed to open DuckDB at {}", db.display()))?;
+            ingest_with_progress(&path, &conn, !no_progress)
+        }
     }
 }
 
