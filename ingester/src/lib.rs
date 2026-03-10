@@ -2,5 +2,6 @@
 //!
 //! Provides the public API for ingesting AWS CloudTrail log files into DuckDB.
 
+pub mod db;
 pub mod decompressor;
 pub mod parser;
