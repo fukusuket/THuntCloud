@@ -1,40 +1,30 @@
-# DSH-04: Error Occurrence Trend
-# Stacked hourly bar chart of API errors grouped by error code.
-# Spikes in AccessDenied may indicate credential scanning or privilege escalation attempts.
-slice_name: Error Occurrence Trend
-viz_type: echarts_timeseries_bar
+# DSH-04: Error Event Trend Over Time
+# Line chart showing the hourly count of error events (non-null error_code).
+slice_name: Error Event Trend
+viz_type: echarts_timeseries_line
 description: >
-  Hourly error counts grouped by error code (DSH-04).
-  Spikes in AccessDenied or UnauthorizedAccess errors are strong indicators
-  of credential misuse, privilege escalation, or automated scanning activity.
+  Hourly count of API calls that returned an error (DSH-04).
+  Spikes in error events can indicate active brute-force, misconfigured tooling,
+  or an attacker probing for accessible resources.
 dataset_name: cloudtrail_events
 params:
-  x_axis: hour
-  time_grain_sqla: PT1H
   metrics:
     - error_count
-  groupby:
-    - error_code
-  adhoc_filters:
-    - clause: WHERE
-      expressionType: SQL
-      sqlExpression: "error_code IS NOT NULL"
+  groupby: []
+  x_axis: event_hour
   row_limit: 10000
-  stack: true
-  x_axis_title: Time
-  y_axis_title: Error Count
+  order_desc: false
+  x_axis_label: Time (hourly)
+  y_axis_label: Error Count
   color_scheme: supersetColors
   rich_tooltip: true
-  tooltipTimeFormat: "%Y-%m-%d %H:%M"
+  zoomable: true
 cache_timeout: null
-
 # SQL used to power this chart:
 # SELECT
-#     date_trunc('hour', event_time)  AS hour,
-#     COALESCE(error_code, 'NoError') AS error_code,
-#     COUNT(*)                        AS error_count
+#     DATE_TRUNC('hour', event_time) AS event_hour,
+#     COUNT(*) AS error_count
 # FROM cloudtrail_events
 # WHERE error_code IS NOT NULL
-# GROUP BY 1, 2
-# ORDER BY 1, 3 DESC
-
+# GROUP BY event_hour
+# ORDER BY event_hour ASC
