@@ -18,6 +18,9 @@ jobs:
   ingester:
     name: ingester (Rust)
     runs-on: ubuntu-latest
+    env:
+      # Use prebuilt libduckdb binary instead of compiling C++ from source
+      DUCKDB_DOWNLOAD_LIB: "1"
 
     steps:
       - name: Checkout repository
@@ -49,7 +52,10 @@ jobs:
 
       - name: Run tests
         working-directory: ingester
-        run: cargo test --all
+        run: |
+          # Add the directory containing libduckdb.so to the runtime library search path
+          export LD_LIBRARY_PATH="$(pwd)/target/debug/deps:${LD_LIBRARY_PATH:-}"
+          cargo test --all
 
   # ── Python agent ───────────────────────────────────────────────────────────
   agent:
