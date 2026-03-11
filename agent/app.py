@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Path to the built-in threat hunting prompts YAML file.
-_BUILTIN_PROMPTS_PATH = (
-    Path(__file__).parent.parent / "dashboards" / "builtin_hunts.yaml"
-)
+_BUILTIN_PROMPTS_PATH = Path(__file__).parent / "builtin_hunts.yaml"
 
 # Session state keys and their default values.
 SESSION_STATE_DEFAULTS: dict = {
