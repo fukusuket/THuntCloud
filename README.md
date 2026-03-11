@@ -33,7 +33,7 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 │  │ gz ingest    │   │ SQL gen/exec │  │             │   │
 │  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
 │  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
-│         └──────────────────┴──────────────────┘         │
+│         └──────────────────┴─────────────────┘          │
 │                            │                            │
 │                    ┌───────▼──────┐                     │
 │                    │   DuckDB     │                     │

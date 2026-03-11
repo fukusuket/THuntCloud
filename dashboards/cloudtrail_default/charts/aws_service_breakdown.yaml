@@ -1,0 +1,36 @@
+# DSH-10: AWS Service Activity Breakdown
+# Donut chart showing the distribution of API calls across AWS services.
+uuid: e3f4a5b6-c7d8-9012-cdef-012345678901
+version: 1.0.0
+dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+slice_name: AWS Service Breakdown
+viz_type: pie
+description: >
+  Distribution of CloudTrail events by AWS service (event_source) (DSH-10).
+  Helps identify which services are most active and whether unexpected services
+  (e.g. iam, sts, lambda) show unusually high activity — a potential sign of
+  reconnaissance or resource hijacking.
+query_context: ""
+params:
+  metrics:
+    - event_count
+  groupby:
+    - event_source
+  row_limit: 15
+  order_desc: true
+  donut: true
+  show_labels: true
+  label_type: key_percent
+  color_scheme: supersetColors
+  rich_tooltip: true
+cache_timeout: null
+
+# SQL used to power this chart:
+# SELECT
+#     event_source,
+#     COUNT(*) AS event_count
+# FROM cloudtrail_events
+# GROUP BY event_source
+# ORDER BY event_count DESC
+# LIMIT 15
+

@@ -178,11 +178,35 @@ metrics:
     expression: "COUNT(*)"
     description: Total number of events
 
+  - metric_name: event_count
+    verbose_name: Event Count
+    metric_type: count
+    expression: "COUNT(*)"
+    description: Total number of events (alias for count)
+
+  - metric_name: call_count
+    verbose_name: Call Count
+    metric_type: count
+    expression: "COUNT(*)"
+    description: Total number of API calls
+
+  - metric_name: request_count
+    verbose_name: Request Count
+    metric_type: count
+    expression: "COUNT(*)"
+    description: Total number of requests
+
   - metric_name: error_count
     verbose_name: Error Count
     metric_type: count
     expression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
     description: Number of events with an error code
+
+  - metric_name: error_requests
+    verbose_name: Error Requests
+    metric_type: count
+    expression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+    description: Number of requests that returned an error
 
   - metric_name: write_count
     verbose_name: Write Event Count
@@ -190,9 +214,63 @@ metrics:
     expression: "COUNT(CASE WHEN read_only = false THEN 1 END)"
     description: Number of mutating (non-read-only) API calls
 
+  - metric_name: write_requests
+    verbose_name: Write Requests
+    metric_type: count
+    expression: "COUNT(CASE WHEN read_only = false THEN 1 END)"
+    description: Number of mutating (write) requests
+
+  - metric_name: write_events
+    verbose_name: Write Events
+    metric_type: count
+    expression: "COUNT(CASE WHEN read_only = false THEN 1 END)"
+    description: Number of write events
+
+  - metric_name: error_events
+    verbose_name: Error Events
+    metric_type: count
+    expression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+    description: Number of error events
+
+  - metric_name: total_events
+    verbose_name: Total Events
+    metric_type: count
+    expression: "COUNT(*)"
+    description: Total number of events
+
   - metric_name: unique_callers
     verbose_name: Unique Callers
     metric_type: count_distinct
     expression: "COUNT(DISTINCT user_identity_arn)"
     description: Number of distinct IAM identities that made API calls
+
+  - metric_name: unique_identities
+    verbose_name: Unique Identities
+    metric_type: count_distinct
+    expression: "COUNT(DISTINCT user_identity_arn)"
+    description: Number of distinct IAM identities
+
+  - metric_name: denied_count
+    verbose_name: Denied Count
+    metric_type: count
+    expression: "COUNT(CASE WHEN error_code IN ('AccessDenied', 'Client.UnauthorizedAccess', 'UnauthorizedAccess', 'AccessDeniedException') THEN 1 END)"
+    description: Number of access-denied errors
+
+  - metric_name: total_logins
+    verbose_name: Total Logins
+    metric_type: count
+    expression: "COUNT(*)"
+    description: Total number of console login attempts
+
+  - metric_name: failed_logins
+    verbose_name: Failed Logins
+    metric_type: count
+    expression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+    description: Number of failed login attempts
+
+  - metric_name: success_logins
+    verbose_name: Successful Logins
+    metric_type: count
+    expression: "COUNT(CASE WHEN error_code IS NULL THEN 1 END)"
+    description: Number of successful login attempts
 
