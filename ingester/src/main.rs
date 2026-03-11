@@ -27,8 +27,9 @@ enum Commands {
         path: PathBuf,
 
         /// Path to the DuckDB database file.
-        #[arg(short, long, default_value = "/data/threat_hunting.db")]
-        db: PathBuf,
+        /// Falls back to the DUCKDB_PATH environment variable, then /data/db/threat_hunting.db.
+        #[arg(short, long)]
+        db: Option<PathBuf>,
 
         /// Disable progress bar output.
         #[arg(long)]
@@ -44,8 +45,14 @@ fn run() -> Result<IngestStats> {
             db,
             no_progress,
         } => {
-            let conn = Connection::open(&db)
-                .with_context(|| format!("Failed to open DuckDB at {}", db.display()))?;
+            // Resolve DB path: CLI arg > DUCKDB_PATH env > default
+            let db_path = db.unwrap_or_else(|| {
+                std::env::var("DUCKDB_PATH")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| PathBuf::from("/data/db/threat_hunting.db"))
+            });
+            let conn = Connection::open(&db_path)
+                .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
             ingest_with_progress(&path, &conn, !no_progress)
         }
     }

@@ -27,7 +27,7 @@ services:
       - RUST_LOG=${RUST_LOG:-info}
     profiles:
       - ingest                        # Run only when explicitly invoked
-    # Usage: docker compose --profile ingest run --rm ingester ingest --path /data/logs
+    # Usage: docker compose --profile ingest run --rm ingester ingest --path /data/logs/flaws_cloudtrail_logs
 
   # ── agent (Streamlit AI UI) ───────────────
   agent:

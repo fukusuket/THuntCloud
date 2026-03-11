@@ -8,7 +8,6 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use duckdb::Connection;
-use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
@@ -59,13 +58,6 @@ pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
 struct FileToProcess {
     path: PathBuf,
     sha256: String,
-}
-
-/// The parsed result of a single CloudTrail log file.
-struct ParsedFile {
-    path: PathBuf,
-    sha256: String,
-    records: Vec<CloudTrailEvent>,
 }
 
 /// Read a file, compute its SHA-256 digest, and parse the CloudTrail records.
@@ -154,43 +146,26 @@ pub fn ingest_with_progress(
         }
     }
 
-    // ── Phase 2: parallel decompress + parse (reuses bytes already on disk) -
-    // Files are read a second time here, but now in parallel across all cores.
-    // The sha256 from Phase 1 is kept to avoid a third read in Phase 3.
-    let parse_results: Vec<Result<ParsedFile>> = to_process
-        .into_par_iter()
-        .map(|f| {
+    // ── Phase 2 + 3: sequential decompress → parse → INSERT (memory-safe) ──
+    // Process one file at a time to avoid loading all events into memory at once.
+    for f in to_process {
+        let result = (|| -> Result<usize> {
             let content = read_file_content(&f.path)?;
             let log = parse_cloudtrail_log(&content)
                 .with_context(|| format!("Failed to parse {}", f.path.display()))?;
-            Ok(ParsedFile {
-                path: f.path,
-                sha256: f.sha256,
-                records: log.records,
-            })
-        })
-        .collect();
+            let n = insert_events(conn, &log.records)
+                .and_then(|n| mark_ingested(&f.path, &f.sha256, conn).map(|_| n))?;
+            Ok(n)
+        })();
 
-    // ── Phase 3: serial INSERT + mark-ingested + stats ─────────────────────
-    for result in parse_results {
         match result {
             Err(e) => {
                 stats.errors += 1;
-                eprintln!("Error processing file: {e:#}");
+                eprintln!("Error processing {}: {e:#}", f.path.display());
             }
-            Ok(parsed) => {
-                match insert_events(conn, &parsed.records)
-                    .and_then(|n| mark_ingested(&parsed.path, &parsed.sha256, conn).map(|_| n))
-                {
-                    Err(e) => {
-                        stats.errors += 1;
-                        eprintln!("Error inserting {}: {e:#}", parsed.path.display());
-                    }
-                    Ok(n) => {
-                        stats.files_processed += 1;
-                        stats.records_inserted += n;
-                    }
-                }
+            Ok(n) => {
+                stats.files_processed += 1;
+                stats.records_inserted += n;
             }
         }
         reporter.inc(stats.records_inserted);
