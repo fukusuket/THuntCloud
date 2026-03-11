@@ -311,16 +311,6 @@ duckdb docker/data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"
 cd docker && docker ps --filter "name=threat-hunting" --format "table {{.Names}}\t{{.Status}}"
 ```
 
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [doc/PRD.md](doc/PRD.md) | Product Requirements Document |
-| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | System architecture |
-| [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) | Development setup guide |
-| [doc/TDD_GUIDE.md](doc/TDD_GUIDE.md) | TDD methodology and examples |
-| [doc/TESTING.md](doc/TESTING.md) | Testing strategy per module |
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
