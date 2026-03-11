@@ -59,8 +59,7 @@ The fastest way to try THuntCloud is to use the publicly available CloudTrail sa
 ```bash
 git clone https://github.com/fukusuket/THuntCloud.git
 cd THuntCloud
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY
+export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
 ```
 
 ### 2. Download sample CloudTrail logs
@@ -143,8 +142,7 @@ Once the agent is running, try asking questions like:
 ```bash
 git clone https://github.com/fukusuket/THuntCloud.git
 cd THuntCloud
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY
+export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
 ```
 
 ### 2. Place CloudTrail logs
