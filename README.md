@@ -326,6 +326,75 @@ THuntCloud/
 └── NOTICE             # Third-party license attributions
 ```
 
+## Proxy Environment (Corporate Network)
+
+If you are behind a corporate proxy that performs TLS/SSL inspection, `docker compose build` may fail with SSL certificate errors (e.g. `certificate verify failed`). Follow the steps below to resolve this.
+
+### 1. Obtain your proxy's CA certificate
+
+Export the proxy's root CA certificate in PEM format (`.crt`). Consult your IT department if unsure.
+
+### 2. Place the certificate file
+
+Copy the CA certificate file into each module directory:
+
+```bash
+cp /path/to/custom-ca.crt ingester/custom-ca.crt
+cp /path/to/custom-ca.crt agent/custom-ca.crt
+cp /path/to/custom-ca.crt dashboard/custom-ca.crt
+```
+
+### 3. Uncomment Dockerfile lines
+
+Each Dockerfile (`ingester/Dockerfile`, `agent/Dockerfile`, `dashboard/Dockerfile`) contains a commented-out section labeled `(Proxy) Custom CA certificate`. Uncomment those lines:
+
+**ingester/Dockerfile** (both builder and runtime stages):
+```dockerfile
+COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
+```
+
+**agent/Dockerfile** and **dashboard/Dockerfile**:
+```dockerfile
+COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+```
+
+### 4. Set Docker daemon proxy (if needed)
+
+If the Docker daemon itself also needs to go through the proxy, configure `~/.docker/config.json`:
+
+```json
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "http://proxy.example.com:8080",
+      "httpsProxy": "http://proxy.example.com:8080",
+      "noProxy": "localhost,127.0.0.1"
+    }
+  }
+}
+```
+
+### 5. Build normally
+
+```bash
+cd docker
+docker compose --profile ingest build
+docker compose build
+```
+
+---
+
 ## Development
 
 ### Requirements
