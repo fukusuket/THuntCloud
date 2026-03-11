@@ -49,7 +49,7 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 - Docker Desktop (or Docker Engine + Docker Compose v2)
 - 16 GB RAM minimum, SSD recommended
-- OpenAI API key (`gpt-5.4` access)
+- OpenAI API key (`gpt-5.4` access) — agent module requires this
 
 ### 1. Clone and configure
 
@@ -67,19 +67,32 @@ cp .env.example .env
 cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 ```
 
-### 3. Start agent and dashboard
+### 3. Build and ingest logs
 
 ```bash
 cd docker
-docker compose up -d
+
+# Build the ingester image
+docker compose --profile ingest build ingester
+
+# Run ingestion (creates DuckDB and loads all log files)
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs
 ```
 
-### 4. Ingest logs
+### 4. Start all services (dashboard + agent)
 
 ```bash
-# Run from the docker/ directory
-docker compose --profile ingest run --rm ingester ingest --path /data/logs
+cd docker
+
+# Build and start Superset dashboard + AI agent
+docker compose up -d --build
 ```
+
+This starts:
+- **superset-init** — one-shot initializer (DB migration, DuckDB/dataset registration, dashboard import)
+- **superset (dashboard)** — Apache Superset BI dashboard
+- **agent** — Streamlit AI-assisted threat hunting UI
 
 ### 5. Open the UIs
 
@@ -89,6 +102,97 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 | Dashboard | http://localhost:8088 | Apache Superset BI dashboard |
 
 Default Superset credentials: `admin` / `admin` (change immediately in production)
+
+---
+
+## Docker Operations
+
+All commands are run from the `docker/` directory:
+
+```bash
+cd docker
+```
+
+### Clean Start (from scratch)
+
+```bash
+# 1. Stop all containers and remove volumes
+docker compose down -v
+rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
+
+# 2. Build and run ingester
+docker compose --profile ingest build ingester
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs
+
+# 3. Build and start dashboard + agent
+docker compose up -d --build
+```
+
+### Restart (keep data)
+
+```bash
+# Stop and restart all services (DuckDB data is preserved)
+docker compose down
+docker compose up -d
+```
+
+### Rebuild and Restart (after code changes)
+
+```bash
+# Rebuild images and restart
+docker compose down
+docker compose up -d --build
+```
+
+### Start Individual Services
+
+```bash
+# Dashboard only (no agent)
+docker compose up -d superset
+
+# Agent only (no dashboard)
+docker compose up -d agent
+
+# Both
+docker compose up -d
+```
+
+### Re-ingest Logs
+
+```bash
+# Stop readers first to avoid DuckDB lock conflicts
+docker compose down
+
+# Clean old data
+rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
+
+# Re-ingest
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs
+
+# Restart services
+docker compose up -d --build
+```
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f superset
+docker compose logs -f agent
+docker compose logs superset-init    # init is one-shot, no -f needed
+```
+
+### Stop All Services
+
+```bash
+docker compose down        # stop containers (keep data)
+docker compose down -v     # stop containers AND delete volumes (full reset)
+```
 
 ## Module Overview
 
@@ -176,12 +280,8 @@ black --check .
 # Inspect DuckDB directly
 duckdb docker/data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"
 
-# View service logs
-cd docker && docker compose logs -f agent
-cd docker && docker compose logs -f superset
-
-# Stop all services
-cd docker && docker compose down
+# Check container status
+cd docker && docker ps --filter "name=threat-hunting" --format "table {{.Names}}\t{{.Status}}"
 ```
 
 ## Documentation
