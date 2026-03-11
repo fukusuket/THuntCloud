@@ -39,7 +39,10 @@ htmlcov/
 # ── DuckDB ──────────────────────────────────────────
 *.db
 *.db.wal
-docker/data/
+docker/data/*
+!docker/data/db/
+docker/data/db/*
+!docker/data/db/.gitkeep
 
 # ── macOS ────────────────────────────────────────────
 .DS_Store
@@ -53,4 +56,5 @@ docker/data/
 *.swo
 
 # ── Docker ───────────────────────────────────────────
-docker/logs/
+docker/logs/*
+!docker/logs/.gitkeep
