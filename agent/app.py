@@ -152,7 +152,7 @@ def render_sidebar() -> None:
             st.session_state.api_key = api_key_input
 
         # Model selection
-        model_options = ["gpt-5.4", "gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"]
+        model_options = ["gpt-5.4", "gpt-5.4-mini"]
         selected_model = st.selectbox(
             "Model",
             options=model_options,
