@@ -13,10 +13,26 @@ description: >
 query_context: ""
 params:
   metrics:
-    - request_count
-    - write_requests
-    - error_requests
-    - unique_identities
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: request_count
+      hasCustomLabel: true
+      optionName: metric_request_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN read_only = false THEN 1 END)"
+      label: write_requests
+      hasCustomLabel: true
+      optionName: metric_write_requests
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+      label: error_requests
+      hasCustomLabel: true
+      optionName: metric_error_requests
+    - expressionType: SQL
+      sqlExpression: "COUNT(DISTINCT user_identity_arn)"
+      label: unique_identities
+      hasCustomLabel: true
+      optionName: metric_unique_identities
   groupby:
     - user_agent
   row_limit: 50

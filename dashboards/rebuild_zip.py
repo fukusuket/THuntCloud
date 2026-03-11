@@ -28,10 +28,9 @@ FILE_MAP = {
     "charts/iam_entity_activity.yaml":            "charts/IAM_Entity_Activity.yaml",
     "charts/error_trend.yaml":                    "charts/Error_Event_Trend.yaml",
     "charts/source_ip_requests.yaml":             "charts/Top_Source_IP_Addresses.yaml",
-    # Threat hunting charts (DSH-08 ~ DSH-14)
+    # Threat hunting charts (DSH-08 ~ DSH-14, excl. DSH-10 removed)
     "charts/console_login_activity.yaml":         "charts/Console_Login_Activity.yaml",
     "charts/access_denied_top_actions.yaml":      "charts/Top_Access_Denied_Actions.yaml",
-    "charts/aws_service_breakdown.yaml":          "charts/AWS_Service_Breakdown.yaml",
     "charts/user_agent_analysis.yaml":            "charts/User_Agent_Analysis.yaml",
     "charts/sensitive_api_calls.yaml":            "charts/Sensitive_API_Calls.yaml",
     "charts/root_account_usage.yaml":             "charts/Root_Account_Usage.yaml",

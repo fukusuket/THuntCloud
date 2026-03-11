@@ -14,8 +14,16 @@ description: >
 query_context: ""
 params:
   metrics:
-    - call_count
-    - error_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: call_count
+      hasCustomLabel: true
+      optionName: metric_call_count_root
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+      label: error_count
+      hasCustomLabel: true
+      optionName: metric_error_count_root
   groupby:
     - event_name
     - event_source
@@ -24,6 +32,7 @@ params:
     - clause: WHERE
       expressionType: SQL
       sqlExpression: "user_identity_type = 'Root'"
+      filterOptionName: filter_root_account
   row_limit: 100
   order_desc: true
   page_size: 25

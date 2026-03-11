@@ -14,12 +14,29 @@ description: >
 query_context: ""
 params:
   metrics:
-    - total_logins
-    - failed_logins
-    - success_logins
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: total_logins
+      hasCustomLabel: true
+      optionName: metric_total_logins
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+      label: failed_logins
+      hasCustomLabel: true
+      optionName: metric_failed_logins
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN error_code IS NULL THEN 1 END)"
+      label: success_logins
+      hasCustomLabel: true
+      optionName: metric_success_logins
   groupby:
     - user_identity_arn
     - source_ip_address
+  adhoc_filters:
+    - clause: WHERE
+      expressionType: SQL
+      sqlExpression: "event_type = 'AwsConsoleSignIn'"
+      filterOptionName: filter_event_type
   row_limit: 50
   order_desc: true
   page_size: 25

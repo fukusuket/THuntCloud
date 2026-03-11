@@ -13,7 +13,16 @@ description: >
 query_context: ""
 params:
   metrics:
-    - denied_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: denied_count
+      hasCustomLabel: true
+      optionName: metric_denied_count
+  adhoc_filters:
+    - clause: WHERE
+      expressionType: SQL
+      sqlExpression: "error_code IN ('AccessDenied', 'Client.UnauthorizedAccess', 'UnauthorizedAccess', 'AccessDeniedException')"
+      filterOptionName: filter_access_denied
   groupby:
     - event_name
   granularity_sqla: event_time

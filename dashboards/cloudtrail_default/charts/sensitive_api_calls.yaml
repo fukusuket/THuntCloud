@@ -14,16 +14,29 @@ description: >
 query_context: ""
 params:
   metrics:
-    - call_count
-    - unique_callers
-    - error_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: call_count
+      hasCustomLabel: true
+      optionName: metric_call_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(DISTINCT user_identity_arn)"
+      label: unique_callers
+      hasCustomLabel: true
+      optionName: metric_unique_callers
+    - expressionType: SQL
+      sqlExpression: "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)"
+      label: error_count
+      hasCustomLabel: true
+      optionName: metric_error_count
   groupby:
     - event_name
     - event_source
   adhoc_filters:
     - clause: WHERE
       expressionType: SQL
-      sqlExpression: >
+      filterOptionName: filter_sensitive_apis
+      sqlExpression: >-
         event_name IN (
           'CreateUser', 'CreateAccessKey', 'DeleteAccessKey',
           'CreateLoginProfile', 'UpdateLoginProfile',
@@ -38,8 +51,7 @@ params:
           'CreateSecurityGroup', 'RevokeSecurityGroupIngress',
           'StopLogging', 'DeleteTrail', 'UpdateTrail',
           'DisableKey', 'ScheduleKeyDeletion',
-          'ConsoleLogin',
-          'RunInstances', 'CreateFunction20150331',
+          'ConsoleLogin', 'RunInstances', 'CreateFunction20150331',
           'CreateBucket', 'DeleteBucket',
           'DeactivateMFADevice', 'DeleteVirtualMFADevice'
         )
@@ -70,8 +82,7 @@ cache_timeout: null
 #     'CreateSecurityGroup', 'RevokeSecurityGroupIngress',
 #     'StopLogging', 'DeleteTrail', 'UpdateTrail',
 #     'DisableKey', 'ScheduleKeyDeletion',
-#     'ConsoleLogin',
-#     'RunInstances', 'CreateFunction20150331',
+#     'ConsoleLogin', 'RunInstances', 'CreateFunction20150331',
 #     'CreateBucket', 'DeleteBucket',
 #     'DeactivateMFADevice', 'DeleteVirtualMFADevice'
 # )

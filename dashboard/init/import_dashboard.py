@@ -53,6 +53,7 @@ def main() -> None:
     try:
         ImportDashboardsCommand(contents, overwrite=True).run()
         print("    Dashboard imported successfully.")
+        _remove_retired_charts()
         _generate_query_contexts()
     except Exception as exc:  # noqa: BLE001
         print(f"    Dashboard import failed: {exc}")
@@ -63,6 +64,40 @@ def main() -> None:
     finally:
         req_ctx.pop()
         app_ctx.pop()
+
+
+def _remove_retired_charts() -> None:
+    """Delete charts that have been retired from the dashboard ZIP.
+
+    When a chart is removed from the ZIP, Superset keeps the Slice object
+    in its database.  This function explicitly deletes charts by UUID so
+    they no longer appear in the Charts list or on the dashboard.
+
+    Add UUIDs here whenever a chart YAML is intentionally removed.
+    """
+    import json  # noqa: PLC0415
+
+    from superset.extensions import db  # noqa: PLC0415
+    from superset.models.slice import Slice  # noqa: PLC0415
+
+    # UUIDs of charts that have been intentionally removed from the dashboard.
+    RETIRED_UUIDS = {
+        "e3f4a5b6-c7d8-9012-cdef-012345678901",  # DSH-10: AWS Service Breakdown (removed)
+    }
+
+    removed = 0
+    for uuid in RETIRED_UUIDS:
+        chart = db.session.query(Slice).filter_by(uuid=uuid).first()
+        if chart:
+            db.session.delete(chart)
+            removed += 1
+            print(f"    Removed retired chart: {chart.slice_name} ({uuid})")
+
+    if removed:
+        db.session.commit()
+        print(f"    Cleaned up {removed} retired chart(s).")
+    else:
+        print("    No retired charts to clean up.")
 
 
 def _generate_query_contexts() -> None:
@@ -98,12 +133,34 @@ def _generate_query_contexts() -> None:
         if x_axis and x_axis not in columns:
             columns = [x_axis] + columns
 
+        # Build a safe orderby for named metrics only.
+        # Adhoc metric dicts (expressionType/sqlExpression) cause
+        # "Field may not be null" schema validation errors in Superset 4.x
+        # when placed in orderby.  For adhoc metrics, return [] and rely on
+        # order_desc in params to sort by the first metric descending.
+        def _first_orderby(metrics_list: list) -> list:
+            if not metrics_list:
+                return []
+            first = metrics_list[0]
+            if isinstance(first, str):
+                return [[first, False]]
+            # Adhoc metric dict — let Superset handle ordering via order_desc.
+            return []
+
         # Ensure granularity_sqla is set — required by many chart types.
         if "granularity_sqla" not in params:
             params["granularity_sqla"] = "event_time"
         if "time_range" not in params:
             params["time_range"] = "No filter"
         c.params = json.dumps(params)
+
+        # Carry adhoc_filters into the query so WHERE clauses are applied.
+        adhoc_filters = params.get("adhoc_filters", [])
+
+        # Pie/sunburst charts sort via sort_by_metric — orderby must be empty.
+        # For all other chart types, order by the first metric descending.
+        viz_type = c.viz_type or ""
+        orderby = [] if viz_type in ("pie", "sunburst") else _first_orderby(metrics)
 
         query_context = {
             "datasource": {"id": c.datasource_id, "type": "table"},
@@ -114,13 +171,14 @@ def _generate_query_contexts() -> None:
                 "applied_time_extras": {},
                 "columns": columns,
                 "metrics": metrics,
-                "orderby": [[metrics[0], False]] if metrics else [],
+                "orderby": orderby,
                 "row_limit": params.get("row_limit", 10000),
                 "series_limit": 0,
                 "order_desc": params.get("order_desc", True),
                 "url_params": {},
                 "custom_params": {},
                 "custom_form_data": {},
+                "adhoc_filters": adhoc_filters,
             }],
             "form_data": params,
             "result_format": "json",
