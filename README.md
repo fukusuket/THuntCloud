@@ -43,7 +43,94 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+## Quick Start with Sample Data
+
+The fastest way to try THuntCloud is to use the publicly available CloudTrail sample logs from [Yamato Security's suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data).
+
+### Prerequisites
+
+- Docker Desktop (or Docker Engine + Docker Compose v2)
+- 16 GB RAM minimum, SSD recommended
+- OpenAI API key (`gpt-5.4` access) — agent module requires this
+- `git` with Git LFS support (sample data uses Git LFS)
+
+### 1. Clone THuntCloud and configure
+
+```bash
+git clone https://github.com/fukusuket/THuntCloud.git
+cd THuntCloud
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY
+```
+
+### 2. Download sample CloudTrail logs
+
+Clone the sample data repository (requires [Git LFS](https://git-lfs.com/)):
+
+```bash
+# Install Git LFS if not already installed (macOS)
+brew install git-lfs
+git lfs install
+
+# Clone only the AWS sample logs (sparse checkout to save disk space)
+git clone --no-checkout --depth=1 https://github.com/Yamato-Security/suzaku-sample-data.git
+cd suzaku-sample-data
+git sparse-checkout init --cone
+git sparse-checkout set aws/flaws.cloud
+git checkout main
+cd ..
+
+# Copy the sample logs into the THuntCloud logs directory
+cp suzaku-sample-data/aws/flaws.cloud/*.json.gz docker/logs/
+```
+
+> **About the sample data:** The `flaws.cloud` dataset contains CloudTrail logs from the [flaws.cloud](http://flaws.cloud) intentionally vulnerable AWS environment — a great dataset for practising threat hunting.
+
+### 3. Build and ingest logs
+
+```bash
+cd docker
+
+# Build the ingester image
+docker compose --profile ingest build ingester
+
+# Run ingestion (creates DuckDB and loads all log files)
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs
+```
+
+### 4. Start all services (dashboard + agent)
+
+```bash
+# (still inside docker/)
+docker compose up -d --build
+```
+
+This starts:
+- **superset-init** — one-shot initializer (DB migration, DuckDB/dataset registration, dashboard import)
+- **superset (dashboard)** — Apache Superset BI dashboard
+- **agent** — Streamlit AI-assisted threat hunting UI
+
+### 5. Open the UIs
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Agent (AI hunting) | http://localhost:8501 | AI-assisted threat hunting UI |
+| Dashboard | http://localhost:8088 | Apache Superset BI dashboard |
+
+Default Superset credentials: `admin` / `admin` (change immediately in production)
+
+### Example queries to try
+
+Once the agent is running, try asking questions like:
+
+- `"Who accessed the S3 buckets and from which IP addresses?"`
+- `"Show me all IAM-related API calls ordered by time"`
+- `"List any failed authentication attempts"`
+
+---
+
+## Quick Start (with your own logs)
 
 ### Prerequisites
 
@@ -298,3 +385,11 @@ cd docker && docker ps --filter "name=threat-hunting" --format "table {{.Names}}
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
 See [NOTICE](NOTICE) for third-party license attributions.
+
+## Acknowledgements
+
+- **[Yamato Security](https://github.com/Yamato-Security)** — for providing the [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) repository, which includes the `flaws.cloud` CloudTrail sample logs used in the Quick Start guide.
+- **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
+- **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
+- **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.
+
