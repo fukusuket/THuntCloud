@@ -23,16 +23,16 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Docker Compose                        │
+│                    Docker Compose                       │
 │                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
-│  │   ingester   │   │    agent     │  │  dashboard  │  │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │  │
-│  │              │   │              │  │             │  │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │  │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │  │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │  │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘  │
+│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
+│  │   ingester   │   │    agent     │  │  dashboard  │   │
+│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
+│  │              │   │              │  │             │   │
+│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
+│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
+│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
+│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
 │         └──────────────────┴──────────────────┘         │
 │                            │                            │
 │                    ┌───────▼──────┐                     │
