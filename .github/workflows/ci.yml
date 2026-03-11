@@ -148,15 +148,15 @@ jobs:
               sys.exit(1)
 
           required = {
-              "cloudtrail_default/metadata.yaml",
-              "cloudtrail_default/dashboard.yaml",
-              "cloudtrail_default/databases/CloudTrail_DuckDB.yaml",
-              "cloudtrail_default/datasets/cloudtrail_events.yaml",
-              "cloudtrail_default/charts/event_timeseries.yaml",
-              "cloudtrail_default/charts/top_api_calls.yaml",
-              "cloudtrail_default/charts/iam_entity_activity.yaml",
-              "cloudtrail_default/charts/error_trend.yaml",
-              "cloudtrail_default/charts/source_ip_requests.yaml",
+              "metadata.yaml",
+              "dashboards/cloudtrail_threat_hunting.yaml",
+              "databases/CloudTrail_DuckDB.yaml",
+              "datasets/CloudTrail_DuckDB/cloudtrail_events.yaml",
+              "charts/CloudTrail_Events_Over_Time.yaml",
+              "charts/Top_20_API_Calls.yaml",
+              "charts/IAM_Entity_Activity.yaml",
+              "charts/Error_Event_Trend.yaml",
+              "charts/Top_Source_IP_Addresses.yaml",
           }
 
           with zipfile.ZipFile(zip_path) as zf:
