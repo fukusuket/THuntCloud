@@ -14,7 +14,7 @@ import streamlit as st
 import yaml
 
 from llm import generate_analysis, generate_sql
-from query import QueryValidationError, connect_duckdb, execute_query
+from query import DEFAULT_ROW_LIMIT, QueryValidationError, connect_duckdb, execute_query
 from report import ReportEntry, generate_report
 
 logger = logging.getLogger(__name__)
@@ -281,10 +281,16 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     if error_message:
         assistant_content = error_message
     else:
+        truncated = len(results) >= DEFAULT_ROW_LIMIT
         assistant_content = (
             f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
-            f"**Results:** {len(results)} row(s)\n\n"
-            f"**Analysis:**\n{analysis}"
+            f"**Results:** {len(results)} row(s)"
+            + (
+                f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
+                if truncated
+                else ""
+            )
+            + f"\n\n**Analysis:**\n{analysis}"
         )
 
     st.session_state.messages.append(
@@ -337,6 +343,9 @@ def render_chat() -> None:
                         st.session_state.last_sql = edited_sql
                         st.session_state.last_results = results
 
+                        row_count = len(results)
+                        truncated = row_count >= DEFAULT_ROW_LIMIT
+
                         with st.spinner("📊 Analysing results…"):
                             analysis = generate_analysis(
                                 edited_sql,
@@ -350,8 +359,13 @@ def render_chat() -> None:
                                 "role": "assistant",
                                 "content": (
                                     f"**Re-run SQL:**\n```sql\n{edited_sql}\n```\n\n"
-                                    f"**Results:** {len(results)} row(s)\n\n"
-                                    f"**Analysis:**\n{analysis}"
+                                    f"**Results:** {row_count} row(s)"
+                                    + (
+                                        f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
+                                        if truncated
+                                        else ""
+                                    )
+                                    + f"\n\n**Analysis:**\n{analysis}"
                                 ),
                             }
                         )
@@ -374,7 +388,13 @@ def render_chat() -> None:
         and not st.session_state.last_results.empty
     ):
         with st.expander("📋 Latest Query Results", expanded=True):
-            st.dataframe(st.session_state.last_results, use_container_width=True)
+            df = st.session_state.last_results
+            if len(df) >= DEFAULT_ROW_LIMIT:
+                st.warning(
+                    f"⚠️ Results are truncated to **{DEFAULT_ROW_LIMIT:,} rows**. "
+                    "Add a `LIMIT` clause or narrow your query to see more specific results."
+                )
+            st.dataframe(df, use_container_width=True)
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset

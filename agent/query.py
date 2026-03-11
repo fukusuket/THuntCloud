@@ -27,6 +27,30 @@ class QueryValidationError(Exception):
     """Raised when a SQL query fails safety validation."""
 
 
+def apply_row_limit(sql: str, limit: int) -> str:
+    """Wrap *sql* in a row-capping subquery if it has no LIMIT clause.
+
+    If the SQL already contains a ``LIMIT`` keyword (case-insensitive) it is
+    returned unchanged.  Otherwise the whole statement is wrapped with
+    ``SELECT * FROM (...) AS _limited LIMIT {limit}`` so that at most
+    *limit* rows are ever fetched from DuckDB.
+
+    A trailing semicolon is stripped before wrapping to keep the resulting
+    SQL syntactically valid.
+
+    Args:
+        sql:   SQL string to potentially wrap.
+        limit: Maximum number of rows to return.
+
+    Returns:
+        SQL string guaranteed to return at most *limit* rows.
+    """
+    if re.search(r"\bLIMIT\b", sql, re.IGNORECASE):
+        return sql
+    stripped = sql.rstrip().rstrip(";")
+    return f"SELECT * FROM ({stripped}) AS _limited LIMIT {limit}"
+
+
 def connect_duckdb(path: str) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection in READ_ONLY mode.
 
@@ -70,15 +94,26 @@ def _run_query(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     return result.df()
 
 
-def execute_query(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
+def execute_query(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    row_limit: int = DEFAULT_ROW_LIMIT,
+) -> pd.DataFrame:
     """Validate and execute a SQL query, returning results as a DataFrame.
 
-    Enforces safety validation, then runs the query in a thread with a
-    hard timeout of ``QUERY_TIMEOUT_SECONDS`` seconds.
+    Enforces safety validation, applies a row cap via :func:`apply_row_limit`,
+    then runs the query in a thread with a hard timeout of
+    ``QUERY_TIMEOUT_SECONDS`` seconds.
+
+    If the SQL already contains a ``LIMIT`` clause it is used as-is.
+    Otherwise the query is wrapped with ``LIMIT {row_limit}`` to prevent
+    accidentally fetching millions of rows.
 
     Args:
-        conn: An open DuckDB connection (must be READ_ONLY).
-        sql:  The SQL string to execute.
+        conn:      An open DuckDB connection (must be READ_ONLY).
+        sql:       The SQL string to execute.
+        row_limit: Maximum number of rows to return (default: DEFAULT_ROW_LIMIT).
+                   Ignored when the SQL already contains a LIMIT clause.
 
     Returns:
         A pandas DataFrame containing the query results.
@@ -89,9 +124,10 @@ def execute_query(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
         TimeoutError:         If the query exceeds the timeout limit.
     """
     validate_query(conn, sql)
+    limited_sql = apply_row_limit(sql, row_limit)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_run_query, conn, sql)
+        future = executor.submit(_run_query, conn, limited_sql)
         try:
             return future.result(timeout=QUERY_TIMEOUT_SECONDS)
         except concurrent.futures.TimeoutError as exc:
