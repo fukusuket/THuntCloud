@@ -43,93 +43,7 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start with Sample Data
-
-The fastest way to try THuntCloud is to use the publicly available CloudTrail sample logs from [Yamato Security's suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data).
-
-### Prerequisites
-
-- Docker Desktop (or Docker Engine + Docker Compose v2)
-- 16 GB RAM minimum, SSD recommended
-- OpenAI API key (`gpt-5.4` access) — agent module requires this
-- `git` with Git LFS support (sample data uses Git LFS)
-
-### 1. Clone THuntCloud and configure
-
-```bash
-git clone https://github.com/fukusuket/THuntCloud.git
-cd THuntCloud
-export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
-```
-
-### 2. Download sample CloudTrail logs
-
-Clone the sample data repository (requires [Git LFS](https://git-lfs.com/)):
-
-```bash
-# Install Git LFS if not already installed (macOS)
-brew install git-lfs
-git lfs install
-
-# Clone only the AWS sample logs (sparse checkout to save disk space)
-git clone --no-checkout --depth=1 https://github.com/Yamato-Security/suzaku-sample-data.git
-cd suzaku-sample-data
-git sparse-checkout init --cone
-git sparse-checkout set aws/flaws.cloud
-git checkout main
-cd ..
-
-# Copy the sample logs into the THuntCloud logs directory
-cp suzaku-sample-data/aws/flaws.cloud/*.json.gz docker/logs/
-```
-
-> **About the sample data:** The `flaws.cloud` dataset contains CloudTrail logs from the [flaws.cloud](http://flaws.cloud) intentionally vulnerable AWS environment — a great dataset for practising threat hunting.
-
-### 3. Build and ingest logs
-
-```bash
-cd docker
-
-# Build the ingester image
-docker compose --profile ingest build ingester
-
-# Run ingestion (creates DuckDB and loads all log files)
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs
-```
-
-### 4. Start all services (dashboard + agent)
-
-```bash
-# (still inside docker/)
-docker compose up -d --build
-```
-
-This starts:
-- **superset-init** — one-shot initializer (DB migration, DuckDB/dataset registration, dashboard import)
-- **superset (dashboard)** — Apache Superset BI dashboard
-- **agent** — Streamlit AI-assisted threat hunting UI
-
-### 5. Open the UIs
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| Agent (AI hunting) | http://localhost:8501 | AI-assisted threat hunting UI |
-| Dashboard | http://localhost:8088 | Apache Superset BI dashboard |
-
-Default Superset credentials: `admin` / `admin` (change immediately in production)
-
-### Example queries to try
-
-Once the agent is running, try asking questions like:
-
-- `"Who accessed the S3 buckets and from which IP addresses?"`
-- `"Show me all IAM-related API calls ordered by time"`
-- `"List any failed authentication attempts"`
-
----
-
-## Quick Start (with your own logs)
+## Quick Start
 
 ### Prerequisites
 
@@ -148,136 +62,82 @@ export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
 ### 2. Place CloudTrail logs
 
 ```bash
-# Copy your CloudTrail logs (JSON or .gz) into the logs directory
+# Your own logs
 cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 ```
+
+<details>
+<summary>Or use sample data (flaws.cloud)</summary>
+
+Download sample logs from [Yamato Security's suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) (requires [Git LFS](https://git-lfs.com/)):
+
+```bash
+brew install git-lfs && git lfs install   # macOS
+
+git clone --no-checkout --depth=1 https://github.com/Yamato-Security/suzaku-sample-data.git
+cd suzaku-sample-data
+git sparse-checkout init --cone
+git sparse-checkout set aws/flaws.cloud
+git checkout main
+cd ..
+
+cp suzaku-sample-data/aws/flaws.cloud/*.json.gz docker/logs/
+```
+
+</details>
 
 ### 3. Build and ingest logs
 
 ```bash
 cd docker
-
-# Build the ingester image
 docker compose --profile ingest build ingester
-
-# Run ingestion (creates DuckDB and loads all log files)
 docker compose --profile ingest run --rm ingester ingest \
   --path /data/logs
 ```
 
-### 4. Start all services (dashboard + agent)
+### 4. Start all services
 
 ```bash
-cd docker
-
-# Build and start Superset dashboard + AI agent
 docker compose up -d --build
 ```
 
-This starts:
-- **superset-init** — one-shot initializer (DB migration, DuckDB/dataset registration, dashboard import)
-- **superset (dashboard)** — Apache Superset BI dashboard
-- **agent** — Streamlit AI-assisted threat hunting UI
-
 ### 5. Open the UIs
 
-| Service | URL | Description |
+| Service | URL | Credentials |
 |---------|-----|-------------|
-| Agent (AI hunting) | http://localhost:8501 | AI-assisted threat hunting UI |
-| Dashboard | http://localhost:8088 | Apache Superset BI dashboard |
+| Agent (AI hunting) | http://localhost:8501 | — |
+| Dashboard (Superset) | http://localhost:8088 | `admin` / `admin` |
 
-Default Superset credentials: `admin` / `admin` (change immediately in production)
+### Example queries
+
+- `"Who accessed the S3 buckets and from which IP addresses?"`
+- `"Show me all IAM-related API calls ordered by time"`
+- `"List any failed authentication attempts"`
 
 ---
 
 ## Docker Operations
 
-All commands are run from the `docker/` directory:
+All commands are run from the `docker/` directory.
 
 ```bash
-cd docker
-```
-
-### Clean Start (from scratch)
-
-```bash
-# 1. Stop all containers and remove volumes
-docker compose down -v
-rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
-
-# 2. Build and run ingester
-docker compose --profile ingest build ingester
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs
-
-# 3. Build and start dashboard + agent
-docker compose up -d --build
-```
-
-### Restart (keep data)
-
-```bash
-# Stop and restart all services (DuckDB data is preserved)
-docker compose down
-docker compose up -d
-```
-
-### Rebuild and Restart (after code changes)
-
-```bash
-# Rebuild images and restart
-docker compose down
-docker compose up -d --build
-```
-
-### Start Individual Services
-
-```bash
-# Dashboard only (no agent)
-docker compose up -d superset
-
-# Agent only (no dashboard)
-docker compose up -d agent
-
-# Both
-docker compose up -d
+docker compose down && docker compose up -d              # Restart (keep data)
+docker compose down && docker compose up -d --build      # Rebuild & restart
+docker compose up -d superset                            # Dashboard only
+docker compose up -d agent                               # Agent only
+docker compose logs -f                                   # View logs
+docker compose down -v                                   # Full reset (delete data)
 ```
 
 ### Re-ingest Logs
 
 ```bash
-# Stop readers first to avoid DuckDB lock conflicts
 docker compose down
-
-# Clean old data
 rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
-
-# Re-ingest
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs
-
-# Restart services
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
-### View Logs
-
-```bash
-# All services
-docker compose logs -f
-
-# Specific service
-docker compose logs -f superset
-docker compose logs -f agent
-docker compose logs superset-init    # init is one-shot, no -f needed
-```
-
-### Stop All Services
-
-```bash
-docker compose down        # stop containers (keep data)
-docker compose down -v     # stop containers AND delete volumes (full reset)
-```
 
 ## Module Overview
 
@@ -302,96 +162,21 @@ docker compose down -v     # stop containers AND delete volumes (full reset)
 | `SUPERSET_ADMIN_PASSWORD` | dashboard | `admin` | Superset admin password |
 | `DUCKDB_HOST_PATH` | docker | `./data/db` | Host path for DuckDB volume bind (SSD recommended) |
 
-## Directory Structure
-
-```
-THuntCloud/
-├── .github/           # Copilot agent instructions & CI workflows
-├── ingester/          # Rust log ingestion engine (READ_WRITE)
-│   ├── src/           # Parser, decompressor, DuckDB writer, CLI
-│   └── tests/         # Integration tests & test data
-├── agent/             # Streamlit AI-Agent UI (READ_ONLY)
-│   ├── prompts/       # System prompt templates
-│   └── tests/         # pytest unit tests
-├── dashboard/         # Superset config & bootstrap scripts
-├── dashboards/        # Pre-built dashboard definitions (ZIP/YAML)
-├── data/              # Log data directory (git-ignored)
-├── docker/            # Docker Compose entry point
-│   ├── docker-compose.yml
-│   ├── data/db/       # DuckDB persistent volume (bind mount)
-│   └── logs/          # Source log directory (mount into ingester)
-├── doc/               # Documentation (PRD, Architecture, TDD guide, etc.)
-├── .env.example       # Environment variable template
-├── LICENSE            # Apache License 2.0
-└── NOTICE             # Third-party license attributions
-```
-
 ## Proxy Environment (Corporate Network)
 
-If you are behind a corporate proxy that performs TLS/SSL inspection, `docker compose build` may fail with SSL certificate errors (e.g. `certificate verify failed`). Follow the steps below to resolve this.
+If `docker compose build` fails with SSL certificate errors behind a corporate proxy:
 
-### 1. Obtain your proxy's CA certificate
+1. **Obtain** your proxy's root CA certificate in PEM format (`.crt`)
+2. **Copy** it into each module directory:
+   ```bash
+   cp /path/to/custom-ca.crt ingester/custom-ca.crt
+   cp /path/to/custom-ca.crt agent/custom-ca.crt
+   cp /path/to/custom-ca.crt dashboard/custom-ca.crt
+   ```
+3. **Uncomment** the `(Proxy) Custom CA certificate` section in each Dockerfile (`ingester/Dockerfile`, `agent/Dockerfile`, `dashboard/Dockerfile`)
+4. **Build normally** — `cd docker && docker compose build`
 
-Export the proxy's root CA certificate in PEM format (`.crt`). Consult your IT department if unsure.
-
-### 2. Place the certificate file
-
-Copy the CA certificate file into each module directory:
-
-```bash
-cp /path/to/custom-ca.crt ingester/custom-ca.crt
-cp /path/to/custom-ca.crt agent/custom-ca.crt
-cp /path/to/custom-ca.crt dashboard/custom-ca.crt
-```
-
-### 3. Uncomment Dockerfile lines
-
-Each Dockerfile (`ingester/Dockerfile`, `agent/Dockerfile`, `dashboard/Dockerfile`) contains a commented-out section labeled `(Proxy) Custom CA certificate`. Uncomment those lines:
-
-**ingester/Dockerfile** (both builder and runtime stages):
-```dockerfile
-COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && update-ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-ENV CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
-```
-
-**agent/Dockerfile** and **dashboard/Dockerfile**:
-```dockerfile
-COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && update-ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
-```
-
-### 4. Set Docker daemon proxy (if needed)
-
-If the Docker daemon itself also needs to go through the proxy, configure `~/.docker/config.json`:
-
-```json
-{
-  "proxies": {
-    "default": {
-      "httpProxy": "http://proxy.example.com:8080",
-      "httpsProxy": "http://proxy.example.com:8080",
-      "noProxy": "localhost,127.0.0.1"
-    }
-  }
-}
-```
-
-### 5. Build normally
-
-```bash
-cd docker
-docker compose --profile ingest build
-docker compose build
-```
+> If the Docker daemon itself needs proxy access, configure `~/.docker/config.json` with `httpProxy` / `httpsProxy` settings.
 
 ---
 

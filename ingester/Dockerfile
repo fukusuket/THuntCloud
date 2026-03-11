@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
-FROM rust:1.85-slim AS builder
+FROM rust:1.94-slim AS builder
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
 # If you are behind a corporate proxy that performs TLS inspection,
