@@ -14,13 +14,15 @@ FROM rust:1.94-slim AS builder
 # ENV CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Install build dependencies required by duckdb (bundled feature compiles C++)
+# Install build dependencies (cmake/g++ no longer needed — prebuilt libduckdb is downloaded)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
-    cmake \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Download prebuilt libduckdb instead of compiling C++ from source.
+# This drastically reduces build time and memory usage (safe for WSL2 / low-RAM envs).
+ENV DUCKDB_DOWNLOAD_LIB=1
 
 WORKDIR /app
 
@@ -28,12 +30,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 
 # Create a dummy main.rs so cargo can fetch and compile dependencies.
-# CARGO_BUILD_JOBS limits parallelism to avoid OOM crashes on
-# memory-constrained environments such as WSL2 (default 2 GB RAM).
-# Increase the value if you have more memory available, or set to 0
-# for unlimited (native Linux / macOS with ≥16 GB RAM).
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
-ENV CARGO_BUILD_JOBS=2
 RUN cargo build --release --locked || true
 
 # Now copy the real source and build
@@ -60,6 +57,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/ingester /usr/local/bin/ingester
+# Copy the prebuilt libduckdb shared library required at runtime.
+# DUCKDB_DOWNLOAD_LIB=1 places the .so in target/release/deps/ via copy_libduckdb().
+COPY --from=builder /app/target/release/deps/libduckdb.so /usr/local/lib/libduckdb.so
+RUN ldconfig
 
 ENTRYPOINT ["ingester"]
 CMD ["--help"]
