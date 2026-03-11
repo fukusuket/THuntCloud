@@ -27,9 +27,14 @@ WORKDIR /app
 # Cache dependencies by copying manifests first
 COPY Cargo.toml Cargo.lock ./
 
-# Create a dummy main.rs so cargo can fetch and compile dependencies
+# Create a dummy main.rs so cargo can fetch and compile dependencies.
+# CARGO_BUILD_JOBS limits parallelism to avoid OOM crashes on
+# memory-constrained environments such as WSL2 (default 2 GB RAM).
+# Increase the value if you have more memory available, or set to 0
+# for unlimited (native Linux / macOS with ≥16 GB RAM).
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
-RUN cargo build --release --locked 2>/dev/null || true
+ENV CARGO_BUILD_JOBS=2
+RUN cargo build --release --locked || true
 
 # Now copy the real source and build
 COPY src ./src
