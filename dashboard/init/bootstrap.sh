@@ -28,7 +28,7 @@ python3 /app/register_dataset.py
 
 echo "==> Importing pre-built dashboard (if available)..."
 if [ -f /app/dashboards/cloudtrail_default.zip ]; then
-  superset import_dashboards -p /app/dashboards/cloudtrail_default.zip || true
+  python3 /app/import_dashboard.py
 else
   echo "    Dashboard ZIP not found — skipping import."
 fi

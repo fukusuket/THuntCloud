@@ -18,6 +18,8 @@ DB_NAME = "CloudTrail DuckDB"
 TABLE_NAME = "cloudtrail_events"
 MAIN_DTTM_COL = "event_time"
 DESCRIPTION = "AWS CloudTrail events ingested by the THuntCloud ingester (Rust)."
+# Fixed UUID — must match datasets/CloudTrail_DuckDB/cloudtrail_events.yaml in the ZIP
+DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
 
 
 def main() -> None:
@@ -56,13 +58,15 @@ def main() -> None:
             print(f"    Dataset '{TABLE_NAME}' already registered — skipping.")
             return
 
-        # Create the dataset.
+        # Create the dataset with a fixed UUID so the dashboard ZIP can reference it.
+        import uuid as _uuid  # noqa: PLC0415
         dataset = SqlaTable(
             table_name=TABLE_NAME,
             database_id=database.id,
             main_dttm_col=MAIN_DTTM_COL,
             description=DESCRIPTION,
             filter_select_enabled=True,
+            uuid=_uuid.UUID(DATASET_UUID),
         )
         db.session.add(dataset)
         db.session.commit()

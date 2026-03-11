@@ -1,5 +1,8 @@
 # Superset dataset definition for cloudtrail_events.
 # Linked to the "CloudTrail DuckDB" database connection.
+uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+version: 1.0.0
+database_uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 table_name: cloudtrail_events
 main_dttm_col: event_time
 description: AWS CloudTrail events ingested by the THuntCloud ingester (Rust).

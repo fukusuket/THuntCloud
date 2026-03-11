@@ -1,12 +1,14 @@
 # DSH-01: CloudTrail Event Time-Series Chart
 # Hourly count of CloudTrail API calls visualised as a bar chart.
+uuid: d4e5f6a7-b8c9-0123-def0-234567890123
+version: 1.0.0
+dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
 slice_name: CloudTrail Events Over Time
 viz_type: echarts_timeseries_bar
 description: >
   Hourly count of CloudTrail API calls over time (DSH-01).
   Useful for identifying activity spikes and off-hours operations.
-dataset_name: cloudtrail_events
-query_context: null
+query_context: ""
 params:
   x_axis: hour
   time_grain_sqla: PT1H
@@ -18,7 +20,6 @@ params:
   y_axis_title: Event Count
   color_scheme: supersetColors
   rich_tooltip: true
-  tooltipTimeFormat: "%Y-%m-%d %H:%M"
 cache_timeout: null
 
 # SQL used to power this chart:
