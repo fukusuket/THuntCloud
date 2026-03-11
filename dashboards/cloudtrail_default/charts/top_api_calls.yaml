@@ -4,7 +4,7 @@ uuid: e5f6a7b8-c9d0-1234-ef01-345678901234
 version: 1.0.0
 dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
 slice_name: Top 20 API Calls
-viz_type: bar
+viz_type: dist_bar
 description: >
   The 20 most frequently called AWS API actions (DSH-02).
   High call counts for sensitive actions (e.g. AssumeRole, GetSecretValue)
@@ -15,6 +15,8 @@ params:
     - call_count
   groupby:
     - event_name
+  granularity_sqla: event_time
+  time_range: No filter
   row_limit: 20
   order_desc: true
   orientation: horizontal

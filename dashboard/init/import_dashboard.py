@@ -53,6 +53,7 @@ def main() -> None:
     try:
         ImportDashboardsCommand(contents, overwrite=True).run()
         print("    Dashboard imported successfully.")
+        _generate_query_contexts()
     except Exception as exc:  # noqa: BLE001
         print(f"    Dashboard import failed: {exc}")
         import traceback  # noqa: PLC0415
@@ -62,6 +63,75 @@ def main() -> None:
     finally:
         req_ctx.pop()
         app_ctx.pop()
+
+
+def _generate_query_contexts() -> None:
+    """Generate query_context for charts that lack one.
+
+    Superset requires a stored query_context to render charts on dashboards.
+    The v1 ZIP import does not populate it, so we build a minimal one from
+    each chart's params.
+    """
+    import json  # noqa: PLC0415
+
+    from superset.extensions import db  # noqa: PLC0415
+    from superset.models.slice import Slice  # noqa: PLC0415
+
+    charts = db.session.query(Slice).all()
+    fixed = 0
+    for c in charts:
+        # Skip charts that already have a valid query_context.
+        if c.query_context and c.query_context.strip() not in ("", "null", "{}"):
+            try:
+                qc = json.loads(c.query_context)
+                if qc.get("datasource") and qc.get("queries"):
+                    continue
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        params = json.loads(c.params) if c.params else {}
+        metrics = params.get("metrics", ["count"])
+        groupby = params.get("groupby", [])
+        columns = groupby.copy()
+
+        x_axis = params.get("x_axis")
+        if x_axis and x_axis not in columns:
+            columns = [x_axis] + columns
+
+        # Ensure granularity_sqla is set — required by many chart types.
+        if "granularity_sqla" not in params:
+            params["granularity_sqla"] = "event_time"
+        if "time_range" not in params:
+            params["time_range"] = "No filter"
+        c.params = json.dumps(params)
+
+        query_context = {
+            "datasource": {"id": c.datasource_id, "type": "table"},
+            "force": False,
+            "queries": [{
+                "filters": [],
+                "extras": {"having": "", "where": ""},
+                "applied_time_extras": {},
+                "columns": columns,
+                "metrics": metrics,
+                "orderby": [[metrics[0], False]] if metrics else [],
+                "row_limit": params.get("row_limit", 10000),
+                "series_limit": 0,
+                "order_desc": params.get("order_desc", True),
+                "url_params": {},
+                "custom_params": {},
+                "custom_form_data": {},
+            }],
+            "form_data": params,
+            "result_format": "json",
+            "result_type": "full",
+        }
+        c.query_context = json.dumps(query_context)
+        fixed += 1
+
+    if fixed:
+        db.session.commit()
+        print(f"    Generated query_context for {fixed} chart(s).")
 
 
 if __name__ == "__main__":

@@ -84,8 +84,52 @@ def main() -> None:
 
         print(f"    Dataset '{TABLE_NAME}' registered successfully.")
         print(f"    Linked to database: '{DB_NAME}' (id={database.id})")
+
+        # Register custom metrics required by dashboard charts.
+        _register_metrics(dataset)
     finally:
         ctx.pop()
+
+
+# Custom metrics used by the pre-built dashboard charts.
+CUSTOM_METRICS = [
+    ("event_count", "COUNT(*)", "Total event count"),
+    ("call_count", "COUNT(*)", "API call count"),
+    ("total_events", "COUNT(*)", "Total events per entity"),
+    ("write_events", "COUNT(CASE WHEN read_only = false THEN 1 END)", "Write (mutating) events"),
+    ("error_events", "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)", "Events with error code"),
+    ("error_count", "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)", "Error event count"),
+    ("request_count", "COUNT(*)", "Request count per source IP"),
+    ("unique_identities", "COUNT(DISTINCT user_identity_arn)", "Unique IAM identities"),
+    ("write_requests", "COUNT(CASE WHEN read_only = false THEN 1 END)", "Write requests per source IP"),
+]
+
+
+def _register_metrics(dataset: "SqlaTable") -> None:
+    """Add custom metrics to the dataset if they do not already exist."""
+    from superset.connectors.sqla.models import SqlMetric  # noqa: PLC0415
+    from superset.extensions import db  # noqa: PLC0415
+
+    existing_names = {m.metric_name for m in dataset.metrics}
+    added = 0
+    for name, expression, description in CUSTOM_METRICS:
+        if name in existing_names:
+            continue
+        metric = SqlMetric(
+            metric_name=name,
+            expression=expression,
+            description=description,
+            metric_type="count",
+            table_id=dataset.id,
+        )
+        db.session.add(metric)
+        added += 1
+
+    if added:
+        db.session.commit()
+        print(f"    Registered {added} custom metrics.")
+    else:
+        print("    Custom metrics already registered — skipping.")
 
 
 if __name__ == "__main__":

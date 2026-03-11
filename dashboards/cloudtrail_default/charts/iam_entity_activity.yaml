@@ -17,8 +17,8 @@ params:
     - write_events
     - error_events
   groupby:
-    - iam_entity
-    - identity_type
+    - user_identity_arn
+    - user_identity_type
   row_limit: 50
   order_desc: true
   page_size: 25

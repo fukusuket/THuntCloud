@@ -14,7 +14,7 @@ params:
   metrics:
     - error_count
   groupby: []
-  x_axis: event_hour
+  x_axis: event_time
   row_limit: 10000
   order_desc: false
   x_axis_label: "Time (hourly)"

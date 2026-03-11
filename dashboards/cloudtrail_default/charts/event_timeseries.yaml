@@ -10,7 +10,7 @@ description: >
   Useful for identifying activity spikes and off-hours operations.
 query_context: ""
 params:
-  x_axis: hour
+  x_axis: event_time
   time_grain_sqla: PT1H
   metrics:
     - event_count
