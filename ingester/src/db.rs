@@ -25,14 +25,14 @@ pub fn ensure_table(conn: &Connection) -> Result<()> {
             user_identity_type       VARCHAR,
             user_identity_arn        VARCHAR,
             user_identity_account_id VARCHAR,
-            request_parameters       JSON,
-            response_elements        JSON,
+            request_parameters       VARCHAR,
+            response_elements        VARCHAR,
             error_code               VARCHAR,
             error_message            VARCHAR,
             read_only                BOOLEAN,
             event_type               VARCHAR,
             recipient_account_id     VARCHAR,
-            raw_event                JSON
+            raw_event                VARCHAR
         );
 
         CREATE TABLE IF NOT EXISTS ingested_files (
@@ -83,14 +83,14 @@ pub fn insert_events(conn: &Connection, events: &[CloudTrailEvent]) -> Result<us
             &ui_type,                    // user_identity_type VARCHAR (Option)
             &ui_arn,                     // user_identity_arn  VARCHAR (Option)
             &ui_account_id,              // user_identity_account_id VARCHAR (Option)
-            &req_params,                 // request_parameters JSON (Option<String>)
-            &resp_elements,              // response_elements  JSON (Option<String>)
+            &req_params,                 // request_parameters VARCHAR (Option<String>)
+            &resp_elements,              // response_elements  VARCHAR (Option<String>)
             &event.error_code,           // error_code         VARCHAR (Option)
             &event.error_message,        // error_message      VARCHAR (Option)
             &event.read_only,            // read_only          BOOLEAN (Option)
             &event.event_type,           // event_type         VARCHAR (Option)
             &event.recipient_account_id, // recipient_account_id VARCHAR (Option)
-            &raw_event,                  // raw_event          JSON
+            &raw_event,                  // raw_event          VARCHAR (JSON string)
         ];
 
         appender

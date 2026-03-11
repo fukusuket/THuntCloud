@@ -61,15 +61,15 @@ CLOUDTRAIL_COLUMNS: list[dict] = [
     },
     {
         "name": "request_parameters",
-        "type": "JSON",
+        "type": "VARCHAR",
         "nullable": True,
-        "description": "Parameters sent with the API request",
+        "description": "Parameters sent with the API request (JSON string)",
     },
     {
         "name": "response_elements",
-        "type": "JSON",
+        "type": "VARCHAR",
         "nullable": True,
-        "description": "Response elements returned by the API",
+        "description": "Response elements returned by the API (JSON string)",
     },
     {
         "name": "error_code",
@@ -103,9 +103,9 @@ CLOUDTRAIL_COLUMNS: list[dict] = [
     },
     {
         "name": "raw_event",
-        "type": "JSON",
+        "type": "VARCHAR",
         "nullable": False,
-        "description": "Full original CloudTrail event as JSON",
+        "description": "Full original CloudTrail event as JSON string",
     },
 ]
 
