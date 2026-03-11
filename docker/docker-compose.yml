@@ -9,6 +9,19 @@ version: "3.9"
 #   dashboard → READ_ONLY   (reader)
 #
 # Always run ingester FIRST, then start agent/dashboard.
+#
+# Volume strategy:
+#   DuckDB data is bind-mounted directly in each service rather than via a
+#   named volume with driver_opts, because Docker Engine on Linux (including
+#   WSL2) requires absolute paths for named-volume bind mounts — relative paths
+#   are silently mis-resolved, causing ingester and Superset to use different
+#   storage locations.  Docker Compose resolves relative paths in *service*
+#   volume entries correctly on all platforms (macOS, Linux, WSL2), so this
+#   approach is cross-platform safe.
+#
+#   Default host path : ./data/db  (relative to this docker-compose.yml)
+#   Override          : set DUCKDB_HOST_PATH to an absolute path in .env
+#                       e.g. DUCKDB_HOST_PATH=/home/youruser/THuntCloud/docker/data/db
 # ─────────────────────────────────────────────
 
 services:
@@ -20,8 +33,8 @@ services:
       dockerfile: Dockerfile
     container_name: threat-hunting-ingester
     volumes:
-      - duckdb_data:/data/db          # READ_WRITE
-      - ./logs:/data/logs:ro          # Source log directory (read-only bind)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
+      - ./logs:/data/logs:ro                              # Source log directory (read-only bind)
     environment:
       - DUCKDB_PATH=/data/db/threat_hunting.db
       - RUST_LOG=${RUST_LOG:-info}
@@ -38,7 +51,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - duckdb_data:/data/db:ro       # READ_ONLY
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro       # READ_ONLY
     environment:
       - DUCKDB_PATH=/data/db/threat_hunting.db
       - DUCKDB_READONLY=true
@@ -61,10 +74,10 @@ services:
     ports:
       - "8088:8088"
     volumes:
-      - duckdb_data:/data/db                                                      # READ_ONLY enforced at connection level (connect_args read_only=True)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
       - superset_home:/app/superset_home
-      - ../dashboards:/app/dashboards:ro                                           # Pre-built dashboard ZIPs
-      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro     # Config overrides
+      - ../dashboards:/app/dashboards:ro                  # Pre-built dashboard ZIPs
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
       - DUCKDB_PATH=/data/db/threat_hunting.db
@@ -80,14 +93,14 @@ services:
       dockerfile: Dockerfile
     container_name: threat-hunting-superset-init
     volumes:
-      - duckdb_data:/data/db                                                      # READ_ONLY enforced at connection level (connect_args read_only=True)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
       - superset_home:/app/superset_home
       - ../dashboards:/app/dashboards:ro
-      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro     # Config overrides
-      - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                       # Init script
-      - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro           # DuckDB registration script
-      - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro         # Dataset registration script
-      - ../dashboard/init/import_dashboard.py:/app/import_dashboard.py:ro         # Dashboard import script
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
+      - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                    # Init script
+      - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro        # DuckDB registration script
+      - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro      # Dataset registration script
+      - ../dashboard/init/import_dashboard.py:/app/import_dashboard.py:ro      # Dashboard import script
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
       - SUPERSET_ADMIN_USERNAME=${SUPERSET_ADMIN_USERNAME:-admin}
@@ -97,15 +110,35 @@ services:
     entrypoint: ["/bin/bash", "/app/bootstrap.sh"]
     restart: "no"
 
+  # ── Superset metadata re-sync (on-demand) ──────────────────────────────────
+  # Re-syncs the cloudtrail_events dataset column metadata after re-ingestion.
+  # Run this when the dashboard shows no data after a fresh ingest:
+  #   docker compose --profile resync run --rm superset-resync
+  superset-resync:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+    container_name: threat-hunting-superset-resync
+    volumes:
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro
+      - superset_home:/app/superset_home
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
+      - DUCKDB_PATH=/data/db/threat_hunting.db
+      - FORCE_RESYNC=true
+    entrypoint: ["python3", "/app/register_dataset.py"]
+    restart: "no"
+    profiles:
+      - resync                        # Run only when explicitly invoked
+
 # ── Volumes ───────────────────────────────────
+# Note: duckdb_data is no longer a named volume.  Each service uses a direct
+# bind mount (see service volumes above) so that Docker Compose — not the
+# Docker daemon — resolves the relative path.  This is required for
+# Linux / WSL2 compatibility.
 volumes:
-  duckdb_data:
-    name: threat-hunting-duckdb
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DUCKDB_HOST_PATH:-./data/db}   # Bind to host SSD path for best I/O
 
   superset_home:
     name: threat-hunting-superset-home

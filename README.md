@@ -138,6 +138,94 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
+### Dashboard shows no data after ingest
+
+If the Superset dashboard is blank after ingestion (especially after re-ingestion or on WSL2),
+re-sync the dataset column metadata:
+
+```bash
+cd docker
+docker compose --profile resync run --rm superset-resync
+```
+
+---
+
+## WSL2 Setup
+
+The default configuration works on **WSL2** as long as the project lives inside the
+**WSL filesystem** (e.g. `/home/youruser/THuntCloud`).
+
+> ⚠️ **Do NOT place the project under `/mnt/c/` (Windows filesystem).**  
+> DuckDB file locking does not work reliably over the Windows filesystem from WSL.
+
+### WSL2 Quick Start
+
+```bash
+# Clone into WSL filesystem (not /mnt/c/...)
+git clone https://github.com/fukusuket/THuntCloud.git ~/THuntCloud
+cd ~/THuntCloud/docker
+
+# Verify Docker is accessible
+docker info
+
+# Follow the standard Quick Start from step 2 onwards
+```
+
+### WSL2 Troubleshooting
+
+**Symptom**: Ingester succeeds but Superset dashboard shows no data.
+
+**Root cause** (pre-fix, ≤ v0.x): The previous `docker-compose.yml` used a named volume
+with `driver_opts.device: ./data/db`.  Docker Engine on Linux requires **absolute paths**
+for named-volume bind mounts — relative paths are silently mis-resolved, so ingester and
+Superset ended up using **different storage locations**.
+
+The current `docker-compose.yml` uses per-service bind mounts (`./data/db:/data/db`),
+which Docker Compose resolves correctly on all platforms including WSL2.
+
+**If you still see blank charts after updating:**
+
+```bash
+cd docker
+
+# Step 1 — verify the DB file was created
+ls -lh data/db/threat_hunting.db
+
+# Step 2 — confirm the table has rows
+docker run --rm \
+  -v "$(pwd)/data/db:/data/db" \
+  -e DUCKDB_PATH=/data/db/threat_hunting.db \
+  threat-hunting-ingester \
+  sh -c 'duckdb /data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"' \
+  2>/dev/null || \
+duckdb data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"
+
+# Step 3 — re-sync Superset dataset metadata
+docker compose --profile resync run --rm superset-resync
+
+# Step 4 — restart Superset to pick up changes
+docker compose restart superset
+```
+
+**If you were using a previous version** (named volume `threat-hunting-duckdb`), clean up the stale volume first:
+
+```bash
+cd docker
+docker compose down
+docker volume rm threat-hunting-duckdb 2>/dev/null || true
+# Then follow the Re-ingest procedure above
+```
+
+**If the DB file is missing or empty**, re-run the ingester:
+
+```bash
+docker compose down
+rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
+docker compose up -d
+docker compose --profile resync run --rm superset-resync
+```
+
 
 ## Module Overview
 

@@ -6,6 +6,15 @@ the "CloudTrail DuckDB" database connection registered by register_duckdb.py.
 
 The registration is idempotent: running this script multiple times is safe.
 
+Re-sync mode:
+    Set the environment variable FORCE_RESYNC=true to force a column metadata
+    re-sync on an already-registered dataset.  This is useful when:
+      - superset-init ran before the ingester populated the DuckDB file, so
+        column metadata was not fetched during initial registration.
+      - Logs were re-ingested and the schema changed.
+    Usage (via docker compose):
+      docker compose --profile resync run --rm superset-resync
+
 Implementation note:
     Same context-push pattern as register_duckdb.py — superset model imports
     must happen AFTER app context is pushed to avoid Werkzeug LocalProxy errors.
@@ -20,6 +29,9 @@ MAIN_DTTM_COL = "event_time"
 DESCRIPTION = "AWS CloudTrail events ingested by the THuntCloud ingester (Rust)."
 # Fixed UUID — must match datasets/CloudTrail_DuckDB/cloudtrail_events.yaml in the ZIP
 DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
+
+# Set FORCE_RESYNC=true to re-sync column metadata even if the dataset already exists.
+FORCE_RESYNC = os.environ.get("FORCE_RESYNC", "").lower() in ("1", "true", "yes")
 
 
 def main() -> None:
@@ -55,7 +67,13 @@ def main() -> None:
             .first()
         )
         if existing:
-            print(f"    Dataset '{TABLE_NAME}' already registered — skipping.")
+            if FORCE_RESYNC:
+                print(f"    Dataset '{TABLE_NAME}' already registered — forcing metadata re-sync...")
+                _sync_metadata(existing)
+                _register_metrics(existing)
+            else:
+                print(f"    Dataset '{TABLE_NAME}' already registered — skipping.")
+                print("    Tip: set FORCE_RESYNC=true to re-sync column metadata.")
             return
 
         # Create the dataset with a fixed UUID so the dashboard ZIP can reference it.
@@ -73,14 +91,8 @@ def main() -> None:
 
         # Attempt to fetch column metadata from DuckDB.
         # This may fail if the DB file is empty or not yet populated by the ingester.
-        # Superset will re-sync columns automatically on first SQL Lab access.
-        try:
-            dataset.fetch_metadata()
-            db.session.commit()
-            print(f"    Column metadata synced from '{TABLE_NAME}'.")
-        except Exception as exc:  # noqa: BLE001
-            print(f"    Warning: could not sync column metadata: {exc}")
-            print("    Columns will be auto-synced on first SQL Lab access.")
+        # In that case run: docker compose --profile resync run --rm superset-resync
+        _sync_metadata(dataset)
 
         print(f"    Dataset '{TABLE_NAME}' registered successfully.")
         print(f"    Linked to database: '{DB_NAME}' (id={database.id})")
@@ -89,6 +101,22 @@ def main() -> None:
         _register_metrics(dataset)
     finally:
         ctx.pop()
+
+
+def _sync_metadata(dataset: "SqlaTable") -> None:
+    """Fetch column metadata from DuckDB and commit.  Logs a warning on failure."""
+    from superset.extensions import db  # noqa: PLC0415
+
+    try:
+        dataset.fetch_metadata()
+        db.session.commit()
+        print(f"    Column metadata synced from '{TABLE_NAME}'.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"    Warning: could not sync column metadata: {exc}")
+        print("    Columns will be auto-synced on first SQL Lab access.")
+        print("    If the dashboard shows no data, run:")
+        print("      docker compose --profile resync run --rm superset-resync")
+
 
 
 # Custom metrics used by the pre-built dashboard charts.
