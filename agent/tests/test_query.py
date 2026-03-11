@@ -166,4 +166,3 @@ def test_execute_query_large_row_limit_returns_all_rows(tmp_duckdb):
     df = execute_query(conn, "SELECT * FROM cloudtrail_events", row_limit=100)
     assert len(df) == 3
     conn.close()
-
