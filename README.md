@@ -53,6 +53,73 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Processing Sequence
+
+### 1. Log Ingestion Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FS as Local Filesystem<br/>(CloudTrail .json.gz)
+    participant Ingester as ingester<br/>(Rust)
+    participant DuckDB
+
+    User->>Ingester: docker compose run ingester ingest --path /data/logs
+    activate Ingester
+    Ingester->>FS: Walk directory & list .json / .json.gz files
+    loop For each file
+        Ingester->>FS: Read file
+        alt .json.gz
+            Ingester->>Ingester: Decompress (flate2)
+        end
+        Ingester->>Ingester: Parse JSON (serde_json)
+        Ingester->>Ingester: Compute checksum (duplicate check)
+        Ingester->>DuckDB: Batch INSERT into cloudtrail_events (READ_WRITE)
+        DuckDB-->>Ingester: OK
+    end
+    Ingester-->>User: Ingestion complete (stats: records, duration)
+    deactivate Ingester
+```
+
+### 2. AI-Assisted Threat Hunting Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as agent<br/>(Streamlit UI)
+    participant LLM as OpenAI API<br/>(gpt-5.4)
+    participant Validator as SQL Validator<br/>(EXPLAIN + keyword filter)
+    participant DuckDB
+
+    User->>UI: Enter natural language query
+    activate UI
+    UI->>LLM: Send query + schema context (system prompt)
+    activate LLM
+    LLM-->>UI: Return generated SQL
+    deactivate LLM
+    UI->>Validator: Validate SQL
+    activate Validator
+    alt Unsafe keyword detected (DROP / INSERT / UPDATE …)
+        Validator-->>UI: Reject — return error
+        UI-->>User: Show validation error
+    else EXPLAIN passes
+        Validator->>DuckDB: EXPLAIN <generated SQL> (READ_ONLY)
+        DuckDB-->>Validator: Execution plan OK
+        Validator-->>UI: SQL approved
+        deactivate Validator
+        UI->>DuckDB: Execute SQL (READ_ONLY)
+        DuckDB-->>UI: Result rows
+        UI->>LLM: Send results + "analyze for threats" prompt
+        activate LLM
+        LLM-->>UI: Threat analysis summary
+        deactivate LLM
+        UI-->>User: Display results + analysis (+ optional PDF report)
+    end
+    deactivate UI
+```
+
+---
+
 ## Quick Start
 
 ### Prerequisites
