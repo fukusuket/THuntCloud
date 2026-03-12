@@ -248,21 +248,6 @@ docker compose --profile resync run --rm superset-resync
 | `agent` | Python 3.12+ / Streamlit | AI-Agent UI for interactive threat hunting (READ_ONLY) |
 | `dashboard` | Apache Superset | BI visualization of log data (READ_ONLY) |
 
-## Environment Variables
-
-| Variable | Module | Default | Description |
-|----------|--------|---------|-------------|
-| `OPENAI_API_KEY` | agent | *(required)* | OpenAI API key |
-| `OPENAI_MODEL` | agent | `gpt-5.4` | Primary AI model for SQL generation |
-| `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` | Lightweight model for quick tasks |
-| `DUCKDB_PATH` | all | *(required)* | Path to DuckDB file inside container |
-| `DUCKDB_READONLY` | agent | `true` | Force read-only mode |
-| `RUST_LOG` | ingester | `info` | Rust log level (`trace`, `debug`, `info`, `warn`, `error`) |
-| `SUPERSET_SECRET_KEY` | dashboard | `change-me-in-production` | Superset secret key |
-| `SUPERSET_ADMIN_USERNAME` | dashboard | `admin` | Superset admin username |
-| `SUPERSET_ADMIN_PASSWORD` | dashboard | `admin` | Superset admin password |
-| `DUCKDB_HOST_PATH` | docker | `./data/db` | Host path for DuckDB volume bind (SSD recommended) |
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
