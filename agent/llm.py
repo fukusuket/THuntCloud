@@ -51,9 +51,7 @@ def _create_client(api_key: str) -> OpenAI:
     This function forwards that bundle to the underlying *httpx* client
     so that certificate verification succeeds.
     """
-    ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get(
-        "REQUESTS_CA_BUNDLE"
-    )
+    ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
     if ca_bundle:
         http_client = httpx.Client(verify=ca_bundle)
         return OpenAI(api_key=api_key, http_client=http_client)
