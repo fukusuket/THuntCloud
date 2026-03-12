@@ -1,0 +1,33 @@
+# DSH-04: Error Event Trend Over Time
+# Line chart showing the hourly count of error events (non-null error_code).
+uuid: a7b8c9d0-e1f2-3456-0123-567890123456
+version: 1.0.0
+dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+slice_name: Error Event Trend
+viz_type: echarts_timeseries_line
+description: >
+  Hourly count of API calls that returned an error (DSH-04).
+  Spikes in error events can indicate active brute-force, misconfigured tooling,
+  or an attacker probing for accessible resources.
+query_context: ""
+params:
+  metrics:
+    - error_count
+  groupby: []
+  x_axis: event_time
+  row_limit: 10000
+  order_desc: false
+  x_axis_label: "Time (hourly)"
+  y_axis_label: Error Count
+  color_scheme: supersetColors
+  rich_tooltip: true
+  zoomable: true
+cache_timeout: null
+# SQL used to power this chart:
+# SELECT
+#     DATE_TRUNC('hour', event_time) AS event_hour,
+#     COUNT(*) AS error_count
+# FROM cloudtrail_events
+# WHERE error_code IS NOT NULL
+# GROUP BY event_hour
+# ORDER BY event_hour ASC

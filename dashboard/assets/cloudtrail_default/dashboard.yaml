@@ -1,0 +1,230 @@
+# CloudTrail Threat Hunting — Dashboard Definition (DSH-06/07)
+# Assembled from 5 charts defined in the charts/ directory.
+# Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
+uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
+version: 1.0.0
+dashboard_title: CloudTrail Threat Hunting
+description: >
+  Pre-built threat hunting dashboard for AWS CloudTrail logs stored in DuckDB.
+  Covers event volume trends, top API calls, IAM entity activity, error patterns,
+  and source IP analysis. Use SQL Lab for ad-hoc investigation queries (DSH-06).
+  Export to PNG/PDF via the dashboard Download menu (DSH-07).
+published: true
+css: ""
+slug: cloudtrail-threat-hunting
+
+# Dashboard layout: 6-row grid
+# Row 1: Full-width event time-series (DSH-01)
+# Row 2: Top API calls (DSH-02) | IAM entity table (DSH-03)
+# Row 3: Error trend (DSH-04)   | Source IP table  (DSH-05)
+# Row 4: Console logins (DSH-08)| Access denied actions (DSH-09)
+# Row 5: User agent analysis (DSH-11) — full width
+# Row 6: Sensitive API calls (DSH-12) — full width
+# Row 7: Root account usage (DSH-13) | Region activity (DSH-14)
+position:
+  DASHBOARD_VERSION_KEY: "v2"
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+      - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+      - ROW-1
+      - ROW-2
+      - ROW-3
+      - ROW-4
+      - ROW-5
+      - ROW-6
+      - ROW-7
+  ROW-1:
+    type: ROW
+    id: ROW-1
+    children:
+      - CHART-timeseries
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-2:
+    type: ROW
+    id: ROW-2
+    children:
+      - CHART-top-api
+      - CHART-iam-entity
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-3:
+    type: ROW
+    id: ROW-3
+    children:
+      - CHART-error-trend
+      - CHART-source-ip
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-4:
+    type: ROW
+    id: ROW-4
+    children:
+      - CHART-console-login
+      - CHART-access-denied
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-5:
+    type: ROW
+    id: ROW-5
+    children:
+      - CHART-user-agent
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-6:
+    type: ROW
+    id: ROW-6
+    children:
+      - CHART-sensitive-api
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-7:
+    type: ROW
+    id: ROW-7
+    children:
+      - CHART-root-usage
+      - CHART-region-activity
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-timeseries:
+    type: CHART
+    id: CHART-timeseries
+    meta:
+      chartId: 1
+      uuid: d4e5f6a7-b8c9-0123-def0-234567890123
+      width: 12
+      height: 50
+      sliceName: CloudTrail Events Over Time
+  CHART-top-api:
+    type: CHART
+    id: CHART-top-api
+    meta:
+      chartId: 2
+      uuid: e5f6a7b8-c9d0-1234-ef01-345678901234
+      width: 6
+      height: 50
+      sliceName: Top 20 API Calls
+  CHART-iam-entity:
+    type: CHART
+    id: CHART-iam-entity
+    meta:
+      chartId: 3
+      uuid: f6a7b8c9-d0e1-2345-f012-456789012345
+      width: 6
+      height: 50
+      sliceName: IAM Entity Activity
+  CHART-error-trend:
+    type: CHART
+    id: CHART-error-trend
+    meta:
+      chartId: 4
+      uuid: a7b8c9d0-e1f2-3456-0123-567890123456
+      width: 6
+      height: 50
+      sliceName: Error Occurrence Trend
+  CHART-source-ip:
+    type: CHART
+    id: CHART-source-ip
+    meta:
+      chartId: 5
+      uuid: b8c9d0e1-f2a3-4567-1234-678901234567
+      width: 6
+      height: 50
+      sliceName: Top Source IP Addresses
+  CHART-console-login:
+    type: CHART
+    id: CHART-console-login
+    meta:
+      chartId: 8
+      uuid: c1d2e3f4-a5b6-7890-abcd-ef0123456789
+      width: 6
+      height: 50
+      sliceName: Console Login Activity
+  CHART-access-denied:
+    type: CHART
+    id: CHART-access-denied
+    meta:
+      chartId: 9
+      uuid: d2e3f4a5-b6c7-8901-bcde-f01234567890
+      width: 6
+      height: 50
+      sliceName: Top Access Denied Actions
+  CHART-user-agent:
+    type: CHART
+    id: CHART-user-agent
+    meta:
+      chartId: 11
+      uuid: f4a5b6c7-d8e9-0123-def0-123456789012
+      width: 12
+      height: 50
+      sliceName: User Agent Analysis
+  CHART-sensitive-api:
+    type: CHART
+    id: CHART-sensitive-api
+    meta:
+      chartId: 12
+      uuid: a5b6c7d8-e9f0-1234-ef01-234567890123
+      width: 12
+      height: 50
+      sliceName: Sensitive API Calls
+  CHART-root-usage:
+    type: CHART
+    id: CHART-root-usage
+    meta:
+      chartId: 13
+      uuid: b6c7d8e9-f0a1-2345-f012-345678901234
+      width: 6
+      height: 50
+      sliceName: Root Account Usage
+  CHART-region-activity:
+    type: CHART
+    id: CHART-region-activity
+    meta:
+      chartId: 14
+      uuid: c7d8e9f0-a1b2-3456-0123-456789012345
+      width: 6
+      height: 50
+      sliceName: Region Activity
+
+metadata:
+  charts:
+    - slice_name: CloudTrail Events Over Time
+      viz_type: echarts_timeseries_bar
+      description: DSH-01 — Hourly event volume time-series.
+    - slice_name: Top 20 API Calls
+      viz_type: bar
+      description: DSH-02 — Most frequently called AWS API actions.
+    - slice_name: IAM Entity Activity
+      viz_type: table
+      description: DSH-03 — IAM entities ranked by API call volume.
+    - slice_name: Error Occurrence Trend
+      viz_type: echarts_timeseries_bar
+      description: DSH-04 — Hourly error counts by error code.
+    - slice_name: Top Source IP Addresses
+      viz_type: table
+      description: DSH-05 — External source IPs ranked by request count.
+    - slice_name: Console Login Activity
+      viz_type: table
+      description: DSH-08 — Console sign-in attempts with success/failure breakdown.
+    - slice_name: Top Access Denied Actions
+      viz_type: bar
+      description: DSH-09 — API actions most frequently denied access.
+    - slice_name: User Agent Analysis
+      viz_type: table
+      description: DSH-11 — Top user agents by request count.
+    - slice_name: Sensitive API Calls
+      viz_type: table
+      description: DSH-12 — Invocations of known high-risk API actions.
+    - slice_name: Root Account Usage
+      viz_type: table
+      description: DSH-13 — All API calls made by the Root account.
+    - slice_name: Region Activity
+      viz_type: bar
+      description: DSH-14 — Event distribution across AWS regions.
+
