@@ -5,8 +5,10 @@ Markdown analysis of query results using the OpenAI chat API.
 """
 
 import logging
+import os
 import re
 
+import httpx
 import pandas as pd
 from openai import OpenAI, OpenAIError
 
@@ -41,7 +43,20 @@ def _strip_markdown_fences(text: str) -> str:
 
 
 def _create_client(api_key: str) -> OpenAI:
-    """Instantiate an OpenAI client with the given API key."""
+    """Instantiate an OpenAI client with the given API key.
+
+    When running behind a corporate proxy that performs TLS inspection,
+    set the ``SSL_CERT_FILE`` or ``REQUESTS_CA_BUNDLE`` environment
+    variable to point to a CA bundle that includes the proxy's root CA.
+    This function forwards that bundle to the underlying *httpx* client
+    so that certificate verification succeeds.
+    """
+    ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get(
+        "REQUESTS_CA_BUNDLE"
+    )
+    if ca_bundle:
+        http_client = httpx.Client(verify=ca_bundle)
+        return OpenAI(api_key=api_key, http_client=http_client)
     return OpenAI(api_key=api_key)
 
 
