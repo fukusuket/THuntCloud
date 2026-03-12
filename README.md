@@ -76,26 +76,6 @@ export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
 cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 ```
 
-<details>
-<summary>Or use sample data (flaws.cloud)</summary>
-
-Download sample logs from [Yamato Security's suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) (requires [Git LFS](https://git-lfs.com/)):
-
-```bash
-brew install git-lfs && git lfs install   # macOS
-
-git clone --no-checkout --depth=1 https://github.com/Yamato-Security/suzaku-sample-data.git
-cd suzaku-sample-data
-git sparse-checkout init --cone
-git sparse-checkout set aws/flaws.cloud
-git checkout main
-cd ..
-
-cp suzaku-sample-data/aws/flaws.cloud/*.json.gz docker/logs/
-```
-
-</details>
-
 ### 3. Build and ingest logs
 
 ```bash
