@@ -100,9 +100,9 @@ docker compose up -d --build
 
 ### Example queries
 
-- `"Who accessed the S3 buckets and from which IP addresses?"`
-- `"Show me all IAM-related API calls ordered by time"`
-- `"List any failed authentication attempts"`
+- "Who accessed the S3 buckets and from which IP addresses?"
+- "Show me all IAM-related API calls ordered by time"
+- "List any failed authentication attempts"
 
 ---
 
@@ -130,7 +130,7 @@ docker compose up -d --build
 
 ### Dashboard shows no data after ingest
 
-If the Superset dashboard is blank after ingestion (especially after re-ingestion or on WSL2),
+If the Superset dashboard is blank after ingestion (especially after re-ingestion),
 re-sync the dataset column metadata:
 
 ```bash
@@ -139,83 +139,6 @@ docker compose --profile resync run --rm superset-resync
 ```
 
 ---
-
-## WSL2 Setup
-
-The default configuration works on **WSL2** as long as the project lives inside the
-**WSL filesystem** (e.g. `/home/youruser/THuntCloud`).
-
-> ⚠️ **Do NOT place the project under `/mnt/c/` (Windows filesystem).**  
-> DuckDB file locking does not work reliably over the Windows filesystem from WSL.
-
-### WSL2 Quick Start
-
-```bash
-# Clone into WSL filesystem (not /mnt/c/...)
-git clone https://github.com/fukusuket/THuntCloud.git ~/THuntCloud
-cd ~/THuntCloud/docker
-
-# Verify Docker is accessible
-docker info
-
-# Follow the standard Quick Start from step 2 onwards
-```
-
-### WSL2 Troubleshooting
-
-**Symptom**: Ingester succeeds but Superset dashboard shows no data.
-
-**Root cause** (pre-fix, ≤ v0.x): The previous `docker-compose.yml` used a named volume
-with `driver_opts.device: ./data/db`.  Docker Engine on Linux requires **absolute paths**
-for named-volume bind mounts — relative paths are silently mis-resolved, so ingester and
-Superset ended up using **different storage locations**.
-
-The current `docker-compose.yml` uses per-service bind mounts (`./data/db:/data/db`),
-which Docker Compose resolves correctly on all platforms including WSL2.
-
-**If you still see blank charts after updating:**
-
-```bash
-cd docker
-
-# Step 1 — verify the DB file was created
-ls -lh data/db/threat_hunting.db
-
-# Step 2 — confirm the table has rows
-docker run --rm \
-  -v "$(pwd)/data/db:/data/db" \
-  -e DUCKDB_PATH=/data/db/threat_hunting.db \
-  threat-hunting-ingester \
-  sh -c 'duckdb /data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"' \
-  2>/dev/null || \
-duckdb data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"
-
-# Step 3 — re-sync Superset dataset metadata
-docker compose --profile resync run --rm superset-resync
-
-# Step 4 — restart Superset to pick up changes
-docker compose restart superset
-```
-
-**If you were using a previous version** (named volume `threat-hunting-duckdb`), clean up the stale volume first:
-
-```bash
-cd docker
-docker compose down
-docker volume rm threat-hunting-duckdb 2>/dev/null || true
-# Then follow the Re-ingest procedure above
-```
-
-**If the DB file is missing or empty**, re-run the ingester:
-
-```bash
-docker compose down
-rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
-docker compose --profile ingest run --rm ingester ingest --path /data/logs
-docker compose up -d
-docker compose --profile resync run --rm superset-resync
-```
-
 
 ## Module Overview
 
@@ -240,67 +163,6 @@ docker compose --profile resync run --rm superset-resync
 | `SUPERSET_ADMIN_PASSWORD` | dashboard | `admin` | Superset admin password |
 | `DUCKDB_HOST_PATH` | docker | `./data/db` | Host path for DuckDB volume bind (SSD recommended) |
 
-## Proxy Environment (Corporate Network)
-
-If `docker compose build` fails with SSL certificate errors behind a corporate proxy:
-
-1. **Obtain** your proxy's root CA certificate in PEM format (`.crt`)
-2. **Copy** it into each module directory:
-   ```bash
-   cp /path/to/custom-ca.crt ingester/custom-ca.crt
-   cp /path/to/custom-ca.crt agent/custom-ca.crt
-   cp /path/to/custom-ca.crt dashboard/custom-ca.crt
-   ```
-3. **Uncomment** the `(Proxy) Custom CA certificate` section in each Dockerfile (`ingester/Dockerfile`, `agent/Dockerfile`, `dashboard/Dockerfile`)
-4. **Build normally** — `cd docker && docker compose build`
-
-> If the Docker daemon itself needs proxy access, configure `~/.docker/config.json` with `httpProxy` / `httpsProxy` settings.
-
----
-
-## Development
-
-### Requirements
-
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Rust | 1.85+ | ingester development |
-| Python | 3.12+ | agent development |
-| Docker Desktop | Latest | Container orchestration |
-| Docker Compose | v2 | Multi-service management |
-| DuckDB CLI | 1.2+ | Ad-hoc database inspection (optional) |
-
-### ingester (Rust)
-
-```bash
-cd ingester
-cargo build
-cargo test
-cargo clippy -- -D warnings
-cargo fmt --check
-```
-
-### agent (Python)
-
-```bash
-cd agent
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
-pytest
-ruff check .
-black --check .
-```
-
-### Useful Commands
-
-```bash
-# Inspect DuckDB directly
-duckdb docker/data/db/threat_hunting.db "SELECT COUNT(*) FROM cloudtrail_events"
-
-# Check container status
-cd docker && docker ps --filter "name=threat-hunting" --format "table {{.Names}}\t{{.Status}}"
-```
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
@@ -312,4 +174,3 @@ See [NOTICE](NOTICE) for third-party license attributions.
 - **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
 - **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
 - **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.
-
