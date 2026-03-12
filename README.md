@@ -170,7 +170,8 @@ See [NOTICE](NOTICE) for third-party license attributions.
 
 ## Acknowledgements
 
-- **[Yamato Security](https://github.com/Yamato-Security)** — for providing the [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) repository, which includes the `flaws.cloud` CloudTrail sample logs used in the Quick Start guide.
+- **[Yamato Security](https://github.com/Yamato-Security)** — for providing the [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) repository
+
 - **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
 - **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
 - **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.
