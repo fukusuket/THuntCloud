@@ -340,7 +340,7 @@ superset-init:
   entrypoint: |
     superset import_dashboards -p /app/dashboards/cloudtrail_default.zip
   volumes:
-    - ./dashboards:/app/dashboards
+    - ./dashboard/assets:/app/dashboards
 ```
 
 Dashboard management policy:
@@ -348,7 +348,7 @@ Dashboard management policy:
 | Item | Policy |
 |------|--------|
 | Dashboard definition file format | Superset export format (ZIP / YAML) |
-| Storage location | Repository `dashboards/` directory |
+| Storage location | Repository `dashboard/assets/` directory |
 | Update process | Edit in Superset UI → export → overwrite and commit |
 | Data source connection | `duckdb:///data/threat_hunting.db` bundled as the default configuration |
 

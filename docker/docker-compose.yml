@@ -75,7 +75,7 @@ services:
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
       - superset_home:/app/superset_home
-      - ../dashboards:/app/dashboards:ro                  # Pre-built dashboard ZIPs
+      - ../dashboard/assets:/app/dashboards:ro               # Pre-built dashboard ZIPs
       - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
@@ -94,7 +94,7 @@ services:
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
       - superset_home:/app/superset_home
-      - ../dashboards:/app/dashboards:ro
+      - ../dashboard/assets:/app/dashboards:ro
       - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
       - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                    # Init script
       - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro        # DuckDB registration script

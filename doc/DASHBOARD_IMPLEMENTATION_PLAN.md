@@ -147,7 +147,7 @@ Also add the `superset_config.py` mount to both services:
 ```yaml
 volumes:
   - superset_home:/app/superset_home
-  - ../dashboards:/app/dashboards:ro
+  - ../dashboard/assets:/app/dashboards:ro
   - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # ADD
 ```
 
@@ -217,7 +217,7 @@ superset-init:
   container_name: threat-hunting-superset-init
   volumes:
     - superset_home:/app/superset_home
-    - ../dashboards:/app/dashboards:ro
+    - ../dashboard/assets:/app/dashboards:ro
     - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro
     - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro
   environment:
@@ -258,11 +258,11 @@ superset-init:
 
 | File | Action |
 |------|--------|
-| `dashboards/cloudtrail_default/metadata.yaml` | Create — dashboard metadata |
-| `dashboards/cloudtrail_default/databases/CloudTrail_DuckDB.yaml` | Create — DB reference |
-| `dashboards/cloudtrail_default/datasets/cloudtrail_events.yaml` | Create — dataset definition |
+| `dashboard/assets/cloudtrail_default/metadata.yaml` | Create — dashboard metadata |
+| `dashboard/assets/cloudtrail_default/databases/CloudTrail_DuckDB.yaml` | Create — DB reference |
+| `dashboard/assets/cloudtrail_default/datasets/cloudtrail_events.yaml` | Create — dataset definition |
 
-### dashboards/cloudtrail_default/metadata.yaml
+### dashboard/assets/cloudtrail_default/metadata.yaml
 
 ```yaml
 # Superset dashboard export metadata
@@ -271,7 +271,7 @@ type: Dashboard
 timestamp: "2026-03-11T00:00:00+00:00"
 ```
 
-### dashboards/cloudtrail_default/databases/CloudTrail_DuckDB.yaml
+### dashboard/assets/cloudtrail_default/databases/CloudTrail_DuckDB.yaml
 
 ```yaml
 # Superset database connection definition for DuckDB.
@@ -291,7 +291,7 @@ extra:
   schemas_allowed_for_file_upload: []
 ```
 
-### dashboards/cloudtrail_default/datasets/cloudtrail_events.yaml
+### dashboard/assets/cloudtrail_default/datasets/cloudtrail_events.yaml
 
 ```yaml
 # Superset dataset definition for cloudtrail_events.
@@ -634,10 +634,10 @@ cache_timeout: null
 
 | File | Action |
 |------|--------|
-| `dashboards/cloudtrail_default/dashboard.yaml` | Create — dashboard layout definition |
-| `dashboards/cloudtrail_default.zip` | Create — packaged for `superset import_dashboards` |
+| `dashboard/assets/cloudtrail_default/dashboard.yaml` | Create — dashboard layout definition |
+| `dashboard/assets/cloudtrail_default.zip` | Create — packaged for `superset import_dashboards` |
 
-### dashboards/cloudtrail_default/dashboard.yaml
+### dashboard/assets/cloudtrail_default/dashboard.yaml
 
 ```yaml
 dashboard_title: CloudTrail Threat Hunting
@@ -724,11 +724,11 @@ metadata:
 
 ### ZIP Packaging Script
 
-Run from the repository root to produce `dashboards/cloudtrail_default.zip`:
+Run from the repository root to produce `dashboard/assets/cloudtrail_default.zip`:
 
 ```bash
-cd dashboards
-zip -r cloudtrail_default.zip cloudtrail_default/
+cd dashboard/assets
+python3 rebuild_zip.py
 ```
 
 The ZIP structure must be:
@@ -780,7 +780,7 @@ Users can:
 
 ### Verification Checklist — Phase 4
 
-- [ ] `dashboards/cloudtrail_default.zip` exists and can be unzipped without errors
+- [ ] `dashboard/assets/cloudtrail_default.zip` exists and can be unzipped without errors
 - [ ] `superset import_dashboards -p /app/dashboards/cloudtrail_default.zip` exits 0
 - [ ] "CloudTrail Threat Hunting" dashboard appears in Superset after import
 - [ ] All 5 charts are visible on the dashboard canvas
@@ -795,25 +795,24 @@ Users can:
 dashboard/
 ├── Dockerfile                              # Custom Superset image (duckdb-engine)
 ├── superset_config.py                      # Superset configuration overrides
+├── assets/                                 # Pre-built dashboard definitions and ZIP exports
+│   ├── cloudtrail_default/                 # Dashboard source files
+│   │   ├── metadata.yaml
+│   │   ├── dashboard.yaml
+│   │   ├── databases/
+│   │   │   └── CloudTrail_DuckDB.yaml
+│   │   ├── datasets/
+│   │   │   └── cloudtrail_events.yaml
+│   │   └── charts/
+│   │       ├── event_timeseries.yaml           # DSH-01
+│   │       ├── top_api_calls.yaml              # DSH-02
+│   │       ├── iam_entity_activity.yaml        # DSH-03
+│   │       ├── error_trend.yaml                # DSH-04
+│   │       └── source_ip_requests.yaml         # DSH-05
+│   ├── cloudtrail_default.zip              # Packaged for superset import_dashboards
+│   └── rebuild_zip.py                      # Helper to regenerate the ZIP
 └── init/
     └── bootstrap.sh                        # Idempotent init script
-
-dashboards/
-├── builtin_hunts.yaml                      # AI prompt library (pre-existing)
-├── cloudtrail_default/                     # Dashboard source files
-│   ├── metadata.yaml
-│   ├── dashboard.yaml
-│   ├── databases/
-│   │   └── CloudTrail_DuckDB.yaml
-│   ├── datasets/
-│   │   └── cloudtrail_events.yaml
-│   └── charts/
-│       ├── event_timeseries.yaml           # DSH-01
-│       ├── top_api_calls.yaml              # DSH-02
-│       ├── iam_entity_activity.yaml        # DSH-03
-│       ├── error_trend.yaml                # DSH-04
-│       └── source_ip_requests.yaml         # DSH-05
-└── cloudtrail_default.zip                  # Packaged for superset import_dashboards
 ```
 
 ---

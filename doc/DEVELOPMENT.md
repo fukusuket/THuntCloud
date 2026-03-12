@@ -192,8 +192,8 @@ THuntCloud/
 │   ├── requirements.txt       # Python dependencies
 │   ├── requirements-dev.txt   # Dev dependencies
 │   └── tests/                 # pytest tests
-├── dashboard/                 # Superset config
-├── dashboards/                # Pre-built dashboards
+├── dashboard/                 # Superset config + pre-built dashboard assets
+│   ├── assets/                # Dashboard definitions and ZIP exports
 ├── data/                      # Log data (git-ignored)
 ├── docker/
 │   └── docker-compose.yml     # Orchestration

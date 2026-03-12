@@ -113,7 +113,7 @@ See [agent/AGENTS.md](../agent/AGENTS.md) for module-specific instructions.
 | ---------------- | ------------------------------------------------ |
 | Path             | `dashboard/`                                     |
 | Technology       | Apache Superset (Docker image)                   |
-| Config           | `dashboards/` directory (YAML/ZIP exports)       |
+| Config           | `dashboard/assets/` directory (YAML/ZIP exports)  |
 | DuckDB Mode      | `READ_ONLY`                                      |
 
 ## Coding Conventions
@@ -234,8 +234,8 @@ THuntCloud/
 │       ├── test_llm.py
 │       ├── test_query.py
 │       └── test_report.py
-├── dashboard/                 # Superset config
-├── dashboards/                # Pre-built dashboards (YAML/ZIP)
+├── dashboard/                 # Superset config + pre-built dashboard assets
+│   └── assets/                # Dashboard definitions and ZIP exports
 ├── data/                      # Log data (git-ignored)
 ├── docker/
 │   └── docker-compose.yml

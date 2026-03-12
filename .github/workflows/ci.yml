@@ -119,7 +119,7 @@ jobs:
           from pathlib import Path
 
           errors = []
-          yaml_files = list(Path("dashboards").rglob("*.yaml"))
+          yaml_files = list(Path("dashboard/assets").rglob("*.yaml"))
           print(f"Validating {len(yaml_files)} YAML file(s)...")
 
           for f in yaml_files:
@@ -145,7 +145,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          zip_path = Path("dashboards/cloudtrail_default.zip")
+          zip_path = Path("dashboard/assets/cloudtrail_default.zip")
           if not zip_path.exists():
               print("ERROR: cloudtrail_default.zip not found")
               sys.exit(1)
