@@ -19,6 +19,16 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 - **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
 - **Single-command launch** — `docker compose up -d`
 
+## Screenshots
+
+### AI Agent (Streamlit UI)
+
+<img src="doc/img1.png" width="800" alt="AI Agent UI">
+
+### Dashboard (Apache Superset)
+
+<img src="doc/img2.png" width="800" alt="Superset Dashboard">
+
 ## Architecture
 
 ```
