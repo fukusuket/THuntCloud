@@ -100,9 +100,9 @@ docker compose up -d --build
 
 ### Example queries
 
-- "Who accessed the S3 buckets and from which IP addresses?"
-- "Show me all IAM-related API calls ordered by time"
-- "List any failed authentication attempts"
+- Who accessed the S3 buckets and from which IP addresses?
+- Show me all IAM-related API calls ordered by time
+- List any failed authentication attempts
 
 ---
 
