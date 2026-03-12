@@ -41,7 +41,7 @@ COPY src ./src
 RUN touch src/main.rs && cargo build --release --locked
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
 # If you are behind a corporate proxy, uncomment the following lines.
@@ -65,4 +65,3 @@ COPY --from=builder /app/target/release/ingester /usr/local/bin/ingester
 
 ENTRYPOINT ["ingester"]
 CMD ["--help"]
-
