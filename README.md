@@ -23,11 +23,11 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 ### AI Agent (Streamlit UI)
 
-<img src="doc/img1.png" width="800" alt="AI Agent UI">
+<img src="doc/img2.png" width="800" alt="AI Agent UI">
 
 ### Dashboard (Apache Superset)
 
-<img src="doc/img2.png" width="800" alt="Superset Dashboard">
+<img src="doc/img1.png" width="800" alt="Superset Dashboard">
 
 ## Architecture
 
