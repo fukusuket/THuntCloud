@@ -238,9 +238,8 @@ fn ingest_core(
                         // Already ingested with the same checksum — skip.
                         stats.files_processed += 1;
                     } else {
-                        let inserted = insert_events(conn, &records).and_then(|n| {
-                            mark_ingested(&file_path, &sha256, conn).map(|_| n)
-                        })?;
+                        let inserted = insert_events(conn, &records)
+                            .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))?;
                         stats.files_processed += 1;
                         stats.records_inserted += inserted;
                         // Keep the in-memory map current so within-run
@@ -270,7 +269,6 @@ fn is_cloudtrail_file(path: &Path) -> bool {
         _ => false,
     }
 }
-
 
 /// Record that `path` with checksum `sha256` has been ingested.
 fn mark_ingested(path: &Path, sha256: &str, conn: &Connection) -> Result<()> {
@@ -565,8 +563,8 @@ mod tests {
         }
 
         let conn = setup_db();
-        let stats =
-            ingest_with_conn(dir.path(), &conn).expect("chunked ingest of 100 files should succeed");
+        let stats = ingest_with_conn(dir.path(), &conn)
+            .expect("chunked ingest of 100 files should succeed");
 
         assert_eq!(stats.files_processed, 100, "all 100 files must be counted");
         assert_eq!(stats.records_inserted, 100, "100 records total, 1 per file");

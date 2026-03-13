@@ -296,7 +296,10 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let map = fetch_ingested_files_map(&conn).expect("fetch should succeed on empty table");
-        assert!(map.is_empty(), "map must be empty when ingested_files is empty");
+        assert!(
+            map.is_empty(),
+            "map must be empty when ingested_files is empty"
+        );
     }
 
     // Test #38: fetch_ingested_files_map returns all entries present in ingested_files.
