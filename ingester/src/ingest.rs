@@ -3,20 +3,40 @@
 //! This is the top-level entry point for the ingestion pipeline.
 //! It ties together [`crate::decompressor`], [`crate::parser`], and [`crate::db`].
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use duckdb::Connection;
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::date_filter::DateFilter;
-use crate::db::{ensure_table, insert_events};
-use crate::decompressor::read_file_content;
+use crate::db::{ensure_table, fetch_ingested_files_map, insert_events};
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::path_filter::PathFilter;
 use crate::progress::ProgressReporter;
+
+/// Number of files parsed in parallel per chunk.
+///
+/// Tuning guide:
+/// - Larger values → higher throughput (more parallelism) but more peak memory.
+/// - Smaller values → lower peak memory but less parallelism.
+///
+/// At the default of 64, worst-case peak memory per chunk is approximately
+/// 64 × 1 MB (uncompressed CloudTrail file) = 64 MB — well within typical limits.
+/// For memory-constrained environments set `RAYON_NUM_THREADS=1` or use
+/// `--workers 1` to disable parallelism.
+const PARSE_CHUNK_SIZE: usize = 64;
+
+/// Result of parsing a single file: the file's path paired with either a
+/// `(sha256_hex, events)` tuple or an error.
+///
+/// Extracted as a type alias to avoid triggering `clippy::type_complexity` on
+/// the `Vec` collected from the parallel phase.
+type ParseOutcome = (PathBuf, Result<(String, Vec<CloudTrailEvent>)>);
 
 /// Statistics returned after a completed ingestion run.
 #[derive(Debug, Default)]
@@ -54,12 +74,6 @@ pub fn ingest_path(path: &Path, db_path: &Path) -> Result<IngestStats> {
 /// a visible bar is desired.
 pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
     ingest_with_progress(path, conn, false)
-}
-
-/// A file that has passed the duplicate-check and is ready to be parsed.
-struct FileToProcess {
-    path: PathBuf,
-    sha256: String,
 }
 
 /// Read a file, compute its SHA-256 digest, and parse the CloudTrail records.
@@ -148,10 +162,21 @@ pub fn ingest_with_filters(
 
 /// Core ingestion routine shared by all public entry points.
 ///
-/// Processing is split into three phases:
-/// 1. **Serial** — SHA-256 + duplicate check per file.
-/// 2. **Sequential** — file read, gz decompress, JSON parse, INSERT.
-/// 3. **Serial** — stats update.
+/// # Pipeline
+///
+/// ```text
+/// Phase 0  Single DB query → HashMap<file_path, sha256> (replaces N per-file queries)
+///
+/// For each PARSE_CHUNK_SIZE-sized chunk of candidate files:
+///   Parallel  read bytes → SHA-256 → decompress → parse   (rayon)
+///   Serial    dedup check → INSERT events → mark_ingested  (DuckDB is not Send)
+/// ```
+///
+/// # Memory
+///
+/// Peak memory per chunk ≈ `PARSE_CHUNK_SIZE × avg_uncompressed_file_size`.
+/// Files are dropped after each chunk, so total memory does not scale with
+/// the number of files — only with `PARSE_CHUNK_SIZE`.
 fn ingest_core(
     path: &Path,
     conn: &Connection,
@@ -164,14 +189,15 @@ fn ingest_core(
     let start = Instant::now();
     let mut stats = IngestStats::default();
 
-    // Collect candidate files, applying both filters before any I/O.
-    let files: Vec<_> = WalkDir::new(path)
+    // Collect candidate file paths, applying filters before any I/O.
+    let files: Vec<PathBuf> = WalkDir::new(path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .filter(|e| is_cloudtrail_file(e.path()))
         .filter(|e| date_filter.matches(e.path()))
         .filter(|e| path_filter.matches(e.path()))
+        .map(|e| e.path().to_path_buf())
         .collect();
 
     let reporter = if show_progress {
@@ -180,56 +206,51 @@ fn ingest_core(
         ProgressReporter::hidden()
     };
 
-    // ── Phase 1: serial duplicate check (sha256 only — fast path) ─────────
-    // We only compute the sha256 here to decide which files to parse.
-    // The actual read+parse happens in parallel in Phase 2.
-    let mut to_process: Vec<FileToProcess> = Vec::new();
-    for entry in &files {
-        let file_path = entry.path();
-        match sha256_of_file(file_path) {
-            Err(e) => {
-                stats.errors += 1;
-                eprintln!("Error hashing {}: {e:#}", file_path.display());
-                reporter.inc(stats.records_inserted);
-            }
-            Ok(sha256) => {
-                if is_already_ingested(file_path, &sha256, conn) {
-                    // Already in DB — count as processed, skip re-insert.
-                    stats.files_processed += 1;
-                    reporter.inc(stats.records_inserted);
-                } else {
-                    to_process.push(FileToProcess {
-                        path: file_path.to_path_buf(),
-                        sha256,
-                    });
+    // ── Phase 0: single bulk query instead of N per-file SELECT statements ─
+    // Loading the entire ingested_files table into memory is cheap (VARCHAR
+    // pairs) and eliminates the dominant per-file DB round-trip latency.
+    let mut ingested_map: HashMap<String, String> = fetch_ingested_files_map(conn)?;
+
+    // ── Process files in fixed-size chunks ─────────────────────────────────
+    // Within each chunk, rayon reads and parses files in parallel (CPU/IO
+    // bound). Insertion into DuckDB is then done serially because Connection
+    // is not Send. Chunking caps peak memory to PARSE_CHUNK_SIZE × file_size.
+    for chunk in files.chunks(PARSE_CHUNK_SIZE) {
+        // Parallel phase: read file bytes once → compute SHA-256 → decompress
+        // → parse JSON.  parse_file_content() does all of this in a single
+        // pass, eliminating the previous double-read (SHA-256 pass + content
+        // pass).
+        let parse_results: Vec<ParseOutcome> = chunk
+            .par_iter()
+            .map(|p| (p.clone(), parse_file_content(p)))
+            .collect();
+
+        // Serial phase: dedup check (O(1) HashMap lookup) → INSERT → mark.
+        for (file_path, result) in parse_results {
+            let path_key = file_path.to_string_lossy().to_string();
+            match result {
+                Err(e) => {
+                    stats.errors += 1;
+                    eprintln!("Error processing {}: {e:#}", file_path.display());
+                }
+                Ok((sha256, records)) => {
+                    if ingested_map.get(&path_key).map(String::as_str) == Some(sha256.as_str()) {
+                        // Already ingested with the same checksum — skip.
+                        stats.files_processed += 1;
+                    } else {
+                        let inserted = insert_events(conn, &records).and_then(|n| {
+                            mark_ingested(&file_path, &sha256, conn).map(|_| n)
+                        })?;
+                        stats.files_processed += 1;
+                        stats.records_inserted += inserted;
+                        // Keep the in-memory map current so within-run
+                        // duplicates are caught without extra DB queries.
+                        ingested_map.insert(path_key, sha256);
+                    }
                 }
             }
+            reporter.inc(stats.records_inserted);
         }
-    }
-
-    // ── Phase 2 + 3: sequential decompress → parse → INSERT (memory-safe) ──
-    // Process one file at a time to avoid loading all events into memory at once.
-    for f in to_process {
-        let result = (|| -> Result<usize> {
-            let content = read_file_content(&f.path)?;
-            let log = parse_cloudtrail_log(&content)
-                .with_context(|| format!("Failed to parse {}", f.path.display()))?;
-            let n = insert_events(conn, &log.records)
-                .and_then(|n| mark_ingested(&f.path, &f.sha256, conn).map(|_| n))?;
-            Ok(n)
-        })();
-
-        match result {
-            Err(e) => {
-                stats.errors += 1;
-                eprintln!("Error processing {}: {e:#}", f.path.display());
-            }
-            Ok(n) => {
-                stats.files_processed += 1;
-                stats.records_inserted += n;
-            }
-        }
-        reporter.inc(stats.records_inserted);
     }
 
     reporter.finish();
@@ -250,25 +271,6 @@ fn is_cloudtrail_file(path: &Path) -> bool {
     }
 }
 
-/// Compute the SHA-256 hex digest of the file at `path`.
-fn sha256_of_file(path: &Path) -> Result<String> {
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let digest = Sha256::digest(&bytes);
-    Ok(hex::encode(digest))
-}
-
-/// Returns `true` if the file has already been ingested (checksum match).
-fn is_already_ingested(path: &Path, sha256: &str, conn: &Connection) -> bool {
-    let path_str = path.to_string_lossy();
-    conn.query_row(
-        "SELECT sha256 FROM ingested_files WHERE file_path = ?",
-        [path_str.as_ref()],
-        |row| row.get::<_, String>(0),
-    )
-    .map(|stored| stored == sha256)
-    .unwrap_or(false)
-}
 
 /// Record that `path` with checksum `sha256` has been ingested.
 fn mark_ingested(path: &Path, sha256: &str, conn: &Connection) -> Result<()> {
@@ -546,6 +548,65 @@ mod tests {
 
         assert_eq!(sha256.len(), 64);
         assert_eq!(records.len(), 1);
+    }
+
+    // Test #37: Ingest 100 files spanning multiple chunks (PARSE_CHUNK_SIZE=64) correctly.
+    // Verifies that chunking does not lose records and aggregate stats are exact.
+    #[test]
+    fn test_ingest_chunked_100_files() {
+        let dir = TempDir::new().unwrap();
+
+        for i in 0..100 {
+            std::fs::write(
+                dir.path().join(format!("event_{i:03}.json")),
+                SINGLE_EVENT_JSON,
+            )
+            .unwrap();
+        }
+
+        let conn = setup_db();
+        let stats =
+            ingest_with_conn(dir.path(), &conn).expect("chunked ingest of 100 files should succeed");
+
+        assert_eq!(stats.files_processed, 100, "all 100 files must be counted");
+        assert_eq!(stats.records_inserted, 100, "100 records total, 1 per file");
+        assert_eq!(stats.errors, 0, "no errors expected");
+        assert_eq!(row_count(&conn), 100, "100 rows in DB");
+    }
+
+    // Test #38: Batch dedup (in-memory HashMap) prevents re-insertion on a second run.
+    // This is the correctness guard for the fetch_ingested_files_map optimisation.
+    #[test]
+    fn test_ingest_batch_dedup_prevents_double_insert() {
+        let dir = TempDir::new().unwrap();
+
+        for i in 0..5 {
+            std::fs::write(
+                dir.path().join(format!("event_{i}.json")),
+                SINGLE_EVENT_JSON,
+            )
+            .unwrap();
+        }
+
+        let conn = setup_db();
+
+        // First run — should insert 5 records.
+        let stats1 = ingest_with_conn(dir.path(), &conn).expect("first run should succeed");
+        assert_eq!(stats1.records_inserted, 5, "first run inserts 5 records");
+
+        // Second run — all files already tracked via ingested_files.
+        let stats2 = ingest_with_conn(dir.path(), &conn).expect("second run should succeed");
+        assert_eq!(
+            stats2.records_inserted, 0,
+            "second run must insert nothing (all already ingested)"
+        );
+        assert_eq!(
+            stats2.files_processed, 5,
+            "second run still counts all files as processed"
+        );
+
+        // Row count must not have doubled.
+        assert_eq!(row_count(&conn), 5, "DB must still contain exactly 5 rows");
     }
 
     // ── Date filter integration tests ─────────────────────────────────────

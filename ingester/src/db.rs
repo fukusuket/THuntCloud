@@ -3,6 +3,8 @@
 //! This module is the only place that writes to DuckDB. All other modules
 //! interact with the database through the public API defined here.
 
+use std::collections::HashMap;
+
 use anyhow::{Context, Result};
 use duckdb::{Connection, ToSql};
 
@@ -100,6 +102,33 @@ pub fn insert_events(conn: &Connection, events: &[CloudTrailEvent]) -> Result<us
 
     appender.flush().context("Failed to flush appender")?;
     Ok(events.len())
+}
+
+/// Load the entire `ingested_files` table into a `HashMap<file_path, sha256>`.
+///
+/// Using this function at the start of an ingestion run replaces the previous
+/// pattern of one `SELECT` per file with a single bulk query, which is orders
+/// of magnitude faster when tens of thousands of files are already tracked.
+///
+/// The caller is expected to update the map as new files are inserted so that
+/// within-run duplicate detection works correctly without extra DB round-trips.
+pub fn fetch_ingested_files_map(conn: &Connection) -> Result<HashMap<String, String>> {
+    let mut stmt = conn
+        .prepare("SELECT file_path, sha256 FROM ingested_files")
+        .context("Failed to prepare ingested_files query")?;
+    let rows = stmt
+        .query_map([], |row| {
+            let path: String = row.get(0)?;
+            let sha256: String = row.get(1)?;
+            Ok((path, sha256))
+        })
+        .context("Failed to query ingested_files")?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let (path, sha256) = row.context("Failed to read ingested_files row")?;
+        map.insert(path, sha256);
+    }
+    Ok(map)
 }
 
 #[cfg(test)]
@@ -258,5 +287,44 @@ mod tests {
             .unwrap();
         assert!(src_ip.is_none());
         assert!(error_code.is_none());
+    }
+
+    // Test #37: fetch_ingested_files_map returns an empty map when no files have been ingested.
+    #[test]
+    fn test_fetch_ingested_files_map_empty() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        let map = fetch_ingested_files_map(&conn).expect("fetch should succeed on empty table");
+        assert!(map.is_empty(), "map must be empty when ingested_files is empty");
+    }
+
+    // Test #38: fetch_ingested_files_map returns all entries present in ingested_files.
+    #[test]
+    fn test_fetch_ingested_files_map_with_entries() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO ingested_files (file_path, sha256) VALUES (?, ?)",
+            duckdb::params!["/logs/a.json", "aaaa1111"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ingested_files (file_path, sha256) VALUES (?, ?)",
+            duckdb::params!["/logs/b.json.gz", "bbbb2222"],
+        )
+        .unwrap();
+
+        let map = fetch_ingested_files_map(&conn).expect("fetch should succeed");
+        assert_eq!(map.len(), 2, "map must contain both entries");
+        assert_eq!(
+            map.get("/logs/a.json").map(String::as_str),
+            Some("aaaa1111")
+        );
+        assert_eq!(
+            map.get("/logs/b.json.gz").map(String::as_str),
+            Some("bbbb2222")
+        );
     }
 }

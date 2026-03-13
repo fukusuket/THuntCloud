@@ -60,6 +60,13 @@ enum Commands {
         /// Evaluated after `--include`; a match here always wins.
         #[arg(long, value_name = "PATTERNS")]
         exclude: Option<String>,
+
+        /// Number of worker threads used for parallel file parsing.
+        /// Defaults to the number of logical CPU cores (rayon default).
+        /// Set to 1 to disable parallelism, which minimises peak memory usage
+        /// at the cost of throughput.
+        #[arg(long, value_name = "N")]
+        workers: Option<usize>,
     },
 }
 
@@ -74,7 +81,18 @@ fn run() -> Result<IngestStats> {
             to,
             include,
             exclude,
+            workers,
         } => {
+            // Optionally cap the rayon thread pool before any parallel work.
+            // --workers 1 disables parallelism (lowest memory, useful for
+            // memory-constrained or single-core environments).
+            if let Some(n) = workers {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(n)
+                    .build_global()
+                    .ok(); // harmless if the pool is already initialised
+            }
+
             // Build date filter (no-op when both from and to are None).
             let date_filter = DateFilter::from_strs(from.as_deref(), to.as_deref())
                 .context("Invalid --from / --to argument")?;

@@ -85,6 +85,9 @@ Options:
                               comma-separated glob patterns (e.g. *CloudTrail*)
       --exclude <PATTERNS>    Exclude files whose path matches these
                               comma-separated glob patterns (e.g. *Config*)
+      --workers <N>           Number of parallel parse threads
+                              [default: number of logical CPU cores]
+                              Set to 1 to minimise peak memory usage
   -h, --help                  Print help
   -V, --version               Print version
 ```
@@ -475,30 +478,40 @@ cargo clippy -- -D warnings
 ```
 ingest_path / ingest_with_conn / ingest_with_filters
   │
-  ├─ ensure_table()              Create schema if not exists (idempotent)
+  ├─ ensure_table()                Create schema if not exists (idempotent)
+  ├─ fetch_ingested_files_map()    Single SELECT → HashMap<path, sha256>
   │
-  └─ for each file (walkdir):
+  └─ for each chunk of PARSE_CHUNK_SIZE files:
        │
-       ├─ is_cloudtrail_file()   Skip non-.json / non-.json.gz files
-       ├─ date_filter.matches()  Skip files outside --from / --to range
-       ├─ path_filter.matches()  Skip files not matching --include / --exclude
-       ├─ sha256_of_file()       Compute SHA-256 checksum
-       ├─ is_already_ingested()  Check ingested_files table → skip if match
-       ├─ read_file_content()    Read .json or decompress .json.gz
-       ├─ parse_cloudtrail_log() Deserialize JSON → Vec<CloudTrailEvent>
-       ├─ insert_events()        Batch insert via duckdb::Appender
-       └─ mark_ingested()        Record path + SHA-256 in ingested_files
+       ├─ [PARALLEL – rayon]
+       │    ├─ is_cloudtrail_file()   Skip non-.json / non-.json.gz files
+       │    ├─ date_filter.matches()  Skip files outside --from / --to range
+       │    ├─ path_filter.matches()  Skip files not matching --include / --exclude
+       │    └─ parse_file_content()   Read bytes once → SHA-256 + decompress + parse
+       │
+       └─ [SERIAL – DuckDB writer]
+            ├─ HashMap lookup          O(1) dedup check (no DB round-trip)
+            ├─ insert_events()         Batch insert via duckdb::Appender
+            └─ mark_ingested()         Record path + SHA-256 in ingested_files
 ```
 
 ### Performance
 
+- **Parallel parsing**: `rayon` reads, decompresses, and parses up to
+  `PARSE_CHUNK_SIZE` (default 64) files concurrently, using all CPU cores.
+  Control the degree of parallelism with `--workers N` or the
+  `RAYON_NUM_THREADS` environment variable.
+- **Single file read**: each file is read exactly once — SHA-256 hashing,
+  decompression, and JSON parsing share the same byte buffer.
+- **Batch duplicate check**: the `ingested_files` table is loaded into a
+  `HashMap` at start-up (one `SELECT`), replacing the previous pattern of one
+  `SELECT` per file.
+- **Chunked memory**: parsed events are held in memory only for the current
+  chunk (≈ 64 files × average file size ≈ ≤ 64 MB), then dropped before the
+  next chunk is fetched. Total memory does not scale with the total number of
+  files.
 - **Batch insert**: `duckdb::Appender` is used instead of individual `INSERT`
-  statements, yielding 10–50× higher throughput.
-- **Buffered I/O**: Files are read with `BufReader::with_capacity(8 MB)` to
-  reduce system call overhead.
-- **Sequential processing**: v1.0 processes files sequentially; parallel
-  processing can be layered on in a future release without changing the public
-  API.
+  statements, yielding 10–50× higher insert throughput.
 - **Target throughput**: 10 GB in under 5 minutes on a standard laptop.
 
 ### DuckDB Access Model
