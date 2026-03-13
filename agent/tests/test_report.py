@@ -9,11 +9,11 @@ from report import ReportEntry, generate_report
 
 
 def test_generate_report_markdown():
-    """Given a session (queries + results + analysis), generates a Markdown report."""
+    """Given a session (queries + results + summary), generates a Markdown report."""
     entry = ReportEntry(
         sql="SELECT event_name FROM cloudtrail_events LIMIT 5",
         results=pd.DataFrame({"event_name": ["CreateUser", "DescribeInstances"]}),
-        analysis="Two events were found.",
+        analysis="- 2 events found.\n- CreateUser: 1, DescribeInstances: 1.",
     )
 
     report = generate_report([entry])
@@ -21,6 +21,9 @@ def test_generate_report_markdown():
     assert isinstance(report, str)
     assert len(report) > 0
     assert "SELECT" in report
+    # Summary section must appear; legacy "### Analysis" heading must NOT
+    assert "### Summary" in report
+    assert "### Analysis" not in report
 
 
 def test_report_includes_timestamp():
@@ -28,7 +31,7 @@ def test_report_includes_timestamp():
     entry = ReportEntry(
         sql="SELECT 1",
         results=pd.DataFrame(),
-        analysis="No results.",
+        analysis="",
     )
 
     fixed_dt = datetime(2026, 3, 11, 12, 0, 0, tzinfo=timezone.utc)
@@ -41,17 +44,17 @@ def test_report_includes_timestamp():
 
 
 def test_report_includes_all_queries():
-    """Each query-result-analysis triple is included in the report."""
+    """Each query-result-summary triple is included in the report."""
     entries = [
         ReportEntry(
             sql="SELECT event_name FROM cloudtrail_events LIMIT 1",
             results=pd.DataFrame({"event_name": ["CreateUser"]}),
-            analysis="First analysis.",
+            analysis="- 1 CreateUser event found.",
         ),
         ReportEntry(
             sql="SELECT aws_region FROM cloudtrail_events LIMIT 1",
             results=pd.DataFrame({"aws_region": ["us-east-1"]}),
-            analysis="Second analysis.",
+            analysis="- 1 event in us-east-1.",
         ),
     ]
 
@@ -59,12 +62,14 @@ def test_report_includes_all_queries():
 
     assert "SELECT event_name FROM cloudtrail_events LIMIT 1" in report
     assert "SELECT aws_region FROM cloudtrail_events LIMIT 1" in report
-    assert "First analysis." in report
-    assert "Second analysis." in report
+    assert "1 CreateUser event found." in report
+    assert "1 event in us-east-1." in report
+    assert "### Summary" in report
+    assert "### Analysis" not in report
 
 
 def test_report_sanitizes_sensitive_data():
-    """API keys or credentials in query results are redacted."""
+    """Credentials in query results and summary text are redacted."""
     secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # 40-char secret-like string
     key_id = "AKIAIOSFODNN7EXAMPLE"  # AWS Access Key ID pattern
 
@@ -79,3 +84,5 @@ def test_report_sanitizes_sensitive_data():
     assert secret not in report
     assert key_id not in report
     assert "REDACTED" in report
+    assert "### Summary" in report
+    assert "### Analysis" not in report

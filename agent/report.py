@@ -47,11 +47,11 @@ def _sanitize(text: str) -> str:
 
 @dataclass
 class ReportEntry:
-    """A single query-result-analysis triple in an investigation session."""
+    """A single query-result-summary triple in an investigation session."""
 
     sql: str
     results: pd.DataFrame
-    analysis: str
+    analysis: str = ""
     # Prevent pandas DataFrame equality issues in dataclass comparisons
     _results_placeholder: None = field(default=None, init=False, repr=False)
 
@@ -63,6 +63,10 @@ class ReportEntry:
 
 def _render_entry(index: int, entry: ReportEntry) -> str:
     """Render one ReportEntry as a Markdown section.
+
+    Outputs the SQL query, results table, and a fact-based summary.
+    The summary contains only observed facts from the query results;
+    speculative threat assessments are excluded by the LLM prompt.
 
     Args:
         index: 1-based query number used for the section heading.
@@ -79,7 +83,7 @@ def _render_entry(index: int, entry: ReportEntry) -> str:
 
     sql_block = _sanitize(entry.sql)
     results_block = _sanitize(results_md)
-    analysis_block = _sanitize(entry.analysis)
+    summary_block = _sanitize(entry.analysis) if entry.analysis else "(no summary)"
 
     return (
         f"## Query {index}\n\n"
@@ -87,8 +91,8 @@ def _render_entry(index: int, entry: ReportEntry) -> str:
         f"```sql\n{sql_block}\n```\n\n"
         f"### Results\n\n"
         f"{results_block}\n\n"
-        f"### Analysis\n\n"
-        f"{analysis_block}\n\n"
+        f"### Summary\n\n"
+        f"{summary_block}\n\n"
         f"---"
     )
 
@@ -100,11 +104,12 @@ def generate_report(
     """Generate a Markdown threat hunting report from a list of ReportEntries.
 
     Each entry is rendered as a numbered section containing the SQL query,
-    a results table, and the AI-generated analysis. Sensitive credential-like
-    strings are automatically redacted throughout the report.
+    a results table, and a fact-based summary. The summary lists only observed
+    facts (counts, top values) without speculative threat assessments.
+    Sensitive credential-like strings are automatically redacted throughout.
 
     Args:
-        entries: Ordered list of query-result-analysis triples.
+        entries: Ordered list of query-result-summary triples.
         title:   Report title shown in the top-level heading.
 
     Returns:

@@ -101,7 +101,6 @@ def test_export_session_returns_valid_json():
         ReportEntry(
             sql="SELECT 1",
             results=pd.DataFrame({"a": [1]}),
-            analysis="test analysis",
         )
     ]
     result = _export_session(entries, title="Test Hunt")
@@ -110,7 +109,6 @@ def test_export_session_returns_valid_json():
     assert parsed["title"] == "Test Hunt"
     assert len(parsed["queries"]) == 1
     assert parsed["queries"][0]["sql"] == "SELECT 1"
-    assert parsed["queries"][0]["analysis"] == "test analysis"
 
 
 def test_export_session_empty_entries():

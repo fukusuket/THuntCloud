@@ -96,10 +96,11 @@ def generate_analysis(
     api_key: str,
     model: str = "gpt-5.4",
 ) -> str:
-    """Generate Markdown analysis text for SQL query results.
+    """Generate a fact-based summary for SQL query results.
 
     Serialises up to 50 rows of the DataFrame as a Markdown table and asks
-    the LLM to provide a threat hunting analysis.
+    the LLM to list only observed facts — counts, top values, and anomalies
+    present in the data. Speculative threat assessments are explicitly excluded.
 
     Args:
         sql:     The SQL query that produced the results.
@@ -108,7 +109,7 @@ def generate_analysis(
         model:   Model name to use (default: gpt-5.4).
 
     Returns:
-        Markdown-formatted analysis text. On API error, returns a user-friendly
+        Markdown bullet-point summary. On API error, returns a user-friendly
         error message.
     """
     sample = (
@@ -120,7 +121,13 @@ def generate_analysis(
         f"The following SQL query was executed against AWS CloudTrail logs:\n\n"
         f"```sql\n{sql}\n```\n\n"
         f"Results (up to 50 rows):\n\n{sample}\n\n"
-        f"Please provide a concise threat hunting analysis in Markdown."
+        f"Summarise ONLY the observed facts from the results above.\n"
+        f"Rules:\n"
+        f"- Use bullet points.\n"
+        f"- State counts, top values, and any notable patterns visible in the data.\n"
+        f"- Do NOT speculate, infer intent, assign blame, or make threat assessments.\n"
+        f"- Do NOT add recommendations or remediation steps.\n"
+        f"- Keep it under 10 bullet points."
     )
     client = _create_client(api_key)
     try:
@@ -130,9 +137,9 @@ def generate_analysis(
                 {"role": "system", "content": build_system_prompt()},
                 {"role": "user", "content": user_message},
             ],
-            temperature=0.3,
+            temperature=0,
         )
         return response.choices[0].message.content or ""
     except OpenAIError as exc:
-        logger.exception("OpenAI API error during analysis generation")
+        logger.exception("OpenAI API error during summary generation")
         return f"[error] OpenAI API error: {exc}"

@@ -32,7 +32,7 @@ SESSION_STATE_DEFAULTS: dict = {
     "query_history": [],  # list of ReportEntry for report generation
     "last_sql": "",  # most recently generated SQL (editable)
     "last_results": None,  # pandas DataFrame or None
-    "last_analysis": "",  # AI analysis text
+    "last_summary": "",  # fact-based summary from the last query
     "api_key": "",  # entered in sidebar (AGT-09)
     "model": "gpt-5.4",  # selected model
 }
@@ -108,7 +108,6 @@ def _export_session(
     queries = [
         {
             "sql": entry.sql,
-            "analysis": entry.analysis,
             "row_count": len(entry.results) if entry.results is not None else 0,
         }
         for entry in entries
@@ -223,14 +222,16 @@ def render_sidebar() -> None:
                 st.session_state.query_history = []
                 st.session_state.last_sql = ""
                 st.session_state.last_results = None
-                st.session_state.last_analysis = ""
+                st.session_state.last_summary = ""
                 st.rerun()
 
 
 def _handle_user_query(user_input: str, db_path: str) -> None:
-    """Process a user query: generate SQL, execute, analyse, and update state.
+    """Process a user query: generate SQL, execute, summarise, and update state.
 
-    Implements the full AGT-01 → AGT-02 → AGT-03 → AGT-04 → AGT-05 pipeline.
+    Implements the AGT-01 → AGT-02 → AGT-03 → AGT-04 → AGT-05 pipeline.
+    The summary step (AGT-05) produces only fact-based bullet points;
+    speculative threat assessments are excluded by the LLM prompt.
 
     Args:
         user_input: The natural language question from the user.
@@ -270,27 +271,30 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
 
     st.session_state.last_results = results if error_message is None else None
 
-    # Step 3: Generate analysis (AGT-05)
-    analysis = ""
+    # Step 3: Generate fact-based summary (AGT-05)
+    summary = ""
     if error_message is None:
-        with st.spinner("📊 Analysing results…"):
-            analysis = generate_analysis(sql, results, api_key=api_key, model=model)
-    st.session_state.last_analysis = analysis
+        with st.spinner("📋 Summarising results…"):
+            summary = generate_analysis(sql, results, api_key=api_key, model=model)
+    st.session_state.last_summary = summary
 
     # Step 4: Append to chat history and query history
     if error_message:
         assistant_content = error_message
     else:
         truncated = len(results) >= DEFAULT_ROW_LIMIT
-        assistant_content = (
-            f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
-            f"**Results:** {len(results)} row(s)"
+        row_summary = (
+            f"{len(results)} row(s)"
             + (
                 f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
                 if truncated
                 else ""
             )
-            + f"\n\n**Analysis:**\n{analysis}"
+        )
+        assistant_content = (
+            f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
+            f"**Results:** {row_summary}\n\n"
+            f"**Summary:**\n{summary}"
         )
 
     st.session_state.messages.append(
@@ -299,7 +303,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
 
     if error_message is None:
         st.session_state.query_history.append(
-            ReportEntry(sql=sql, results=results, analysis=analysis)
+            ReportEntry(sql=sql, results=results, analysis=summary)
         )
 
 
@@ -346,14 +350,14 @@ def render_chat() -> None:
                         row_count = len(results)
                         truncated = row_count >= DEFAULT_ROW_LIMIT
 
-                        with st.spinner("📊 Analysing results…"):
-                            analysis = generate_analysis(
+                        with st.spinner("📋 Summarising results…"):
+                            summary = generate_analysis(
                                 edited_sql,
                                 results,
                                 api_key=api_key,
                                 model=st.session_state.model,
                             )
-                        st.session_state.last_analysis = analysis
+                        st.session_state.last_summary = summary
                         st.session_state.messages.append(
                             {
                                 "role": "assistant",
@@ -365,14 +369,12 @@ def render_chat() -> None:
                                         if truncated
                                         else ""
                                     )
-                                    + f"\n\n**Analysis:**\n{analysis}"
+                                    + f"\n\n**Summary:**\n{summary}"
                                 ),
                             }
                         )
                         st.session_state.query_history.append(
-                            ReportEntry(
-                                sql=edited_sql, results=results, analysis=analysis
-                            )
+                            ReportEntry(sql=edited_sql, results=results, analysis=summary)
                         )
                         st.rerun()
                     except (
