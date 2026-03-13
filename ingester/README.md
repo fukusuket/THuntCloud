@@ -37,6 +37,8 @@ parses them, and inserts the records into a DuckDB database. This is the
 | ING-05 | Console progress bar (file count, record count)  | ✅ |
 | ING-06 | Duplicate prevention via SHA-256 checksum        | ✅ |
 | ING-07 | Per-file error logging (skipped files reported)  | ✅ |
+| ING-08 | Date-range filter (`--from` / `--to`)            | ✅ |
+| ING-09 | Path-pattern filter (`--include` / `--exclude`)  | ✅ |
 
 ---
 
@@ -51,6 +53,18 @@ ingester ingest --path /logs/cloudtrail/ --db /data/threat_hunting.db
 
 # Use the default DB path (/data/threat_hunting.db)
 ingester ingest --path /logs/cloudtrail/
+
+# Ingest only January 2024 logs (date-range filter)
+ingester ingest --path /logs/ --from 20240101 --to 20240131
+
+# Ingest only CloudTrail logs from a mixed-service S3 bucket (path-pattern filter)
+ingester ingest --path /logs/ --include "*CloudTrail*"
+
+# Combine both filters: CloudTrail logs in a specific month, excluding a region
+ingester ingest --path /logs/ \
+  --from 20240101 --to 20240131 \
+  --include "*CloudTrail*" \
+  --exclude "*ap-northeast-3*"
 ```
 
 ---
@@ -61,12 +75,64 @@ ingester ingest --path /logs/cloudtrail/
 ingester ingest [OPTIONS] --path <PATH>
 
 Options:
-  -p, --path <PATH>      Path to a CloudTrail log file or directory [required]
-  -d, --db   <DB_PATH>   Path to the DuckDB database file
-                         [default: /data/threat_hunting.db]
-      --no-progress      Disable the progress bar
-  -h, --help             Print help
-  -V, --version          Print version
+  -p, --path <PATH>           Path to a CloudTrail log file or directory [required]
+  -d, --db   <DB_PATH>        Path to the DuckDB database file
+                              [default: /data/threat_hunting.db]
+      --no-progress           Disable the progress bar
+      --from <YYYYMMDD>       Include only files on or after this date
+      --to   <YYYYMMDD>       Include only files on or before this date
+      --include <PATTERNS>    Include only files whose path matches these
+                              comma-separated glob patterns (e.g. *CloudTrail*)
+      --exclude <PATTERNS>    Exclude files whose path matches these
+                              comma-separated glob patterns (e.g. *Config*)
+  -h, --help                  Print help
+  -V, --version               Print version
+```
+
+### Date-range filter (`--from` / `--to`)
+
+CloudTrail exports logs to S3 under a `yyyy/mm/dd/` directory structure.
+The `--from` and `--to` options compare the `yyyy/mm/dd` segment found in each
+file's path against the specified date range (inclusive on both ends).
+
+- Format: `YYYYMMDD` (e.g. `20240115`)
+- Files whose path contains **no** recognisable date segment are always included
+  (conservative: unclassifiable files are never silently dropped).
+
+```bash
+# January 2024 only
+ingester ingest --path /logs/ --from 20240101 --to 20240131
+
+# Everything from a specific day onwards
+ingester ingest --path /logs/ --from 20240601
+```
+
+### Path-pattern filter (`--include` / `--exclude`)
+
+S3 buckets often store logs from multiple AWS services (CloudTrail, Config,
+VPC Flow Logs, ALB, …) under the same prefix. The `--include` and `--exclude`
+options filter by the full file path using shell-style glob patterns.
+
+- The `*` wildcard crosses `/` boundaries, so `*CloudTrail*` matches anywhere
+  in the full path.
+- Multiple patterns are separated by commas (OR logic within the same option).
+- `--exclude` is evaluated after `--include`; an exclude match always wins.
+
+| `--include` | `--exclude` | Result |
+|-------------|-------------|--------|
+| not set     | not set     | all files |
+| set         | not set     | files matching ≥ 1 include pattern |
+| not set     | set         | files matching no exclude pattern |
+| set         | set         | must satisfy both conditions |
+
+```bash
+# CloudTrail logs only
+ingester ingest --path /logs/ --include "*CloudTrail*"
+
+# CloudTrail and Config, but skip us-west-2
+ingester ingest --path /logs/ \
+  --include "*CloudTrail*,*Config*" \
+  --exclude "*us-west-2*"
 ```
 
 ### Supported file types
@@ -193,6 +259,8 @@ ingester/
 │   ├── decompressor.rs          # Transparent gz decompression (flate2)
 │   ├── db.rs                    # DuckDB schema + batch insert (Appender)
 │   ├── ingest.rs                # Pipeline orchestration (walkdir → parse → insert)
+│   ├── date_filter.rs           # Date-range filter (--from / --to)
+│   ├── path_filter.rs           # Glob path-pattern filter (--include / --exclude)
 │   └── progress.rs              # Progress bar wrapper (indicatif)
 └── tests/
     ├── cli_test.rs              # CLI integration tests (assert_cmd)
@@ -211,7 +279,10 @@ ingester/
 The `ingester` crate exposes its internals as a library so that tests and future tooling can call the pipeline without spawning a subprocess.
 
 ```rust
-use ingester::ingest::{ingest_path, ingest_with_conn, IngestStats};
+use ingester::ingest::{ingest_path, ingest_with_conn, ingest_with_date_filter,
+                       ingest_with_filters, IngestStats};
+use ingester::date_filter::DateFilter;
+use ingester::path_filter::PathFilter;
 use ingester::db::{ensure_table, insert_events};
 use ingester::parser::{parse_cloudtrail_log, CloudTrailEvent, CloudTrailLog};
 use ingester::decompressor::read_file_content;
@@ -235,6 +306,79 @@ pub fn ingest_with_conn(path: &Path, conn: &Connection) -> anyhow::Result<Ingest
 
 Same as `ingest_path` but accepts an existing `Connection`. Useful in tests
 where an in-memory database is preferred.
+
+### `ingest_with_date_filter`
+
+```rust
+pub fn ingest_with_date_filter(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+) -> anyhow::Result<IngestStats>
+```
+
+Same as `ingest_with_conn` but applies a date-range filter based on the
+`yyyy/mm/dd` directory segment in each file's path.
+
+### `ingest_with_filters`
+
+```rust
+pub fn ingest_with_filters(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+    path_filter: &PathFilter,
+) -> anyhow::Result<IngestStats>
+```
+
+Full-featured entry point. Applies both a date-range filter and a glob
+path-pattern filter before any I/O. Use this when ingesting from a shared S3
+bucket that contains logs from multiple AWS services.
+
+```rust
+use chrono::NaiveDate;
+use ingester::date_filter::DateFilter;
+use ingester::path_filter::PathFilter;
+use ingester::ingest::ingest_with_filters;
+
+let date_filter = DateFilter::new(
+    Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+    Some(NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()),
+);
+let path_filter = PathFilter::from_strs(Some("*CloudTrail*"), Some("*Digest*"))?;
+let stats = ingest_with_filters(&path, &conn, true, &date_filter, &path_filter)?;
+```
+
+### `DateFilter`
+
+```rust
+pub struct DateFilter { pub from: Option<NaiveDate>, pub to: Option<NaiveDate> }
+
+impl DateFilter {
+    pub fn new(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Self;
+    pub fn from_strs(from: Option<&str>, to: Option<&str>) -> anyhow::Result<Self>;
+    pub fn matches(&self, path: &Path) -> bool;
+}
+```
+
+Matches files by the `yyyy/mm/dd` segment in their path. Files with no
+recognisable date segment always match (conservative behaviour).
+
+### `PathFilter`
+
+```rust
+pub struct PathFilter { /* include and exclude pattern lists */ }
+
+impl PathFilter {
+    pub fn from_strs(include: Option<&str>, exclude: Option<&str>) -> anyhow::Result<Self>;
+    pub fn matches(&self, path: &Path) -> bool;
+}
+```
+
+Matches files by glob patterns against their full path string. `*` crosses
+path-separator boundaries. Comma-separate multiple patterns (OR logic).
 
 ### `IngestStats`
 
@@ -293,17 +437,20 @@ cargo test --test cli_test
 cargo test --test integration_test
 ```
 
-All 23 tests should pass:
+All tests should pass:
 
 ```
-running 19 tests   ← unit tests (parser, decompressor, db, ingest)
-test result: ok. 19 passed
+running 65 tests   ← unit tests (parser, decompressor, db, ingest, date_filter, path_filter)
+test result: ok. 65 passed
 
-running 2 tests    ← CLI tests
-test result: ok. 2 passed
+running 8 tests    ← CLI tests
+test result: ok. 8 passed
 
 running 2 tests    ← integration tests
 test result: ok. 2 passed
+
+running 1 test     ← doc-tests
+test result: ok. 1 passed
 ```
 
 ### Lint & Format
@@ -326,18 +473,21 @@ cargo clippy -- -D warnings
 ### Ingestion Pipeline
 
 ```
-ingest_path / ingest_with_conn
+ingest_path / ingest_with_conn / ingest_with_filters
   │
-  ├─ ensure_table()          Create schema if not exists (idempotent)
+  ├─ ensure_table()              Create schema if not exists (idempotent)
   │
   └─ for each file (walkdir):
        │
-       ├─ sha256_of_file()   Compute SHA-256 checksum
-       ├─ is_already_ingested() Check ingested_files table → skip if match
-       ├─ read_file_content() Read .json or decompress .json.gz
+       ├─ is_cloudtrail_file()   Skip non-.json / non-.json.gz files
+       ├─ date_filter.matches()  Skip files outside --from / --to range
+       ├─ path_filter.matches()  Skip files not matching --include / --exclude
+       ├─ sha256_of_file()       Compute SHA-256 checksum
+       ├─ is_already_ingested()  Check ingested_files table → skip if match
+       ├─ read_file_content()    Read .json or decompress .json.gz
        ├─ parse_cloudtrail_log() Deserialize JSON → Vec<CloudTrailEvent>
-       ├─ insert_events()    Batch insert via duckdb::Appender
-       └─ mark_ingested()    Record path + SHA-256 in ingested_files
+       ├─ insert_events()        Batch insert via duckdb::Appender
+       └─ mark_ingested()        Record path + SHA-256 in ingested_files
 ```
 
 ### Performance
