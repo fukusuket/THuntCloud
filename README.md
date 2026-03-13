@@ -247,7 +247,6 @@ docker compose --profile resync run --rm superset-resync
 | `ingester` | Rust 1.85+ | Parse and load CloudTrail logs into DuckDB (READ_WRITE) |
 | `agent` | Python 3.12+ / Streamlit | AI-Agent UI for interactive threat hunting (READ_ONLY) |
 | `dashboard` | Apache Superset | BI visualization of log data (READ_ONLY) |
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
@@ -256,7 +255,6 @@ See [NOTICE](NOTICE) for third-party license attributions.
 ## Acknowledgements
 
 - **[Yamato Security](https://github.com/Yamato-Security)** — for providing the [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) repository
-
 - **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
 - **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
 - **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.

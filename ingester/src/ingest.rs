@@ -11,9 +11,11 @@ use duckdb::Connection;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+use crate::date_filter::DateFilter;
 use crate::db::{ensure_table, insert_events};
 use crate::decompressor::read_file_content;
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
+use crate::path_filter::PathFilter;
 use crate::progress::ProgressReporter;
 
 /// Statistics returned after a completed ingestion run.
@@ -91,26 +93,85 @@ pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)>
 /// Same as [`ingest_with_conn`] but controls whether the progress bar is
 /// displayed on the terminal.
 ///
-/// Processing is split into three phases:
-/// 1. **Serial** — SHA-256 + duplicate check per file.
-/// 2. **Parallel** — file read, gz decompress, JSON parse (via `rayon`).
-/// 3. **Serial** — DuckDB INSERT + mark-ingested + stats update.
+/// No date or path filter is applied; all CloudTrail files under `path` are
+/// candidates. Use [`ingest_with_filters`] to restrict ingestion.
 pub fn ingest_with_progress(
     path: &Path,
     conn: &Connection,
     show_progress: bool,
+) -> Result<IngestStats> {
+    ingest_core(
+        path,
+        conn,
+        show_progress,
+        &DateFilter::default(),
+        &PathFilter::default(),
+    )
+}
+
+/// Ingest CloudTrail log files found at `path` that fall within `date_filter`.
+///
+/// No path-pattern filter is applied. Use [`ingest_with_filters`] when both
+/// date and path filtering are needed.
+pub fn ingest_with_date_filter(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+) -> Result<IngestStats> {
+    ingest_core(
+        path,
+        conn,
+        show_progress,
+        date_filter,
+        &PathFilter::default(),
+    )
+}
+
+/// Ingest log files with both a date-range filter and a path-pattern filter.
+///
+/// `date_filter` restricts files by the `yyyy/mm/dd` directory segment.
+/// `path_filter` restricts files by glob include/exclude patterns matched
+/// against the full file path — useful when a single S3 bucket holds logs
+/// from multiple AWS services (CloudTrail, Config, VPC Flow Logs, …).
+///
+/// Both filters must pass for a file to be ingested.
+pub fn ingest_with_filters(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+    path_filter: &PathFilter,
+) -> Result<IngestStats> {
+    ingest_core(path, conn, show_progress, date_filter, path_filter)
+}
+
+/// Core ingestion routine shared by all public entry points.
+///
+/// Processing is split into three phases:
+/// 1. **Serial** — SHA-256 + duplicate check per file.
+/// 2. **Sequential** — file read, gz decompress, JSON parse, INSERT.
+/// 3. **Serial** — stats update.
+fn ingest_core(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+    path_filter: &PathFilter,
 ) -> Result<IngestStats> {
     ensure_table(conn)?;
 
     let start = Instant::now();
     let mut stats = IngestStats::default();
 
-    // Collect candidate files.
+    // Collect candidate files, applying both filters before any I/O.
     let files: Vec<_> = WalkDir::new(path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .filter(|e| is_cloudtrail_file(e.path()))
+        .filter(|e| date_filter.matches(e.path()))
+        .filter(|e| path_filter.matches(e.path()))
         .collect();
 
     let reporter = if show_progress {
@@ -485,5 +546,298 @@ mod tests {
 
         assert_eq!(sha256.len(), 64);
         assert_eq!(records.len(), 1);
+    }
+
+    // ── Date filter integration tests ─────────────────────────────────────
+
+    /// Build a `yyyy/mm/dd/` sub-directory under `base` and return the path.
+    fn make_date_dir(base: &std::path::Path, y: u32, m: u32, d: u32) -> std::path::PathBuf {
+        let dir = base
+            .join(format!("{y:04}"))
+            .join(format!("{m:02}"))
+            .join(format!("{d:02}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    // Test #27: ingest_with_date_filter processes only files within the date range.
+    #[test]
+    fn test_ingest_with_date_filter_only_processes_files_in_range() {
+        use crate::date_filter::DateFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+
+        // 2024-01-15 → within [2024-01-01, 2024-01-31]
+        let in_range = make_date_dir(root.path(), 2024, 1, 15);
+        // 2024-02-01 → outside range
+        let out_of_range = make_date_dir(root.path(), 2024, 2, 1);
+
+        std::fs::write(in_range.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(out_of_range.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let filter = DateFilter::new(
+            Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()),
+        );
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("ingest with date filter should succeed");
+
+        assert_eq!(
+            stats.files_processed, 1,
+            "only the in-range file should be processed"
+        );
+        assert_eq!(
+            stats.records_inserted, 1,
+            "only 1 record from the in-range file"
+        );
+        assert_eq!(stats.errors, 0);
+        assert_eq!(row_count(&conn), 1, "only 1 row in DB");
+    }
+
+    // Test #28: ingest_with_date_filter with no filter processes all files.
+    #[test]
+    fn test_ingest_with_default_filter_processes_all_files() {
+        let root = TempDir::new().unwrap();
+
+        let dir1 = make_date_dir(root.path(), 2024, 1, 15);
+        let dir2 = make_date_dir(root.path(), 2024, 2, 1);
+
+        std::fs::write(dir1.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(dir2.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let filter = DateFilter::default(); // no filter → include everything
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("ingest with no filter should process all files");
+
+        assert_eq!(stats.files_processed, 2, "both files should be processed");
+        assert_eq!(stats.records_inserted, 2);
+        assert_eq!(row_count(&conn), 2);
+    }
+
+    // Test #29: from-only filter excludes files before `from`.
+    #[test]
+    fn test_ingest_with_from_only_filter_excludes_before_from() {
+        use crate::date_filter::DateFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+
+        let before = make_date_dir(root.path(), 2024, 1, 9);
+        let on_from = make_date_dir(root.path(), 2024, 1, 10);
+
+        std::fs::write(before.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(on_from.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let filter = DateFilter::new(Some(NaiveDate::from_ymd_opt(2024, 1, 10).unwrap()), None);
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("from-only filter should succeed");
+
+        assert_eq!(
+            stats.files_processed, 1,
+            "only file on/after from date should be processed"
+        );
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(row_count(&conn), 1);
+    }
+
+    // Test #30: to-only filter excludes files after `to`.
+    #[test]
+    fn test_ingest_with_to_only_filter_excludes_after_to() {
+        use crate::date_filter::DateFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+
+        let on_to = make_date_dir(root.path(), 2024, 1, 20);
+        let after = make_date_dir(root.path(), 2024, 1, 21);
+
+        std::fs::write(on_to.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(after.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let filter = DateFilter::new(None, Some(NaiveDate::from_ymd_opt(2024, 1, 20).unwrap()));
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("to-only filter should succeed");
+
+        assert_eq!(
+            stats.files_processed, 1,
+            "only file on/before to date should be processed"
+        );
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(row_count(&conn), 1);
+    }
+
+    // Test #31: files without a date in their path are always included by the filter.
+    #[test]
+    fn test_ingest_with_date_filter_includes_undated_files() {
+        use crate::date_filter::DateFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+
+        // A file in a non-date directory (no yyyy/mm/dd pattern).
+        std::fs::write(root.path().join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        // Very narrow range that would exclude any actual date.
+        let filter = DateFilter::new(
+            Some(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()),
+        );
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("undated file should be included");
+
+        assert_eq!(
+            stats.files_processed, 1,
+            "undated file should be included regardless of filter"
+        );
+        assert_eq!(stats.records_inserted, 1);
+    }
+
+    // Test #32: multiple date directories, only the range boundary files match.
+    #[test]
+    fn test_ingest_with_date_filter_boundary_dates_inclusive() {
+        use crate::date_filter::DateFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+
+        // Exactly on the boundary dates.
+        let on_from = make_date_dir(root.path(), 2024, 3, 1);
+        let middle = make_date_dir(root.path(), 2024, 3, 15);
+        let on_to = make_date_dir(root.path(), 2024, 3, 31);
+        // Outside.
+        let before = make_date_dir(root.path(), 2024, 2, 28);
+        let after = make_date_dir(root.path(), 2024, 4, 1);
+
+        for dir in &[&on_from, &middle, &on_to, &before, &after] {
+            std::fs::write(dir.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+        }
+
+        let conn = setup_db();
+        let filter = DateFilter::new(
+            Some(NaiveDate::from_ymd_opt(2024, 3, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2024, 3, 31).unwrap()),
+        );
+
+        let stats = ingest_with_date_filter(root.path(), &conn, false, &filter)
+            .expect("boundary inclusive test should succeed");
+
+        assert_eq!(
+            stats.files_processed, 3,
+            "on_from, middle, on_to should all be processed (boundaries inclusive)"
+        );
+        assert_eq!(stats.records_inserted, 3);
+        assert_eq!(row_count(&conn), 3);
+    }
+
+    // ── Path filter integration tests ─────────────────────────────────────
+
+    /// Write a JSON file into a simulated S3 path: `<root>/<service>/<region>/event.json`.
+    fn write_service_file(
+        root: &std::path::Path,
+        service: &str,
+        region: &str,
+    ) -> std::path::PathBuf {
+        let dir = root.join(service).join(region);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("event.json");
+        std::fs::write(&p, SINGLE_EVENT_JSON).unwrap();
+        p
+    }
+
+    // Test #33: include pattern filters to matching service only.
+    #[test]
+    fn test_ingest_with_filters_include_pattern() {
+        use crate::path_filter::PathFilter;
+
+        let root = TempDir::new().unwrap();
+        write_service_file(root.path(), "CloudTrail", "us-east-1");
+        write_service_file(root.path(), "Config", "us-east-1");
+        write_service_file(root.path(), "vpcflowlogs", "us-east-1");
+
+        let conn = setup_db();
+        let pf = PathFilter::from_strs(Some("*CloudTrail*"), None).unwrap();
+        let stats = ingest_with_filters(root.path(), &conn, false, &DateFilter::default(), &pf)
+            .expect("include filter should succeed");
+
+        assert_eq!(stats.files_processed, 1, "only CloudTrail file included");
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(row_count(&conn), 1);
+    }
+
+    // Test #34: exclude pattern removes matching service.
+    #[test]
+    fn test_ingest_with_filters_exclude_pattern() {
+        use crate::path_filter::PathFilter;
+
+        let root = TempDir::new().unwrap();
+        write_service_file(root.path(), "CloudTrail", "us-east-1");
+        write_service_file(root.path(), "Config", "us-east-1");
+        write_service_file(root.path(), "vpcflowlogs", "us-east-1");
+
+        let conn = setup_db();
+        let pf = PathFilter::from_strs(None, Some("*Config*,*vpcflowlogs*")).unwrap();
+        let stats = ingest_with_filters(root.path(), &conn, false, &DateFilter::default(), &pf)
+            .expect("exclude filter should succeed");
+
+        assert_eq!(stats.files_processed, 1, "only CloudTrail file remains");
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(row_count(&conn), 1);
+    }
+
+    // Test #35: no path filter + date filter still works correctly.
+    #[test]
+    fn test_ingest_with_filters_default_path_filter_passes_all() {
+        use crate::path_filter::PathFilter;
+        use chrono::NaiveDate;
+
+        let root = TempDir::new().unwrap();
+        let dir = make_date_dir(root.path(), 2024, 1, 15);
+        std::fs::write(dir.join("event.json"), SINGLE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let df = DateFilter::new(
+            Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()),
+        );
+        let pf = PathFilter::default();
+        let stats = ingest_with_filters(root.path(), &conn, false, &df, &pf)
+            .expect("default path filter should pass all");
+
+        assert_eq!(stats.files_processed, 1);
+        assert_eq!(stats.records_inserted, 1);
+    }
+
+    // Test #36: include multiple services with comma-separated pattern.
+    #[test]
+    fn test_ingest_with_filters_include_multiple_services() {
+        use crate::path_filter::PathFilter;
+
+        let root = TempDir::new().unwrap();
+        write_service_file(root.path(), "CloudTrail", "us-east-1");
+        write_service_file(root.path(), "Config", "us-east-1");
+        write_service_file(root.path(), "vpcflowlogs", "us-east-1");
+
+        let conn = setup_db();
+        let pf = PathFilter::from_strs(Some("*CloudTrail*,*Config*"), None).unwrap();
+        let stats = ingest_with_filters(root.path(), &conn, false, &DateFilter::default(), &pf)
+            .expect("multi-include filter should succeed");
+
+        assert_eq!(
+            stats.files_processed, 2,
+            "CloudTrail and Config files should be included"
+        );
+        assert_eq!(stats.records_inserted, 2);
+        assert_eq!(row_count(&conn), 2);
     }
 }
