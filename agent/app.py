@@ -283,13 +283,10 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
         assistant_content = error_message
     else:
         truncated = len(results) >= DEFAULT_ROW_LIMIT
-        row_summary = (
-            f"{len(results)} row(s)"
-            + (
-                f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
-                if truncated
-                else ""
-            )
+        row_summary = f"{len(results)} row(s)" + (
+            f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
+            if truncated
+            else ""
         )
         assistant_content = (
             f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
@@ -374,7 +371,9 @@ def render_chat() -> None:
                             }
                         )
                         st.session_state.query_history.append(
-                            ReportEntry(sql=edited_sql, results=results, analysis=summary)
+                            ReportEntry(
+                                sql=edited_sql, results=results, analysis=summary
+                            )
                         )
                         st.rerun()
                     except (
