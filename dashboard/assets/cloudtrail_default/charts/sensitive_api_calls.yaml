@@ -32,6 +32,8 @@ params:
   groupby:
     - event_name
     - event_source
+  granularity_sqla: event_time
+  time_range: "No filter"
   adhoc_filters:
     - clause: WHERE
       expressionType: SQL

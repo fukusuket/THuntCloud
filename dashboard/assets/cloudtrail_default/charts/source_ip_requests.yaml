@@ -23,6 +23,8 @@ params:
     - write_requests
   groupby:
     - source_ip_address
+  granularity_sqla: event_time
+  time_range: "No filter"
   row_limit: 100
   order_desc: true
   page_size: 25

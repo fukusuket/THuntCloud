@@ -32,6 +32,8 @@ params:
   groupby:
     - user_identity_arn
     - source_ip_address
+  granularity_sqla: event_time
+  time_range: "No filter"
   adhoc_filters:
     - clause: WHERE
       expressionType: SQL

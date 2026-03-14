@@ -35,6 +35,8 @@ params:
       optionName: metric_unique_identities
   groupby:
     - user_agent
+  granularity_sqla: event_time
+  time_range: "No filter"
   row_limit: 50
   order_desc: true
   page_size: 25

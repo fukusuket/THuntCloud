@@ -12,6 +12,7 @@ query_context: ""
 params:
   x_axis: event_time
   time_grain_sqla: PT1H
+  time_range: "No filter"
   metrics:
     - event_count
   adhoc_filters: []

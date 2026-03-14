@@ -19,6 +19,8 @@ params:
   groupby:
     - user_identity_arn
     - user_identity_type
+  granularity_sqla: event_time
+  time_range: "No filter"
   row_limit: 50
   order_desc: true
   page_size: 25

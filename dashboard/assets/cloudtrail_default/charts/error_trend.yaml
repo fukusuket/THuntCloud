@@ -15,6 +15,7 @@ params:
     - error_count
   groupby: []
   x_axis: event_time
+  time_range: "No filter"
   row_limit: 10000
   order_desc: false
   x_axis_label: "Time (hourly)"

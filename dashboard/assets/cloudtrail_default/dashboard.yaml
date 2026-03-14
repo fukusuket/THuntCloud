@@ -193,6 +193,186 @@ position:
       sliceName: Region Activity
 
 metadata:
+  # Native dashboard-level date range filter (DSH-15).
+  # Appears in the Superset filter sidebar; applies to all charts that have
+  # a temporal column configured (granularity_sqla / x_axis = event_time).
+  native_filter_configuration:
+    # DSH-15: Dashboard-level date range filter.
+    - id: NATIVE_FILTER-timerange
+      name: Date Range
+      filterType: filter_time
+      targets:
+        - {}
+      defaultDataMask:
+        filterState:
+          value: "No filter"
+      controlValues:
+        enableEmptyFilter: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter all charts by event_time date range"
+      chartsInScope: []
+      tabsInScope: []
+    # Source IP Address — include mode (normal selection).
+    - id: NATIVE_FILTER-source-ip
+      name: "Source IP  ＋ Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: source_ip_address
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Include only the selected source IP addresses."
+      chartsInScope: []
+      tabsInScope: []
+    # Source IP Address — NOT / exclude mode.
+    - id: NATIVE_FILTER-source-ip-not
+      name: "Source IP  ✕ NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: source_ip_address
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected source IP addresses (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
+    # Event Name — include mode (normal selection).
+    - id: NATIVE_FILTER-event-name
+      name: "Event Name  ＋ Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_name
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Include only the selected API action names."
+      chartsInScope: []
+      tabsInScope: []
+    # Event Name — NOT / exclude mode.
+    - id: NATIVE_FILTER-event-name-not
+      name: "Event Name  ✕ NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_name
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected API action names (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
+    # Event Source — include mode (normal selection).
+    - id: NATIVE_FILTER-event-source
+      name: "Event Source  ＋ Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_source
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Include only the selected AWS service sources."
+      chartsInScope: []
+      tabsInScope: []
+    # Event Source — NOT / exclude mode.
+    - id: NATIVE_FILTER-event-source-not
+      name: "Event Source  ✕ NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_source
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected AWS service sources (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
   charts:
     - slice_name: CloudTrail Events Over Time
       viz_type: echarts_timeseries_bar
