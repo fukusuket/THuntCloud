@@ -4,6 +4,27 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
+class MockSessionState(dict):
+    """Dict subclass that supports attribute-style access.
+
+    Mimics Streamlit's ``st.session_state`` which supports both
+    ``session_state["key"]`` and ``session_state.key`` syntax.
+    Used in tests that need to inspect state after production code runs.
+    """
+
+    def __getattr__(self, key: str):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(key)
+
+    def __setattr__(self, key: str, value) -> None:  # type: ignore[override]
+        self[key] = value
+
+    def pop(self, key, *args):  # type: ignore[override]
+        return super().pop(key, *args)
+
+
 @pytest.fixture
 def mock_openai_client():
     """Mock OpenAI client that returns a predefined SQL response."""

@@ -1,11 +1,13 @@
 """Tests for the Streamlit app entry point (app.py).
 
 Test #22: session state initialization (Phase 6 of TDD plan).
+Tests #23-#25: built-in hunt YAML structure and Direct SQL execution.
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import duckdb
 import pandas as pd
 
 
@@ -118,3 +120,144 @@ def test_export_session_empty_entries():
     result = _export_session([], title="Empty Hunt")
     parsed = json.loads(result)
     assert parsed["queries"] == []
+
+
+# ---------------------------------------------------------------------------
+# Test #23 — builtin_hunts.yaml structure validation
+# ---------------------------------------------------------------------------
+
+
+def test_builtin_hunts_yaml_has_required_fields():
+    """All entries in builtin_hunts.yaml must have category, label, description, prompt.
+
+    Test #23: enforces the v2 schema after the built-in query enhancement.
+    """
+    from app import _load_builtin_prompts
+
+    prompts = _load_builtin_prompts()
+    assert len(prompts) > 0, "builtin_hunts.yaml must not be empty"
+    for entry in prompts:
+        label = entry.get("label", "<unknown>")
+        assert "category" in entry, f"Missing 'category' in entry: {label!r}"
+        assert "label" in entry, "Missing 'label' in entry"
+        assert "description" in entry, f"Missing 'description' in entry: {label!r}"
+        assert "prompt" in entry, f"Missing 'prompt' in entry: {label!r}"
+
+
+def test_builtin_hunts_yaml_has_direct_sql_entries():
+    """At least one entry must contain a 'sql' field for direct execution.
+
+    Test #23b: verifies that the sql field enhancement was actually applied.
+    """
+    from app import _load_builtin_prompts
+
+    prompts = _load_builtin_prompts()
+    sql_entries = [p for p in prompts if p.get("sql")]
+    assert (
+        len(sql_entries) >= 10
+    ), f"Expected at least 10 direct-SQL entries, got {len(sql_entries)}"
+
+
+# ---------------------------------------------------------------------------
+# Test #24 — Direct SQL entries must be valid DuckDB
+# ---------------------------------------------------------------------------
+
+
+def test_builtin_hunts_direct_sql_is_valid_duckdb(tmp_path):
+    """Every 'sql' field in builtin_hunts.yaml must pass DuckDB EXPLAIN validation.
+
+    Test #24: prevents broken SQL from shipping in built-in presets.
+    Uses a temporary DB with the full cloudtrail_events schema.
+    """
+    from app import _load_builtin_prompts
+    from query import validate_query
+
+    db_path = str(tmp_path / "test.db")
+    conn_rw = duckdb.connect(db_path)
+    conn_rw.execute("""
+        CREATE TABLE cloudtrail_events (
+            event_time               TIMESTAMP,
+            event_name               VARCHAR,
+            event_source             VARCHAR,
+            aws_region               VARCHAR,
+            source_ip_address        VARCHAR,
+            user_agent               VARCHAR,
+            user_identity_type       VARCHAR,
+            user_identity_arn        VARCHAR,
+            user_identity_account_id VARCHAR,
+            request_parameters       VARCHAR,
+            response_elements        VARCHAR,
+            error_code               VARCHAR,
+            error_message            VARCHAR,
+            read_only                BOOLEAN,
+            event_type               VARCHAR,
+            recipient_account_id     VARCHAR,
+            raw_event                VARCHAR
+        )
+    """)
+    conn_rw.close()
+
+    conn_ro = duckdb.connect(db_path, read_only=True)
+    try:
+        prompts = _load_builtin_prompts()
+        for entry in prompts:
+            sql = entry.get("sql")
+            if sql:
+                validate_query(conn_ro, sql), (
+                    f"SQL validation failed for preset {entry['label']!r}"
+                )
+    finally:
+        conn_ro.close()
+
+
+# ---------------------------------------------------------------------------
+# Test #25 — _handle_direct_sql() works without an API key
+# ---------------------------------------------------------------------------
+
+
+def test_handle_direct_sql_no_api_key_shows_results(tmp_duckdb):
+    """Direct SQL execution must succeed and populate session state without an API key.
+
+    Test #25: verifies the _handle_direct_sql() path that bypasses OpenAI.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = (
+        "SELECT event_time, event_name, aws_region "
+        "FROM cloudtrail_events ORDER BY event_time DESC LIMIT 10"
+    )
+
+    mock_state = MockSessionState(
+        api_key="",  # no API key
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        # spinner must work as a context manager
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    # Results must be stored
+    assert mock_state["last_sql"] == sql
+    assert mock_state["last_results"] is not None
+    assert len(mock_state["last_results"]) == 3  # 3 rows from conftest fixture
+    # Without an API key, summary should be empty
+    assert mock_state["last_summary"] == ""
+    # One assistant message must be appended
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0]["role"] == "assistant"
+    # Query history must be updated
+    assert len(mock_state["query_history"]) == 1

@@ -164,17 +164,85 @@ def render_sidebar() -> None:
 
         st.divider()
 
-        # AGT-07: Preset threat hunting prompts
+        # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
         prompts = _load_builtin_prompts()
-        preset_labels = ["— Select a preset —"] + [p["label"] for p in prompts]
-        selected_label = st.selectbox("Presets", options=preset_labels)
+
+        # Build category list preserving insertion order
+        categories: list[str] = []
+        seen_cats: set[str] = set()
+        for p in prompts:
+            cat = p.get("category", "Other")
+            if cat not in seen_cats:
+                categories.append(cat)
+                seen_cats.add(cat)
+
+        selected_category = st.selectbox(
+            "Category",
+            options=["— All categories —"] + categories,
+            key="_preset_category",
+        )
+
+        # Filter prompts by selected category
+        if selected_category == "— All categories —":
+            filtered = prompts
+        else:
+            filtered = [p for p in prompts if p.get("category") == selected_category]
+
+        preset_labels = ["— Select a preset —"] + [p["label"] for p in filtered]
+        selected_label = st.selectbox(
+            "Preset",
+            options=preset_labels,
+            key="_preset_label",
+        )
+
         if selected_label != "— Select a preset —":
-            matched = next((p for p in prompts if p["label"] == selected_label), None)
+            matched = next((p for p in filtered if p["label"] == selected_label), None)
             if matched:
-                if st.button("▶ Use This Preset", use_container_width=True):
-                    st.session_state["_pending_preset"] = matched["prompt"].strip()
-                    st.rerun()
+                # Show description when available
+                desc = matched.get("description", "")
+                if desc:
+                    st.caption(f"ℹ️ {desc}")
+
+                has_sql = bool(matched.get("sql", "").strip())
+                has_prompt = bool(matched.get("prompt", "").strip())
+
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if has_sql:
+                        if st.button(
+                            "⚡ Direct SQL",
+                            use_container_width=True,
+                            help="Run without an API key",
+                        ):
+                            st.session_state["_pending_direct_sql"] = matched[
+                                "sql"
+                            ].strip()
+                            st.rerun()
+                    else:
+                        st.button(
+                            "⚡ Direct SQL",
+                            disabled=True,
+                            use_container_width=True,
+                            help="No pre-built SQL for this preset",
+                        )
+                with btn_col2:
+                    if has_prompt:
+                        if st.button(
+                            "🤖 Ask AI",
+                            use_container_width=True,
+                            help="Send to AI (requires API key)",
+                        ):
+                            st.session_state["_pending_preset"] = matched[
+                                "prompt"
+                            ].strip()
+                            st.rerun()
+                    else:
+                        st.button(
+                            "🤖 Ask AI",
+                            disabled=True,
+                            use_container_width=True,
+                        )
 
         st.divider()
 
@@ -224,6 +292,77 @@ def render_sidebar() -> None:
                 st.session_state.last_results = None
                 st.session_state.last_summary = ""
                 st.rerun()
+
+
+def _handle_direct_sql(sql: str, db_path: str) -> None:
+    """Execute a pre-built SQL query directly without requiring an API key.
+
+    Runs the SQL against the DuckDB database in read-only mode, stores results
+    in session state, and appends a message to the chat history.  An optional
+    AI summary is generated when an API key is present.
+
+    Args:
+        sql:     Validated DuckDB SQL from a built-in preset entry.
+        db_path: Path to the DuckDB database file.
+    """
+    api_key = st.session_state.api_key
+    model = st.session_state.model
+
+    results = pd.DataFrame()
+    error_message: str | None = None
+
+    with st.spinner("⚡ Running direct SQL…"):
+        try:
+            conn = connect_duckdb(db_path)
+            results = execute_query(conn, sql)
+            conn.close()
+        except QueryValidationError as exc:
+            error_message = f"🚫 SQL validation error: {exc}"
+        except TimeoutError:
+            error_message = "⏱ Query timed out (30 s limit exceeded)."
+        except Exception as exc:  # noqa: BLE001
+            error_message = f"❌ Query execution error: {exc}"
+
+    st.session_state.last_sql = sql
+    st.session_state.last_results = results if error_message is None else None
+    st.session_state.last_summary = ""
+
+    # Optional AI summary (only if API key is configured)
+    summary = ""
+    if error_message is None and api_key:
+        with st.spinner("📋 Summarising results…"):
+            from llm import generate_analysis
+
+            summary = generate_analysis(sql, results, api_key=api_key, model=model)
+        st.session_state.last_summary = summary
+    elif error_message is None and not api_key:
+        st.warning(
+            "💡 Add an OpenAI API key in the sidebar for AI analysis of results."
+        )
+
+    # Build assistant message
+    if error_message:
+        assistant_content = error_message
+    else:
+        truncated = len(results) >= DEFAULT_ROW_LIMIT
+        row_info = f"{len(results)} row(s)" + (
+            f" _(truncated to {DEFAULT_ROW_LIMIT:,})_" if truncated else ""
+        )
+        assistant_content = (
+            f"**Direct SQL query executed:**\n```sql\n{sql}\n```\n\n"
+            f"**Results:** {row_info}\n"
+        )
+        if summary:
+            assistant_content += f"\n**Summary:**\n{summary}"
+
+    st.session_state.messages.append(
+        {"role": "assistant", "content": assistant_content}
+    )
+
+    if error_message is None:
+        st.session_state.query_history.append(
+            ReportEntry(sql=sql, results=results, analysis=summary)
+        )
 
 
 def _handle_user_query(user_input: str, db_path: str) -> None:
@@ -317,6 +456,12 @@ def render_chat() -> None:
 
     # Handle any pending preset injected from the sidebar
     pending_preset = st.session_state.pop("_pending_preset", None)
+
+    # Handle direct SQL execution from a built-in preset (no AI needed)
+    pending_direct_sql = st.session_state.pop("_pending_direct_sql", None)
+    if pending_direct_sql:
+        _handle_direct_sql(pending_direct_sql, db_path)
+        st.rerun()
 
     # ---- Chat history ----
     for msg in st.session_state.messages:
