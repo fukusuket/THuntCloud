@@ -176,10 +176,6 @@ def render_sidebar() -> None:
             start_s = str(new_start) if new_start else "—"
             end_s = str(new_end) if new_end else "—"
             st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
-        else:
-            st.caption("🌐 All events included (no date filter).")
-
-        st.divider()
 
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
@@ -222,44 +218,24 @@ def render_sidebar() -> None:
                     st.caption(f"ℹ️ {desc}")
 
                 has_sql = bool(matched.get("sql", "").strip())
-                has_prompt = bool(matched.get("prompt", "").strip())
 
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
-                    if has_sql:
-                        if st.button(
-                            "⚡ Direct SQL",
-                            use_container_width=True,
-                            help="Run without an API key",
-                        ):
-                            st.session_state["_pending_direct_sql"] = matched[
-                                "sql"
-                            ].strip()
-                            st.rerun()
-                    else:
-                        st.button(
-                            "⚡ Direct SQL",
-                            disabled=True,
-                            use_container_width=True,
-                            help="No pre-built SQL for this preset",
-                        )
-                with btn_col2:
-                    if has_prompt:
-                        if st.button(
-                            "🤖 Ask AI",
-                            use_container_width=True,
-                            help="Send to AI (requires API key)",
-                        ):
-                            st.session_state["_pending_preset"] = matched[
-                                "prompt"
-                            ].strip()
-                            st.rerun()
-                    else:
-                        st.button(
-                            "🤖 Ask AI",
-                            disabled=True,
-                            use_container_width=True,
-                        )
+                if has_sql:
+                    if st.button(
+                        "⚡ Direct SQL",
+                        use_container_width=True,
+                        help="Run without an API key",
+                    ):
+                        st.session_state["_pending_direct_sql"] = matched[
+                            "sql"
+                        ].strip()
+                        st.rerun()
+                else:
+                    st.button(
+                        "⚡ Direct SQL",
+                        disabled=True,
+                        use_container_width=True,
+                        help="No pre-built SQL for this preset",
+                    )
 
         st.divider()
 
@@ -349,9 +325,6 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
         sql:     Validated DuckDB SQL from a built-in preset entry.
         db_path: Path to the DuckDB database file.
     """
-    api_key = st.session_state.api_key
-    model = st.session_state.model
-
     # Apply date range filter (wraps sql in a date-scoped CTE when active).
     sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
 
@@ -374,19 +347,6 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     st.session_state.last_results = results if error_message is None else None
     st.session_state.last_summary = ""
 
-    # Optional AI summary (only if API key is configured)
-    summary = ""
-    if error_message is None and api_key:
-        with st.spinner("📋 Summarising results…"):
-            from llm import generate_analysis
-
-            summary = generate_analysis(sql, results, api_key=api_key, model=model)
-        st.session_state.last_summary = summary
-    elif error_message is None and not api_key:
-        st.warning(
-            "💡 Add an OpenAI API key in the sidebar for AI analysis of results."
-        )
-
     # Build assistant message
     if error_message:
         assistant_content = error_message
@@ -397,10 +357,8 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
         )
         assistant_content = (
             f"**Direct SQL query executed:**\n```sql\n{sql}\n```\n\n"
-            f"**Results:** {row_info}\n"
+            f"**Results:** {row_info}"
         )
-        if summary:
-            assistant_content += f"\n**Summary:**\n{summary}"
 
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_content}
@@ -408,8 +366,38 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
 
     if error_message is None:
         st.session_state.query_history.append(
-            ReportEntry(sql=sql, results=results, analysis=summary)
+            ReportEntry(sql=sql, results=results, analysis="")
         )
+
+
+def _analyze_current_results() -> None:
+    """Analyze the current query results using AI and append the analysis to chat.
+
+    Calls generate_analysis() with last_sql and last_results already stored in
+    session state.  Requires an API key; appends a warning message when none is
+    set.  Does nothing when last_results is None or empty.
+    """
+    api_key = st.session_state.api_key
+    model = st.session_state.model
+    sql = st.session_state.last_sql
+    results = st.session_state.last_results
+
+    if not api_key:
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": "⚠️ Please enter your OpenAI API key in the sidebar first.",
+            }
+        )
+        return
+
+    if results is None or (hasattr(results, "empty") and results.empty):
+        return
+
+    with st.spinner("🤖 Analyzing results…"):
+        summary = generate_analysis(sql, results, api_key=api_key, model=model)
+
+    st.session_state.last_summary = summary
 
 
 def _handle_user_query(user_input: str, db_path: str) -> None:
@@ -513,6 +501,12 @@ def render_chat() -> None:
         _handle_direct_sql(pending_direct_sql, db_path)
         st.rerun()
 
+    # Handle AI analysis request triggered from the results area
+    pending_ai_analysis = st.session_state.pop("_pending_ai_analysis", None)
+    if pending_ai_analysis:
+        _analyze_current_results()
+        st.rerun()
+
     # ---- Chat history ----
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -565,6 +559,9 @@ def render_chat() -> None:
                                 ),
                             }
                         )
+                        # Summary is in the message above; clear so it does not
+                        # also appear in the dedicated analysis section.
+                        st.session_state.last_summary = ""
                         st.session_state.query_history.append(
                             ReportEntry(
                                 sql=edited_sql, results=results, analysis=summary
@@ -591,6 +588,27 @@ def render_chat() -> None:
                     "Add a `LIMIT` clause or narrow your query to see more specific results."
                 )
             st.dataframe(df, use_container_width=True)
+
+            # Ask AI button — analyses the current results without generating SQL
+            st.divider()
+            has_api_key = bool(st.session_state.api_key)
+            if st.button(
+                "🤖 Ask AI — Analyze These Results",
+                use_container_width=True,
+                disabled=not has_api_key,
+                help=(
+                    "Generate an AI analysis of the query results above."
+                    if has_api_key
+                    else "Enter your OpenAI API key in the sidebar to enable AI analysis."
+                ),
+            ):
+                st.session_state["_pending_ai_analysis"] = True
+                st.rerun()
+
+    # ---- AI analysis result (displayed below results table) ----
+    if st.session_state.last_summary:
+        st.markdown("### 🤖 AI Analysis")
+        st.info(st.session_state.last_summary)
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset

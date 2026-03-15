@@ -289,6 +289,121 @@ def test_session_state_has_date_filter_defaults():
     assert mock_state["date_end"] is None
 
 
+# ---------------------------------------------------------------------------
+# Tests #AI-A / #AI-B / #AI-C — _analyze_current_results()
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_current_results_sets_last_summary_without_appending_message():
+    """_analyze_current_results() must store the analysis in last_summary only.
+
+    Test #AI-A: The analysis result is displayed below the results table via
+    last_summary, NOT appended to the chat message history.
+    """
+    from tests.conftest import MockSessionState
+
+    results_df = pd.DataFrame(
+        {"event_name": ["ConsoleLogin"], "aws_region": ["us-east-1"]}
+    )
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="SELECT event_name, aws_region FROM cloudtrail_events",
+        last_results=results_df,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("llm.OpenAI") as mock_openai_cls,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = "• 1 ConsoleLogin event observed"
+        mock_client.chat.completions.create.return_value = mock_response
+
+        from app import _analyze_current_results
+
+        _analyze_current_results()
+
+    assert mock_state["last_summary"] == "• 1 ConsoleLogin event observed"
+    # Analysis must NOT be added to the chat message history
+    assert len(mock_state["messages"]) == 0
+
+
+def test_analyze_current_results_no_api_key_appends_warning():
+    """_analyze_current_results() must append a warning when no API key is set.
+
+    Test #AI-B: verifies early-return behavior without an API key.
+    generate_analysis must NOT be called.
+    """
+    from tests.conftest import MockSessionState
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="SELECT 1",
+        last_results=pd.DataFrame({"a": [1]}),
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("llm.OpenAI") as mock_openai_cls,
+    ):
+        from app import _analyze_current_results
+
+        _analyze_current_results()
+
+    mock_openai_cls.assert_not_called()
+    assert len(mock_state["messages"]) == 1
+    assert "API key" in mock_state["messages"][0]["content"]
+
+
+def test_analyze_current_results_no_results_does_nothing():
+    """_analyze_current_results() must be a no-op when last_results is None.
+
+    Test #AI-C: verifies that nothing is appended when there are no results to analyse.
+    """
+    from tests.conftest import MockSessionState
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("llm.OpenAI") as mock_openai_cls,
+    ):
+        from app import _analyze_current_results
+
+        _analyze_current_results()
+
+    mock_openai_cls.assert_not_called()
+    assert len(mock_state["messages"]) == 0
+
+
 def test_handle_direct_sql_applies_date_filter_from_session_state(tmp_duckdb):
     """_handle_direct_sql stores date-filtered SQL when date_start/date_end are set.
 
