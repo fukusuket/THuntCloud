@@ -7,6 +7,7 @@ AWS CloudTrail logs stored in DuckDB.
 import json
 import logging
 import os
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -14,7 +15,13 @@ import streamlit as st
 import yaml
 
 from llm import generate_analysis, generate_sql
-from query import DEFAULT_ROW_LIMIT, QueryValidationError, connect_duckdb, execute_query
+from query import (
+    DEFAULT_ROW_LIMIT,
+    QueryValidationError,
+    apply_date_filter,
+    connect_duckdb,
+    execute_query,
+)
 from report import ReportEntry, generate_report
 
 logger = logging.getLogger(__name__)
@@ -35,6 +42,8 @@ SESSION_STATE_DEFAULTS: dict = {
     "last_summary": "",  # fact-based summary from the last query
     "api_key": "",  # entered in sidebar (AGT-09)
     "model": "gpt-5.4",  # selected model
+    "date_start": None,  # date | None — lower bound for event_time filter
+    "date_end": None,  # date | None — upper bound for event_time filter
 }
 
 
@@ -137,30 +146,42 @@ def render_sidebar() -> None:
     with st.sidebar:
         st.title("⚙️ Settings")
 
-        # AGT-09: API key input
-        st.subheader("🔑 API Configuration")
-        api_key_input = st.text_input(
-            "OpenAI API Key",
-            value=st.session_state.api_key,
-            type="password",
-            help="Your OpenAI API key. Never stored outside this browser session.",
-        )
-        if api_key_input != st.session_state.api_key:
-            st.session_state.api_key = api_key_input
+        # Date range filter
+        st.subheader("📅 Date Range Filter")
+        st.caption("Narrows all queries to events within this period.")
 
-        # Model selection
-        model_options = ["gpt-5.4", "gpt-5.4-mini"]
-        selected_model = st.selectbox(
-            "Model",
-            options=model_options,
-            index=(
-                model_options.index(st.session_state.model)
-                if st.session_state.model in model_options
-                else 0
-            ),
-        )
-        if selected_model != st.session_state.model:
-            st.session_state.model = selected_model
+        today = date.today()
+        # Manual date inputs
+        dc1, dc2 = st.columns(2)
+        with dc1:
+            new_start = st.date_input(
+                "From",
+                value=st.session_state.date_start,
+                max_value=today,
+                format="YYYY-MM-DD",
+                key="_date_start_input",
+            )
+        with dc2:
+            new_end = st.date_input(
+                "To",
+                value=st.session_state.date_end,
+                max_value=today,
+                format="YYYY-MM-DD",
+                key="_date_end_input",
+            )
+
+        # Persist date selections
+        st.session_state.date_start = new_start or None
+        st.session_state.date_end = new_end or None
+
+        if new_start and new_end and new_start > new_end:
+            st.error("⚠️ 'From' date must be before or equal to 'To' date.")
+        elif new_start or new_end:
+            start_s = str(new_start) if new_start else "—"
+            end_s = str(new_end) if new_end else "—"
+            st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
+        else:
+            st.caption("🌐 All events included (no date filter).")
 
         st.divider()
 
@@ -246,6 +267,33 @@ def render_sidebar() -> None:
 
         st.divider()
 
+        # AGT-09: API key input
+        st.subheader("🔑 API Configuration")
+        api_key_input = st.text_input(
+            "OpenAI API Key",
+            value=st.session_state.api_key,
+            type="password",
+            help="Your OpenAI API key. Never stored outside this browser session.",
+        )
+        if api_key_input != st.session_state.api_key:
+            st.session_state.api_key = api_key_input
+
+        # Model selection
+        model_options = ["gpt-5.4", "gpt-5.4-mini"]
+        selected_model = st.selectbox(
+            "Model",
+            options=model_options,
+            index=(
+                model_options.index(st.session_state.model)
+                if st.session_state.model in model_options
+                else 0
+            ),
+        )
+        if selected_model != st.session_state.model:
+            st.session_state.model = selected_model
+
+        st.divider()
+
         # AGT-06: Markdown report download
         st.subheader("📄 Report")
         if st.session_state.query_history:
@@ -307,6 +355,9 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     """
     api_key = st.session_state.api_key
     model = st.session_state.model
+
+    # Apply date range filter (wraps sql in a date-scoped CTE when active).
+    sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
 
     results = pd.DataFrame()
     error_message: str | None = None
@@ -391,6 +442,9 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     # Step 1: Generate SQL (AGT-02)
     with st.spinner("🤖 Generating SQL…"):
         sql = generate_sql(user_input, api_key=api_key, model=model)
+
+    # Apply date range filter to the AI-generated SQL (wraps in CTE when active).
+    sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
 
     st.session_state.last_sql = sql
 

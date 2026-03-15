@@ -1,13 +1,16 @@
 """Tests for query.py — DuckDB query execution and validation."""
 
 import concurrent.futures
+from datetime import date
 
+import duckdb
 import pandas as pd
 import pytest
 
 from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
+    apply_date_filter,
     apply_row_limit,
     connect_duckdb,
     execute_query,
@@ -165,4 +168,115 @@ def test_execute_query_large_row_limit_returns_all_rows(tmp_duckdb):
     # Fixture has 3 rows; limit=100 should return all 3
     df = execute_query(conn, "SELECT * FROM cloudtrail_events", row_limit=100)
     assert len(df) == 3
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Date-filter tests (apply_date_filter)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_date_filter_returns_unchanged_when_no_dates():
+    """apply_date_filter returns the original SQL when both dates are None.
+
+    Test #DF-1: passthrough guard.
+    """
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+    assert apply_date_filter(sql, None, None) == sql
+
+
+def test_apply_date_filter_injects_cte_with_start_only():
+    """apply_date_filter injects a date-range CTE when only start_date is given.
+
+    Test #DF-2: start_date only.
+    """
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+    result = apply_date_filter(sql, date(2024, 1, 1), None)
+    assert "_ct_filtered" in result
+    assert "2024-01-01" in result
+    # cloudtrail_events must appear only once — inside the CTE body
+    assert result.count("cloudtrail_events") == 1
+
+
+def test_apply_date_filter_injects_cte_with_end_only():
+    """apply_date_filter injects a date-range CTE when only end_date is given.
+
+    Test #DF-3: end_date only.
+    """
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+    result = apply_date_filter(sql, None, date(2024, 1, 31))
+    assert "_ct_filtered" in result
+    assert "2024-01-31" in result
+    assert result.count("cloudtrail_events") == 1
+
+
+def test_apply_date_filter_injects_cte_with_both_dates():
+    """apply_date_filter injects a date-range CTE with both start and end dates.
+
+    Test #DF-4: both dates present.
+    """
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+    result = apply_date_filter(sql, date(2024, 1, 1), date(2024, 1, 31))
+    assert "_ct_filtered" in result
+    assert "2024-01-01" in result
+    assert "2024-01-31" in result
+    assert result.count("cloudtrail_events") == 1
+
+
+def test_apply_date_filter_result_is_valid_duckdb(tmp_duckdb):
+    """The date-filtered SQL must be accepted by DuckDB EXPLAIN.
+
+    Test #DF-5: DuckDB integration smoke test.
+    """
+    sql = (
+        "SELECT event_name, COUNT(*) AS cnt "
+        "FROM cloudtrail_events GROUP BY event_name"
+    )
+    filtered = apply_date_filter(sql, date(2024, 1, 1), date(2024, 12, 31))
+    conn = duckdb.connect(tmp_duckdb, read_only=True)
+    try:
+        validate_query(conn, filtered)  # must not raise
+    finally:
+        conn.close()
+
+
+def test_apply_date_filter_handles_sql_with_existing_with_clause():
+    """apply_date_filter works when the SQL already has a WITH clause.
+
+    Test #DF-6: existing CTE is preserved and _ct_filtered is prepended.
+    """
+    sql = "WITH foo AS (SELECT 1 AS x) SELECT * FROM cloudtrail_events"
+    result = apply_date_filter(sql, date(2024, 1, 1), date(2024, 1, 31))
+    assert "_ct_filtered" in result
+    assert "foo" in result
+    # Exactly one WITH keyword at the top level
+    assert (
+        result.upper().count("\nWITH ")
+        + (1 if result.upper().startswith("WITH ") else 0)
+        == 1
+    )
+
+
+def test_apply_date_filter_actually_filters_rows(tmp_duckdb):
+    """apply_date_filter restricts the result set to the given date range.
+
+    Test #DF-7: end-to-end row filtering.
+    The tmp_duckdb fixture has 3 rows all in 2024-01-15.
+    - Filter covering 2024-01-01 → 2024-12-31: returns all 3 rows.
+    - Filter covering 2025-01-01 → 2025-12-31: returns 0 rows.
+    """
+    sql = "SELECT * FROM cloudtrail_events"
+
+    conn = connect_duckdb(tmp_duckdb)
+
+    # Range that includes all fixture rows
+    filtered_in = apply_date_filter(sql, date(2024, 1, 1), date(2024, 12, 31))
+    df_in = execute_query(conn, filtered_in, row_limit=100)
+    assert len(df_in) == 3, "Expected all 3 rows to match the 2024 range"
+
+    # Range that excludes all fixture rows
+    filtered_out = apply_date_filter(sql, date(2025, 1, 1), date(2025, 12, 31))
+    df_out = execute_query(conn, filtered_out, row_limit=100)
+    assert len(df_out) == 0, "Expected 0 rows for the 2025 range"
+
     conn.close()

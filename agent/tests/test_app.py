@@ -2,9 +2,11 @@
 
 Test #22: session state initialization (Phase 6 of TDD plan).
 Tests #23-#25: built-in hunt YAML structure and Direct SQL execution.
+Tests #DF-A/B: date range filter session state and _handle_direct_sql integration.
 """
 
 import json
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import duckdb
@@ -235,6 +237,8 @@ def test_handle_direct_sql_no_api_key_shows_results(tmp_duckdb):
         last_sql="",
         last_results=None,
         last_summary="",
+        date_start=None,  # no date filter
+        date_end=None,
     )
 
     with (
@@ -261,3 +265,70 @@ def test_handle_direct_sql_no_api_key_shows_results(tmp_duckdb):
     assert mock_state["messages"][0]["role"] == "assistant"
     # Query history must be updated
     assert len(mock_state["query_history"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests #DF-A / #DF-B — Date range filter
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_has_date_filter_defaults():
+    """Session state must include date_start and date_end keys defaulting to None.
+
+    Test #DF-A: verifies that _init_session_state() creates date filter keys.
+    """
+    mock_state = {}
+    with patch("streamlit.session_state", mock_state):
+        from app import _init_session_state
+
+        _init_session_state()
+
+    assert "date_start" in mock_state, "Expected 'date_start' key in session state"
+    assert "date_end" in mock_state, "Expected 'date_end' key in session state"
+    assert mock_state["date_start"] is None
+    assert mock_state["date_end"] is None
+
+
+def test_handle_direct_sql_applies_date_filter_from_session_state(tmp_duckdb):
+    """_handle_direct_sql stores date-filtered SQL when date_start/date_end are set.
+
+    Test #DF-B: verifies that apply_date_filter is applied inside _handle_direct_sql
+    when date_start and date_end are present in session state.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=date(2024, 1, 1),
+        date_end=date(2024, 12, 31),
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    # The stored SQL must include the date filter CTE
+    assert (
+        "_ct_filtered" in mock_state["last_sql"]
+    ), "Expected '_ct_filtered' CTE in last_sql when date filter is active"
+    assert "2024-01-01" in mock_state["last_sql"]
+    assert "2024-12-31" in mock_state["last_sql"]
+    # All 3 rows must be returned (all are within 2024)
+    assert mock_state["last_results"] is not None
+    assert len(mock_state["last_results"]) == 3

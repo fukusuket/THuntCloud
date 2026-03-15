@@ -7,6 +7,7 @@ EXPLAIN validation, result limiting, and timeout protection.
 import concurrent.futures
 import logging
 import re
+from datetime import date
 
 import duckdb
 import pandas as pd
@@ -22,9 +23,75 @@ _FORBIDDEN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Matches the leading WITH keyword of a CTE (case-insensitive, multi-line safe).
+_WITH_PREFIX_PATTERN = re.compile(r"^\s*WITH\s+", re.IGNORECASE | re.DOTALL)
+
 
 class QueryValidationError(Exception):
     """Raised when a SQL query fails safety validation."""
+
+
+def apply_date_filter(
+    sql: str,
+    start_date: date | None,
+    end_date: date | None,
+) -> str:
+    """Inject a date-range CTE into *sql* to filter cloudtrail_events by event_time.
+
+    If both *start_date* and *end_date* are ``None`` the original *sql* is
+    returned unchanged.
+
+    The function:
+
+    1. Builds a ``_ct_filtered`` CTE that wraps ``cloudtrail_events`` with the
+       requested ``event_time`` bounds (inclusive on both sides; end-of-day is
+       used for *end_date*).
+    2. Replaces every occurrence of ``cloudtrail_events`` in the original SQL
+       with ``_ct_filtered`` (case-insensitive word-boundary match).
+    3. Prepends the CTE, extending any existing ``WITH`` chain rather than
+       creating a duplicate keyword.
+
+    Args:
+        sql:        Original SQL string (may already contain a WITH clause).
+        start_date: Inclusive lower bound for ``event_time``, or ``None``.
+        end_date:   Inclusive upper bound for ``event_time`` (end-of-day
+                    23:59:59), or ``None``.
+
+    Returns:
+        SQL string with the date filter CTE applied, or the original SQL when
+        both date arguments are ``None``.
+    """
+    if start_date is None and end_date is None:
+        return sql
+
+    # Build WHERE conditions for the CTE.
+    conditions: list[str] = []
+    if start_date is not None:
+        conditions.append(f"event_time >= TIMESTAMP '{start_date!s} 00:00:00'")
+    if end_date is not None:
+        conditions.append(f"event_time <= TIMESTAMP '{end_date!s} 23:59:59'")
+    where_clause = "\n      AND ".join(conditions)
+
+    cte_body = (
+        f"_ct_filtered AS (\n"
+        f"    SELECT * FROM cloudtrail_events\n"
+        f"    WHERE {where_clause}\n"
+        f")"
+    )
+
+    # Replace cloudtrail_events references in the original SQL.
+    modified_sql = re.sub(
+        r"\bcloudtrail_events\b", "_ct_filtered", sql, flags=re.IGNORECASE
+    )
+
+    # Prepend the CTE, handling an existing WITH clause correctly.
+    if _WITH_PREFIX_PATTERN.match(modified_sql):
+        # Append _ct_filtered as the first entry in the existing WITH chain.
+        result = _WITH_PREFIX_PATTERN.sub(f"WITH {cte_body},\n", modified_sql, count=1)
+    else:
+        result = f"WITH {cte_body}\n{modified_sql}"
+
+    return result
 
 
 def apply_row_limit(sql: str, limit: int) -> str:

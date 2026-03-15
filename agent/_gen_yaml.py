@@ -1,4 +1,5 @@
 """Temporary script to generate builtin_hunts.yaml v2."""
+
 import yaml
 
 CAT_IAM = "\U0001f511 Identity & Access"
@@ -493,10 +494,10 @@ entries = [
             "FROM cloudtrail_events\n"
             "WHERE event_name = 'PutPublicAccessBlock'\n"
             "  AND (\n"
-            '      request_parameters LIKE \'%"blockPublicAcls":false%\'\n'
-            '      OR request_parameters LIKE \'%"blockPublicPolicy":false%\'\n'
-            '      OR request_parameters LIKE \'%"ignorePublicAcls":false%\'\n'
-            '      OR request_parameters LIKE \'%"restrictPublicBuckets":false%\'\n'
+            "      request_parameters LIKE '%\"blockPublicAcls\":false%'\n"
+            "      OR request_parameters LIKE '%\"blockPublicPolicy\":false%'\n"
+            "      OR request_parameters LIKE '%\"ignorePublicAcls\":false%'\n"
+            "      OR request_parameters LIKE '%\"restrictPublicBuckets\":false%'\n"
             "  )\n"
             "ORDER BY event_time DESC\n"
             "LIMIT 100\n"
@@ -1001,11 +1002,12 @@ out = header + yaml.dump(
 )
 
 import pathlib
+
 pathlib.Path("builtin_hunts.yaml").write_text(out, encoding="utf-8")
 
 # Verify
 import yaml as _y
+
 data = _y.safe_load(out)
 sql_count = sum(1 for e in data if e.get("sql"))
 print(f"Written: {len(data)} entries, {sql_count} with direct SQL")
-
