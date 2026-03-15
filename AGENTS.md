@@ -59,7 +59,7 @@ Never write production code without a corresponding failing test.
 - **Rust errors:** use `anyhow::Result` everywhere; add context with `.with_context(|| ...)`.
 - **Rust DB writes:** always use `duckdb::Appender` (not individual INSERTs) — see `ingester/src/db.rs`.
 - **Python type hints:** required on all function signatures.
-- **Python OpenAI mocks:** every test touching `llm.py` must mock `agent.llm.OpenAI`; real API calls in tests are forbidden.
+- **Python OpenAI mocks:** every test touching `llm.py` must mock `llm.OpenAI` (not `agent.llm.OpenAI` — `pytest.ini` sets `pythonpath = .` so modules resolve as `llm`, not `agent.llm`); real API calls in tests are forbidden.
 - **Python DuckDB in tests:** use `tmp_path / "test.db"` — see `agent/tests/conftest.py` for the `tmp_duckdb` fixture.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `test:`, `refactor:`, `docs:`).
 
@@ -71,24 +71,31 @@ Never write production code without a corresponding failing test.
 
 ## SQL Safety in `agent/`
 
-Before executing any LLM-generated SQL, `query.py` applies two guards:
+Before executing any LLM-generated SQL, `query.py` applies three guards:
 
 1. **Keyword blocklist** — rejects queries containing `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE` (regex, word-boundary, case-insensitive).
 2. **EXPLAIN validation** — runs `EXPLAIN <sql>` on the READ_ONLY connection before the real query.
+3. **Row-limit cap** — `apply_row_limit()` wraps any query that has no `LIMIT` clause in `SELECT * FROM (...) AS _limited LIMIT 1000` to prevent unbounded result sets.
 
 Date-range UI filters inject a `_ct_filtered` CTE that wraps `cloudtrail_events` and replaces all references to it in the original SQL — see `apply_date_filter()` in `agent/query.py`.
+
+`agent/builtin_hunts.yaml` ships pre-built threat hunting queries (categorised, with `label`, `description`, `prompt`, and an optional `sql` field). Entries with a `sql` field can be executed directly without an OpenAI API key; entries with only a `prompt` require one.
 
 ## Ingester CLI Flags
 
 ```
 ingester ingest --path <dir>
-                [--include <glob>]   # e.g. "*CloudTrail*"
-                [--exclude <glob>]   # e.g. "*us-west-2*"
+                [--db     <path>]    # DuckDB file path (overrides DUCKDB_PATH env var)
+                [--include <globs>]  # comma-separated globs, e.g. "*CloudTrail*,*Config*"
+                [--exclude <globs>]  # comma-separated globs, e.g. "*us-west-2*,*vpcflowlogs*"
                 [--from   <YYYYMMDD>]
                 [--to     <YYYYMMDD>]
+                [--workers <N>]      # parallel parser threads (default: CPU count; 1 = sequential)
 ```
 
-Date and path filters operate on the filesystem path (CloudTrail stores logs under `yyyy/mm/dd/` segments). Files without a recognizable date segment are always included.
+DB path resolution order: `--db` CLI arg → `DUCKDB_PATH` env var → `/data/db/threat_hunting.db`.
+
+Date and path filters operate on the filesystem path (CloudTrail stores logs under `yyyy/mm/dd/` segments). Files without a recognizable date segment are always included. `--include`/`--exclude` support `*` crossing path-separator boundaries.
 
 ## Environment Variables
 
@@ -100,4 +107,6 @@ Date and path filters operate on the filesystem path (CloudTrail stores logs und
 | `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` |
 | `DUCKDB_HOST_PATH` | docker host | `./data/db` |
 | `SUPERSET_SECRET_KEY` | dashboard | `change-me-in-production` |
+| `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` | agent (proxy) | — |
+| `RAYON_NUM_THREADS` | ingester | CPU count |
 
