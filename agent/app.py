@@ -144,12 +144,8 @@ def render_sidebar() -> None:
     Handles AGT-07 (preset prompts), AGT-08 (session export), AGT-09 (API key).
     """
     with st.sidebar:
-        st.title("⚙️ Settings")
-
         # Date range filter
         st.subheader("📅 Date Range Filter")
-        st.caption("Narrows all queries to events within this period.")
-
         today = date.today()
         # Manual date inputs
         dc1, dc2 = st.columns(2)
