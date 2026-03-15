@@ -225,9 +225,7 @@ def render_sidebar() -> None:
                         use_container_width=True,
                         help="Run without an API key",
                     ):
-                        st.session_state["_pending_direct_sql"] = matched[
-                            "sql"
-                        ].strip()
+                        st.session_state["_pending_direct_sql"] = matched["sql"].strip()
                         st.rerun()
                 else:
                     st.button(
@@ -398,6 +396,11 @@ def _analyze_current_results() -> None:
         summary = generate_analysis(sql, results, api_key=api_key, model=model)
 
     st.session_state.last_summary = summary
+
+    # Persist analysis into the last query_history entry so the history view
+    # can display it without requiring a separate state variable.
+    if st.session_state.query_history and summary:
+        st.session_state.query_history[-1].analysis = summary
 
 
 def _handle_user_query(user_input: str, db_path: str) -> None:
@@ -575,40 +578,47 @@ def render_chat() -> None:
                     ) as exc:  # noqa: BLE001
                         st.error(f"Error: {exc}")
 
-    # ---- Latest results table (AGT-04) ----
-    if (
-        st.session_state.last_results is not None
-        and not st.session_state.last_results.empty
-    ):
-        with st.expander("📋 Latest Query Results", expanded=True):
-            df = st.session_state.last_results
-            if len(df) >= DEFAULT_ROW_LIMIT:
-                st.warning(
-                    f"⚠️ Results are truncated to **{DEFAULT_ROW_LIMIT:,} rows**. "
-                    "Add a `LIMIT` clause or narrow your query to see more specific results."
-                )
-            st.dataframe(df, use_container_width=True)
+    # ---- Query results history (all entries accumulated, AGT-04) ----
+    # Every executed query is appended here; nothing is overwritten.
+    if st.session_state.query_history:
+        st.markdown("---")
+        st.subheader("📊 Query Results History")
 
-            # Ask AI button — analyses the current results without generating SQL
-            st.divider()
-            has_api_key = bool(st.session_state.api_key)
-            if st.button(
-                "🤖 Ask AI — Analyze These Results",
-                use_container_width=True,
-                disabled=not has_api_key,
-                help=(
-                    "Generate an AI analysis of the query results above."
-                    if has_api_key
-                    else "Enter your OpenAI API key in the sidebar to enable AI analysis."
-                ),
-            ):
-                st.session_state["_pending_ai_analysis"] = True
-                st.rerun()
+        for i, entry in enumerate(st.session_state.query_history, start=1):
+            is_last = i == len(st.session_state.query_history)
+            with st.expander(f"Query #{i}", expanded=True):
+                st.code(entry.sql, language="sql")
 
-    # ---- AI analysis result (displayed below results table) ----
-    if st.session_state.last_summary:
-        st.markdown("### 🤖 AI Analysis")
-        st.info(st.session_state.last_summary)
+                if entry.results is not None and not entry.results.empty:
+                    if len(entry.results) >= DEFAULT_ROW_LIMIT:
+                        st.warning(
+                            f"⚠️ Results are truncated to **{DEFAULT_ROW_LIMIT:,} rows**. "
+                            "Add a `LIMIT` clause or narrow your query for more specific results."
+                        )
+                    st.dataframe(entry.results, use_container_width=True)
+                else:
+                    st.info("No results returned.")
+
+                if entry.analysis:
+                    st.markdown("#### 🤖 AI Analysis")
+                    st.info(entry.analysis)
+                elif is_last:
+                    # Show "Ask AI" button only for the latest entry that lacks analysis
+                    st.divider()
+                    has_api_key = bool(st.session_state.api_key)
+                    if st.button(
+                        "🤖 Ask AI — Analyze These Results",
+                        key="analyze_last_btn",
+                        use_container_width=True,
+                        disabled=not has_api_key,
+                        help=(
+                            "Generate an AI analysis of the query results above."
+                            if has_api_key
+                            else "Enter your OpenAI API key in the sidebar to enable AI analysis."
+                        ),
+                    ):
+                        st.session_state["_pending_ai_analysis"] = True
+                        st.rerun()
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset
