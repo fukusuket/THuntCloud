@@ -1,6 +1,9 @@
 """Temporary script to generate builtin_hunts.yaml v2."""
 
+import pathlib
+
 import yaml
+import yaml as _y
 
 CAT_IAM = "\U0001f511 Identity & Access"
 CAT_DET = "\U0001f6e1 Detection & Response"
@@ -1001,12 +1004,9 @@ out = header + yaml.dump(
     width=120,
 )
 
-import pathlib
-
 pathlib.Path("builtin_hunts.yaml").write_text(out, encoding="utf-8")
 
 # Verify
-import yaml as _y
 
 data = _y.safe_load(out)
 sql_count = sum(1 for e in data if e.get("sql"))

@@ -7,7 +7,7 @@ AWS CloudTrail logs stored in DuckDB.
 import json
 import logging
 import os
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
