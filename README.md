@@ -258,3 +258,5 @@ See [NOTICE](NOTICE) for third-party license attributions.
 - **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
 - **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
 - **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.
+- **[siem-on-amazon-opensearch-service](https://github.com/aws-samples/siem-on-amazon-opensearch-service)** — AWS sample project for SIEM on Amazon OpenSearch Service, referenced for log parsing and normalization patterns.
+- **[cloud-trail-lake-query-samples](https://github.com/aws-samples/cloud-trail-lake-query-samples)** — AWS sample queries for CloudTrail Lake, referenced for threat hunting query patterns.
