@@ -34,12 +34,26 @@ services:
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
       - ./logs:/data/logs:ro                              # Source log directory (read-only bind)
+      - ${GEOIP_HOST_PATH:-./data/geoip}:/data/geoip:ro  # MaxMind GeoLite2 .mmdb files (read-only)
     environment:
       - DUCKDB_PATH=/data/db/threat_hunting.db
       - RUST_LOG=${RUST_LOG:-info}
+      # GeoIP paths — set any of these (or pass --geoip-* CLI flags directly).
+      # Accepts either a .mmdb file path or a directory; a directory is scanned
+      # automatically for the first .mmdb file found inside it.
+      - GEOIP_CITY_PATH=${GEOIP_CITY_PATH:-}
+      - GEOIP_COUNTRY_PATH=${GEOIP_COUNTRY_PATH:-}
+      - GEOIP_ASN_PATH=${GEOIP_ASN_PATH:-}
     profiles:
       - ingest                        # Run only when explicitly invoked
-    # Usage: docker compose --profile ingest run --rm ingester ingest --path /data/logs/flaws_cloudtrail_logs
+    # Usage (no GeoIP):
+    #   docker compose --profile ingest run --rm ingester ingest --path /data/logs
+    # Usage (with GeoIP — place .mmdb files in docker/data/geoip/ first):
+    #   docker compose --profile ingest run --rm ingester ingest \
+    #     --path /data/logs --geoip-country /data/geoip
+    # Usage (enrich existing DB):
+    #   docker compose --profile ingest run --rm ingester enrich \
+    #     --geoip-country /data/geoip
 
   # ── agent (Streamlit AI UI) ───────────────
   agent:

@@ -16,6 +16,7 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 - **No SIEM required** — all analysis runs locally via DuckDB
 - **AI-assisted** — natural language → SQL generation via OpenAI API (`gpt-5.4`)
 - **High performance** — ingest 10 GB in under 5 minutes; supports 50 GB on 16 GB RAM
+- **GeoIP enrichment** — enrich `source_ip_address` with country, city, ASN via MaxMind GeoLite2
 - **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
 - **Single-command launch** — `docker compose up -d`
 
@@ -160,6 +161,7 @@ sequenceDiagram
 - Docker Desktop (or Docker Engine + Docker Compose v2)
 - 16 GB RAM minimum, SSD recommended
 - OpenAI API key (`gpt-5.4` access) — agent module requires this
+- *(Optional)* [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) `.mmdb` files for GeoIP enrichment
 
 ### 1. Clone and configure
 
@@ -185,6 +187,80 @@ docker compose --profile ingest run --rm ingester ingest \
   --path /data/logs
 ```
 
+#### With GeoIP enrichment (optional)
+
+Download [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) and place them in `docker/data/geoip/`.
+
+```
+docker/
+└── data/
+    └── geoip/                        ← place .mmdb files here
+        ├── GeoLite2-City.mmdb
+        ├── GeoLite2-Country.mmdb
+        └── GeoLite2-ASN.mmdb
+```
+
+These files are bind-mounted read-only into the container at `/data/geoip/`.  
+Three database types are supported:
+
+| Flag | Database | Provides |
+|------|----------|----------|
+| `--geoip-city` | GeoLite2-City.mmdb | Country + city + lat/lon |
+| `--geoip-country` | GeoLite2-Country.mmdb | Country only (lighter alternative to City) |
+| `--geoip-asn` | GeoLite2-ASN.mmdb | ASN number + organization name |
+
+> **Note:** `--geoip-city` and `--geoip-country` are mutually exclusive in effect — when both are provided, `--geoip-city` takes precedence.  
+> Both flags accept a **file path or a directory path** — when a directory is given, the first `.mmdb` file inside it is used automatically.
+
+**Full enrichment (City + ASN):**
+
+```bash
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs \
+  --geoip-city /data/geoip/GeoLite2-City.mmdb \
+  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
+```
+
+**Lightweight enrichment (Country only — pass the directory directly):**
+
+```bash
+docker compose --profile ingest run --rm ingester ingest \
+  --path /data/logs \
+  --geoip-country /data/geoip
+```
+
+Alternatively, set environment variables in a `.env` file (placed next to `docker-compose.yml`):
+
+```bash
+# docker/.env
+GEOIP_CITY_PATH=/data/geoip/GeoLite2-City.mmdb
+GEOIP_ASN_PATH=/data/geoip/GeoLite2-ASN.mmdb
+```
+
+When these are set, no CLI flags are needed:
+
+```bash
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
+```
+
+#### Back-fill GeoIP on an existing database
+
+If logs were already ingested without GeoIP, use the `enrich` subcommand to back-fill the geo columns without re-ingesting.  
+Place `.mmdb` files in `docker/data/geoip/` first, then:
+
+```bash
+# Full enrichment (City + ASN)
+docker compose --profile ingest run --rm ingester enrich \
+  --geoip-city /data/geoip/GeoLite2-City.mmdb \
+  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
+
+# Country DB only (pass the directory — auto-detects the .mmdb inside)
+docker compose --profile ingest run --rm ingester enrich \
+  --geoip-country /data/geoip
+```
+
+The `enrich` command is **idempotent** — rows that already have a `geo_country_code` value are skipped automatically.
+
 ### 4. Start all services
 
 ```bash
@@ -203,6 +279,67 @@ docker compose up -d --build
 - Who accessed the S3 buckets and from which IP addresses?
 - Show me all IAM-related API calls ordered by time
 - List any failed authentication attempts
+- Show API calls from outside Japan grouped by country
+- Which ASNs generated the most failed authentication attempts?
+
+---
+
+## GeoIP Enrichment
+
+### Added columns
+
+When GeoIP enrichment is enabled, the following 7 columns are added to `cloudtrail_events`:
+
+| Column | Type | Example | Notes |
+|--------|------|---------|-------|
+| `geo_country_code` | VARCHAR | `"US"`, `"JP"`, `"PRIVATE"` | ISO 3166-1 alpha-2 or special marker |
+| `geo_country_name` | VARCHAR | `"United States"` | English name |
+| `geo_city` | VARCHAR | `"Tokyo"` | City DB only; NULL with Country DB |
+| `geo_latitude` | DOUBLE | `35.6895` | City DB only; NULL with Country DB |
+| `geo_longitude` | DOUBLE | `139.6917` | City DB only; NULL with Country DB |
+| `geo_asn` | VARCHAR | `"AS16509"` | Requires `GeoLite2-ASN.mmdb` |
+| `geo_org` | VARCHAR | `"Amazon.com, Inc."` | Requires `GeoLite2-ASN.mmdb` |
+
+### Special markers for `geo_country_code`
+
+| Value | Meaning |
+|-------|---------|
+| `PRIVATE` | RFC 1918 private address or IPv6 unique-local |
+| `LOOPBACK` | 127.x.x.x or ::1 |
+| `LINK-LOCAL` | 169.254.x.x or fe80::/10 |
+| `SPECIAL` | Broadcast, documentation, multicast, etc. |
+| `NULL` | Non-IP string (e.g. CloudTrail `"AWS"` service identifier) |
+
+### Example queries
+
+```sql
+-- Top 10 source countries (excluding internal traffic)
+SELECT geo_country_code, geo_country_name, COUNT(*) AS events
+FROM cloudtrail_events
+WHERE geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+  AND geo_country_code IS NOT NULL
+GROUP BY geo_country_code, geo_country_name
+ORDER BY events DESC
+LIMIT 10;
+
+-- Failed auth attempts by ASN
+SELECT geo_asn, geo_org, COUNT(*) AS failures
+FROM cloudtrail_events
+WHERE error_code IN ('AccessDenied', 'AuthFailure', 'UnauthorizedOperation')
+  AND geo_asn IS NOT NULL
+GROUP BY geo_asn, geo_org
+ORDER BY failures DESC
+LIMIT 20;
+
+-- API calls from unexpected countries (excluding JP and US baseline)
+SELECT source_ip_address, geo_country_code, geo_city,
+       user_identity_arn, COUNT(*) AS events
+FROM cloudtrail_events
+WHERE geo_country_code NOT IN ('JP', 'US', 'PRIVATE', 'LOOPBACK')
+  AND geo_country_code IS NOT NULL
+GROUP BY source_ip_address, geo_country_code, geo_city, user_identity_arn
+ORDER BY events DESC;
+```
 
 ---
 
@@ -240,13 +377,53 @@ docker compose --profile resync run --rm superset-resync
 
 ---
 
+## ingester CLI Reference
+
+```
+ingester ingest --path <dir>
+                [--db             <path>]    # DuckDB file (default: /data/db/threat_hunting.db)
+                [--include        <globs>]   # comma-separated include patterns, e.g. "*CloudTrail*"
+                [--exclude        <globs>]   # comma-separated exclude patterns, e.g. "*vpcflowlogs*"
+                [--from           <YYYYMMDD>]# ingest files on or after this date
+                [--to             <YYYYMMDD>]# ingest files on or before this date
+                [--workers        <N>]       # parallel threads (default: CPU count)
+                [--geoip-city     <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
+                [--geoip-country  <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
+                [--geoip-asn      <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
+
+ingester enrich
+                [--db             <path>]    # DuckDB file (default: /data/db/threat_hunting.db)
+                [--geoip-city     <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
+                [--geoip-country  <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
+                [--geoip-asn      <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
+```
+
+> At least one of `--geoip-city` or `--geoip-country` is required for both `ingest` (to enable enrichment) and `enrich` commands. When both are provided, `--geoip-city` takes precedence.
+
+### Environment variables
+
+| Variable | Used by | Default |
+|----------|---------|---------|
+| `OPENAI_API_KEY` | agent | — |
+| `DUCKDB_PATH` | ingester, agent | — |
+| `OPENAI_MODEL` | agent | `gpt-5.4` |
+| `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` |
+| `GEOIP_CITY_PATH` | ingester | — |
+| `GEOIP_COUNTRY_PATH` | ingester | — |
+| `GEOIP_ASN_PATH` | ingester | — |
+| `DUCKDB_HOST_PATH` | docker host | `./data/db` |
+| `SUPERSET_SECRET_KEY` | dashboard | `change-me-in-production` |
+
+---
+
 ## Module Overview
 
 | Module | Language / Framework | Role |
 |--------|---------------------|------|
-| `ingester` | Rust 1.85+ | Parse and load CloudTrail logs into DuckDB (READ_WRITE) |
+| `ingester` | Rust 1.85+ | Parse and load CloudTrail logs into DuckDB; optional GeoIP enrichment (READ_WRITE) |
 | `agent` | Python 3.12+ / Streamlit | AI-Agent UI for interactive threat hunting (READ_ONLY) |
 | `dashboard` | Apache Superset | BI visualization of log data (READ_ONLY) |
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.

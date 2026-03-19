@@ -9,8 +9,21 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use duckdb::Connection;
 use ingester::date_filter::DateFilter;
-use ingester::ingest::{IngestStats, ingest_with_filters};
+use ingester::enrich::enrich_existing;
+use ingester::geoip::{GeoipConfig, GeoipEnricher};
+use ingester::ingest::{ingest_with_filters, ingest_with_geoip};
 use ingester::path_filter::PathFilter;
+
+/// Read an environment variable, returning `None` for both unset and empty values.
+///
+/// Docker Compose sets `VAR=${VAR:-}` which produces an empty string when the
+/// host variable is unset. We treat `""` the same as absent.
+fn env_var_non_empty(key: &str) -> Option<PathBuf> {
+    std::env::var(key)
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+}
 
 /// THuntCloud ingester — ingest AWS CloudTrail logs into DuckDB.
 #[derive(Debug, Parser)]
@@ -67,10 +80,57 @@ enum Commands {
         /// at the cost of throughput.
         #[arg(long, value_name = "N")]
         workers: Option<usize>,
+
+        /// Path to GeoLite2-City.mmdb for geo-enrichment of source_ip_address.
+        /// Falls back to the GEOIP_CITY_PATH environment variable.
+        /// When omitted, geo columns are stored as NULL (unless --geoip-country is set).
+        #[arg(long, value_name = "PATH")]
+        geoip_city: Option<PathBuf>,
+
+        /// Path to GeoLite2-Country.mmdb (lighter alternative to --geoip-city).
+        /// Falls back to the GEOIP_COUNTRY_PATH environment variable.
+        /// Provides country_code and country_name only; city/lat/lon will be NULL.
+        /// Ignored when --geoip-city is also set.
+        #[arg(long, value_name = "PATH")]
+        geoip_country: Option<PathBuf>,
+
+        /// Path to GeoLite2-ASN.mmdb for ASN/org enrichment.
+        /// Falls back to the GEOIP_ASN_PATH environment variable.
+        /// Works with both --geoip-city and --geoip-country.
+        #[arg(long, value_name = "PATH")]
+        geoip_asn: Option<PathBuf>,
+    },
+
+    /// Enrich existing cloudtrail_events rows with GeoIP data.
+    ///
+    /// Back-fills geo columns for a database that was ingested without a
+    /// GeoIP enricher.  Only rows where geo_country_code IS NULL are updated.
+    Enrich {
+        /// Path to the DuckDB database file.
+        /// Falls back to the DUCKDB_PATH environment variable, then /data/db/threat_hunting.db.
+        #[arg(short, long)]
+        db: Option<PathBuf>,
+
+        /// Path to GeoLite2-City.mmdb.
+        /// Falls back to the GEOIP_CITY_PATH environment variable.
+        #[arg(long, value_name = "PATH")]
+        geoip_city: Option<PathBuf>,
+
+        /// Path to GeoLite2-Country.mmdb (lighter alternative to --geoip-city).
+        /// Falls back to the GEOIP_COUNTRY_PATH environment variable.
+        /// Provides country_code and country_name only; city/lat/lon will be NULL.
+        /// Ignored when --geoip-city is also set.
+        #[arg(long, value_name = "PATH")]
+        geoip_country: Option<PathBuf>,
+
+        /// Path to GeoLite2-ASN.mmdb.
+        /// Falls back to the GEOIP_ASN_PATH environment variable.
+        #[arg(long, value_name = "PATH")]
+        geoip_asn: Option<PathBuf>,
     },
 }
 
-fn run() -> Result<IngestStats> {
+fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Ingest {
@@ -82,26 +142,23 @@ fn run() -> Result<IngestStats> {
             include,
             exclude,
             workers,
+            geoip_city,
+            geoip_country,
+            geoip_asn,
         } => {
             // Optionally cap the rayon thread pool before any parallel work.
-            // --workers 1 disables parallelism (lowest memory, useful for
-            // memory-constrained or single-core environments).
             if let Some(n) = workers {
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(n)
                     .build_global()
-                    .ok(); // harmless if the pool is already initialised
+                    .ok();
             }
 
-            // Build date filter (no-op when both from and to are None).
             let date_filter = DateFilter::from_strs(from.as_deref(), to.as_deref())
                 .context("Invalid --from / --to argument")?;
-
-            // Build path-pattern filter (no-op when both include and exclude are None).
             let path_filter = PathFilter::from_strs(include.as_deref(), exclude.as_deref())
                 .context("Invalid --include / --exclude argument")?;
 
-            // Resolve DB path: CLI arg > DUCKDB_PATH env > default
             let db_path = db.unwrap_or_else(|| {
                 std::env::var("DUCKDB_PATH")
                     .map(PathBuf::from)
@@ -109,19 +166,79 @@ fn run() -> Result<IngestStats> {
             });
             let conn = Connection::open(&db_path)
                 .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
-            ingest_with_filters(&path, &conn, !no_progress, &date_filter, &path_filter)
+
+            // Resolve GeoIP paths: CLI arg > env var (non-empty) > None.
+            let city_path = geoip_city.or_else(|| env_var_non_empty("GEOIP_CITY_PATH"));
+            let country_path = geoip_country.or_else(|| env_var_non_empty("GEOIP_COUNTRY_PATH"));
+            let asn_path = geoip_asn.or_else(|| env_var_non_empty("GEOIP_ASN_PATH"));
+
+            let stats = if city_path.is_some() || country_path.is_some() {
+                let enricher = GeoipEnricher::open(&GeoipConfig {
+                    city_db_path: city_path,
+                    country_db_path: country_path,
+                    asn_db_path: asn_path,
+                })
+                .context("Failed to open GeoIP database")?;
+                ingest_with_geoip(&path, &conn, !no_progress, &date_filter, &path_filter, &enricher)?
+            } else {
+                ingest_with_filters(&path, &conn, !no_progress, &date_filter, &path_filter)?
+            };
+
+            println!(
+                "Ingestion complete: files_processed={} records_inserted={} errors={} elapsed_secs={:.2}",
+                stats.files_processed, stats.records_inserted, stats.errors, stats.elapsed_secs,
+            );
+            Ok(())
+        }
+
+        Commands::Enrich {
+            db,
+            geoip_city,
+            geoip_country,
+            geoip_asn,
+        } => {
+            let db_path = db.unwrap_or_else(|| {
+                std::env::var("DUCKDB_PATH")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| PathBuf::from("/data/db/threat_hunting.db"))
+            });
+            let conn = Connection::open(&db_path)
+                .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
+
+            // Resolve GeoIP paths: CLI arg > env var (non-empty) > None.
+            let city_path = geoip_city.or_else(|| env_var_non_empty("GEOIP_CITY_PATH"));
+            let country_path = geoip_country.or_else(|| env_var_non_empty("GEOIP_COUNTRY_PATH"));
+            let asn_path = geoip_asn.or_else(|| env_var_non_empty("GEOIP_ASN_PATH"));
+
+            if city_path.is_none() && country_path.is_none() {
+                anyhow::bail!(
+                    "GeoLite2 database required: use --geoip-city, --geoip-country, \
+                     or set GEOIP_CITY_PATH / GEOIP_COUNTRY_PATH"
+                );
+            }
+
+            let enricher = GeoipEnricher::open(&GeoipConfig {
+                city_db_path: city_path,
+                country_db_path: country_path,
+                asn_db_path: asn_path,
+            })
+            .context("Failed to open GeoIP database")?;
+
+            let stats =
+                enrich_existing(&conn, &enricher).context("Failed to enrich database")?;
+
+            println!(
+                "Enrichment complete: enriched_count={} skipped_count={} elapsed_secs={:.2}",
+                stats.enriched_count, stats.skipped_count, stats.elapsed_secs,
+            );
+            Ok(())
         }
     }
 }
 
 fn main() {
     match run() {
-        Ok(stats) => {
-            println!(
-                "Ingestion complete: files_processed={} records_inserted={} errors={} elapsed_secs={:.2}",
-                stats.files_processed, stats.records_inserted, stats.errors, stats.elapsed_secs,
-            );
-        }
+        Ok(()) => {}
         Err(e) => {
             eprintln!("error: {e:#}");
             process::exit(1);

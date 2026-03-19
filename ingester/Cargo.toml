@@ -17,6 +17,8 @@ walkdir            = "2.5"
 rayon              = "1.10"
 sha2               = "0.10"
 hex                = "0.4"
+# MaxMind GeoIP2 / GeoLite2 .mmdb database reader
+maxminddb          = "0.24"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

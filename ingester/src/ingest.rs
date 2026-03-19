@@ -14,7 +14,8 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::date_filter::DateFilter;
-use crate::db::{ensure_table, fetch_ingested_files_map, insert_events};
+use crate::db::{ensure_table, fetch_ingested_files_map, insert_events_with_geo};
+use crate::geoip::GeoipEnricher;
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::path_filter::PathFilter;
 use crate::progress::ProgressReporter;
@@ -120,6 +121,7 @@ pub fn ingest_with_progress(
         show_progress,
         &DateFilter::default(),
         &PathFilter::default(),
+        None,
     )
 }
 
@@ -139,6 +141,7 @@ pub fn ingest_with_date_filter(
         show_progress,
         date_filter,
         &PathFilter::default(),
+        None,
     )
 }
 
@@ -157,7 +160,29 @@ pub fn ingest_with_filters(
     date_filter: &DateFilter,
     path_filter: &PathFilter,
 ) -> Result<IngestStats> {
-    ingest_core(path, conn, show_progress, date_filter, path_filter)
+    ingest_core(path, conn, show_progress, date_filter, path_filter, None)
+}
+
+/// Ingest log files with GeoIP enrichment, date-range filter, and path-pattern filter.
+///
+/// Identical to [`ingest_with_filters`] except that each event's
+/// `source_ip_address` is enriched via `geoip` and stored in the 7 geo columns.
+pub fn ingest_with_geoip(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+    path_filter: &PathFilter,
+    geoip: &GeoipEnricher,
+) -> Result<IngestStats> {
+    ingest_core(
+        path,
+        conn,
+        show_progress,
+        date_filter,
+        path_filter,
+        Some(geoip),
+    )
 }
 
 /// Core ingestion routine shared by all public entry points.
@@ -183,6 +208,7 @@ fn ingest_core(
     show_progress: bool,
     date_filter: &DateFilter,
     path_filter: &PathFilter,
+    geoip: Option<&GeoipEnricher>,
 ) -> Result<IngestStats> {
     ensure_table(conn)?;
 
@@ -238,7 +264,7 @@ fn ingest_core(
                         // Already ingested with the same checksum — skip.
                         stats.files_processed += 1;
                     } else {
-                        let inserted = insert_events(conn, &records)
+                        let inserted = insert_events_with_geo(conn, &records, geoip)
                             .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))?;
                         stats.files_processed += 1;
                         stats.records_inserted += inserted;
@@ -289,13 +315,14 @@ mod tests {
     use tempfile::{NamedTempFile, TempDir};
 
     /// Shared CloudTrail JSON content used across multiple tests.
+    /// sourceIPAddress is 81.2.69.160 — present in GeoLite2-City-Test.mmdb as GB/London.
     const SINGLE_EVENT_JSON: &str = r#"{
         "Records": [{
             "eventTime": "2024-01-15T10:30:00Z",
             "eventName": "DescribeInstances",
             "eventSource": "ec2.amazonaws.com",
             "awsRegion": "us-east-1",
-            "sourceIPAddress": "198.51.100.1",
+            "sourceIPAddress": "81.2.69.160",
             "userAgent": "aws-cli/2.0",
             "readOnly": true,
             "eventType": "AwsApiCall",
@@ -898,5 +925,69 @@ mod tests {
         );
         assert_eq!(stats.records_inserted, 2);
         assert_eq!(row_count(&conn), 2);
+    }
+
+    // Test I-01: ingest_with_geoip populates geo columns for known IPs.
+    #[test]
+    fn test_ingest_with_geoip_populates_geo_columns() {
+        use crate::geoip::{GeoipConfig, GeoipEnricher};
+        use std::path::PathBuf;
+
+        let city_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb");
+        let enricher = GeoipEnricher::open(&GeoipConfig {
+            city_db_path: Some(city_db),
+            country_db_path: None,
+            asn_db_path: None,
+        })
+        .expect("should open test City mmdb");
+
+        // SINGLE_EVENT_JSON has sourceIPAddress = 81.2.69.160 (GB in the test mmdb).
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        let stats = ingest_with_geoip(
+            tmp.path(),
+            &conn,
+            false,
+            &DateFilter::default(),
+            &PathFilter::default(),
+            &enricher,
+        )
+        .expect("ingest_with_geoip should succeed");
+
+        assert_eq!(stats.records_inserted, 1);
+
+        let country_code: Option<String> = conn
+            .query_row(
+                "SELECT geo_country_code FROM cloudtrail_events LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            country_code.as_deref(),
+            Some("GB"),
+            "geo_country_code should be GB for 81.2.69.160"
+        );
+    }
+
+    // Test I-02: ingest without GeoIP leaves geo columns NULL.
+    #[test]
+    fn test_ingest_without_geoip_geo_columns_are_null() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        let stats = ingest_with_conn(tmp.path(), &conn).expect("ingest should succeed");
+        assert_eq!(stats.records_inserted, 1);
+
+        let cc: Option<String> = conn
+            .query_row(
+                "SELECT geo_country_code FROM cloudtrail_events LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(cc.is_none(), "geo_country_code should be NULL without enricher");
     }
 }

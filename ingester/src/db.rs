@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use duckdb::{Connection, ToSql};
 
+use crate::geoip::{GeoInfo, GeoipEnricher};
 use crate::parser::CloudTrailEvent;
 
-/// Create the `cloudtrail_events` and `ingested_files` tables if they do not exist.
+/// Create the `cloudtrail_events` and `ingested_files` tables if they do not exist,
+/// then ensure the 7 geo-enrichment columns are present.
 ///
 /// This function is idempotent — calling it multiple times on the same
 /// connection is safe.
@@ -44,14 +46,39 @@ pub fn ensure_table(conn: &Connection) -> Result<()> {
         );
         ",
     )
-    .context("Failed to create database tables")
+    .context("Failed to create database tables")?;
+
+    ensure_geo_columns(conn)
 }
 
-/// Insert a slice of [`CloudTrailEvent`]s into the `cloudtrail_events` table.
+/// Add the 7 geo-enrichment columns to `cloudtrail_events` if they do not exist.
+///
+/// Uses `ALTER TABLE … ADD COLUMN IF NOT EXISTS` — safe to call repeatedly.
+pub fn ensure_geo_columns(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_code VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_name VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_city         VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_latitude     DOUBLE;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_longitude    DOUBLE;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_asn          VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
+        ",
+    )
+    .context("Failed to add geo columns to cloudtrail_events")
+}
+
+/// Insert a slice of [`CloudTrailEvent`]s with optional GeoIP enrichment.
 ///
 /// Uses [`duckdb::Appender`] for high-throughput batch inserts.
+/// When `geoip` is `None`, all geo columns are written as `NULL`.
 /// Returns the number of rows inserted.
-pub fn insert_events(conn: &Connection, events: &[CloudTrailEvent]) -> Result<usize> {
+pub fn insert_events_with_geo(
+    conn: &Connection,
+    events: &[CloudTrailEvent],
+    geoip: Option<&GeoipEnricher>,
+) -> Result<usize> {
     if events.is_empty() {
         return Ok(0);
     }
@@ -73,26 +100,38 @@ pub fn insert_events(conn: &Connection, events: &[CloudTrailEvent]) -> Result<us
         let req_params = event.request_parameters.as_ref().map(|v| v.to_string());
         let resp_elements = event.response_elements.as_ref().map(|v| v.to_string());
 
-        // Build a slice of trait-object references for the 17-column table.
-        // Using Vec<&dyn ToSql> keeps the code maintainable as columns change.
+        // Look up geo info for the source IP (or return all-None when no enricher).
+        let geo: GeoInfo = match (geoip, &event.source_ip_address) {
+            (Some(enricher), Some(ip)) => enricher.lookup(ip),
+            _ => GeoInfo::all_none(),
+        };
+
+        // Build a slice of trait-object references for the 24-column table.
         let params: Vec<&dyn ToSql> = vec![
-            &event.event_time,           // event_time       TIMESTAMP  (auto-cast from &str)
-            &event.event_name,           // event_name       VARCHAR
-            &event.event_source,         // event_source     VARCHAR
-            &event.aws_region,           // aws_region       VARCHAR
-            &event.source_ip_address,    // source_ip_address VARCHAR (Option)
-            &event.user_agent,           // user_agent        VARCHAR (Option)
-            &ui_type,                    // user_identity_type VARCHAR (Option)
-            &ui_arn,                     // user_identity_arn  VARCHAR (Option)
+            &event.event_time,           // event_time               TIMESTAMP
+            &event.event_name,           // event_name               VARCHAR
+            &event.event_source,         // event_source             VARCHAR
+            &event.aws_region,           // aws_region               VARCHAR
+            &event.source_ip_address,    // source_ip_address        VARCHAR (Option)
+            &event.user_agent,           // user_agent               VARCHAR (Option)
+            &ui_type,                    // user_identity_type       VARCHAR (Option)
+            &ui_arn,                     // user_identity_arn        VARCHAR (Option)
             &ui_account_id,              // user_identity_account_id VARCHAR (Option)
-            &req_params,                 // request_parameters VARCHAR (Option<String>)
-            &resp_elements,              // response_elements  VARCHAR (Option<String>)
-            &event.error_code,           // error_code         VARCHAR (Option)
-            &event.error_message,        // error_message      VARCHAR (Option)
-            &event.read_only,            // read_only          BOOLEAN (Option)
-            &event.event_type,           // event_type         VARCHAR (Option)
-            &event.recipient_account_id, // recipient_account_id VARCHAR (Option)
-            &raw_event,                  // raw_event          VARCHAR (JSON string)
+            &req_params,                 // request_parameters       VARCHAR (Option<String>)
+            &resp_elements,              // response_elements        VARCHAR (Option<String>)
+            &event.error_code,           // error_code               VARCHAR (Option)
+            &event.error_message,        // error_message            VARCHAR (Option)
+            &event.read_only,            // read_only                BOOLEAN (Option)
+            &event.event_type,           // event_type               VARCHAR (Option)
+            &event.recipient_account_id, // recipient_account_id     VARCHAR (Option)
+            &raw_event,                  // raw_event                VARCHAR (JSON string)
+            &geo.country_code,           // geo_country_code         VARCHAR (Option)
+            &geo.country_name,           // geo_country_name         VARCHAR (Option)
+            &geo.city,                   // geo_city                 VARCHAR (Option)
+            &geo.latitude,               // geo_latitude             DOUBLE  (Option)
+            &geo.longitude,              // geo_longitude            DOUBLE  (Option)
+            &geo.asn,                    // geo_asn                  VARCHAR (Option)
+            &geo.org,                    // geo_org                  VARCHAR (Option)
         ];
 
         appender
@@ -224,7 +263,8 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let event = full_event();
-        let inserted = insert_events(&conn, &[event]).expect("insert_events should succeed");
+        let inserted =
+            insert_events_with_geo(&conn, &[event], None).expect("insert should succeed");
 
         assert_eq!(inserted, 1);
 
@@ -253,7 +293,8 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let events: Vec<CloudTrailEvent> = (0..100).map(|_| full_event()).collect();
-        let inserted = insert_events(&conn, &events).expect("batch insert should succeed");
+        let inserted =
+            insert_events_with_geo(&conn, &events, None).expect("batch insert should succeed");
 
         assert_eq!(inserted, 100);
 
@@ -273,8 +314,8 @@ mod tests {
 
         // minimal_event() has all optional fields set to None.
         let event = minimal_event();
-        let inserted =
-            insert_events(&conn, &[event]).expect("insert with null fields should succeed");
+        let inserted = insert_events_with_geo(&conn, &[event], None)
+            .expect("insert with null fields should succeed");
         assert_eq!(inserted, 1);
 
         // Verify the NULL columns are actually NULL in the database.
@@ -287,6 +328,134 @@ mod tests {
             .unwrap();
         assert!(src_ip.is_none());
         assert!(error_code.is_none());
+    }
+
+    // Test D-01: ensure_geo_columns adds 7 new columns to cloudtrail_events.
+    #[test]
+    fn test_ensure_geo_columns_adds_seven_columns() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        // Verify all 7 geo columns exist via information_schema (works on empty table).
+        let geo_col_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM information_schema.columns \
+                 WHERE table_name = 'cloudtrail_events' AND column_name LIKE 'geo_%'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("information_schema query should succeed");
+        assert_eq!(geo_col_count, 7, "should have exactly 7 geo_ columns");
+    }
+
+    // Test D-02: ensure_geo_columns is idempotent.
+    #[test]
+    fn test_ensure_geo_columns_is_idempotent() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        ensure_geo_columns(&conn).expect("second call to ensure_geo_columns should succeed");
+        ensure_geo_columns(&conn).expect("third call to ensure_geo_columns should also succeed");
+    }
+
+    // Test D-03: insert_events_with_geo stores geo data when GeoInfo is provided.
+    #[test]
+    fn test_insert_events_with_geo_populates_columns() {
+        use crate::geoip::GeoipConfig;
+        use crate::geoip::GeoipEnricher;
+        use std::path::PathBuf;
+
+        let city_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb");
+        let config = GeoipConfig {
+            city_db_path: Some(city_db),
+            country_db_path: None,
+            asn_db_path: None,
+        };
+        let enricher = GeoipEnricher::open(&config).expect("should open test mmdb");
+
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        // Use a known IP from the test mmdb: 81.2.69.160 → GB / London.
+        let mut event = full_event();
+        event.source_ip_address = Some("81.2.69.160".to_string());
+
+        insert_events_with_geo(&conn, &[event], Some(&enricher))
+            .expect("insert with geo should succeed");
+
+        let country_code: Option<String> = conn
+            .query_row(
+                "SELECT geo_country_code FROM cloudtrail_events LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            country_code.as_deref(),
+            Some("GB"),
+            "geo_country_code should be GB for 81.2.69.160"
+        );
+    }
+
+    // Test D-04: insert_events_with_geo stores NULL geo columns when no enricher.
+    #[test]
+    fn test_insert_events_without_geo_columns_are_null() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        let event = full_event();
+        insert_events_with_geo(&conn, &[event], None).expect("insert without geo should succeed");
+
+        let (cc, cn, city): (Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT geo_country_code, geo_country_name, geo_city FROM cloudtrail_events LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert!(cc.is_none(), "geo_country_code should be NULL without enricher");
+        assert!(cn.is_none(), "geo_country_name should be NULL without enricher");
+        assert!(city.is_none(), "geo_city should be NULL without enricher");
+    }
+
+    // Test D-05: Private IPs are stored with the "PRIVATE" marker.
+    #[test]
+    fn test_insert_events_private_ip_stores_marker() {
+        use crate::geoip::GeoipConfig;
+        use crate::geoip::GeoipEnricher;
+        use std::path::PathBuf;
+
+        let city_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb");
+        let config = GeoipConfig {
+            city_db_path: Some(city_db),
+            country_db_path: None,
+            asn_db_path: None,
+        };
+        let enricher = GeoipEnricher::open(&config).expect("should open test mmdb");
+
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        let mut event = full_event();
+        event.source_ip_address = Some("10.0.0.1".to_string());
+
+        insert_events_with_geo(&conn, &[event], Some(&enricher))
+            .expect("insert with private IP should succeed");
+
+        let country_code: Option<String> = conn
+            .query_row(
+                "SELECT geo_country_code FROM cloudtrail_events LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            country_code.as_deref(),
+            Some("PRIVATE"),
+            "geo_country_code should be PRIVATE for 10.0.0.1"
+        );
     }
 
     // Test #37: fetch_ingested_files_map returns an empty map when no files have been ingested.
