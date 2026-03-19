@@ -215,7 +215,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("information_schema query should succeed");
-        assert_eq!(geo_col_count, 7, "should have exactly 7 geo_ columns after enrich_existing");
+        assert_eq!(
+            geo_col_count, 7,
+            "should have exactly 7 geo_ columns after enrich_existing"
+        );
     }
 
     // Test E-02: enrich_existing updates a public IP with correct geo data.
@@ -230,7 +233,10 @@ mod tests {
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
 
-        assert!(stats.enriched_count > 0, "at least one row should be updated");
+        assert!(
+            stats.enriched_count > 0,
+            "at least one row should be updated"
+        );
 
         let country_code: Option<String> = conn
             .query_row(
@@ -276,7 +282,10 @@ mod tests {
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
 
-        assert_eq!(stats.skipped_count, 1, "one row with NULL source_ip should be skipped");
+        assert_eq!(
+            stats.skipped_count, 1,
+            "one row with NULL source_ip should be skipped"
+        );
         assert_eq!(stats.enriched_count, 0, "no rows should be enriched");
     }
 
@@ -293,7 +302,10 @@ mod tests {
 
         // Second run: rows now have geo_country_code = "GB" → WHERE IS NULL excludes them.
         let stats2 = enrich_existing(&conn, &enricher).expect("second enrich should succeed");
-        assert_eq!(stats2.enriched_count, 0, "no rows should be re-enriched on second run");
+        assert_eq!(
+            stats2.enriched_count, 0,
+            "no rows should be re-enriched on second run"
+        );
     }
 
     // Test E-06: Same IP in multiple rows triggers only one mmdb lookup (dedup).
@@ -310,7 +322,10 @@ mod tests {
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
 
         // All 5 rows should be updated in one batch UPDATE statement.
-        assert_eq!(stats.enriched_count, 5, "all 5 rows with the same IP should be updated");
+        assert_eq!(
+            stats.enriched_count, 5,
+            "all 5 rows with the same IP should be updated"
+        );
 
         // Verify all rows have the correct country code.
         let count: i64 = conn
@@ -337,8 +352,14 @@ mod tests {
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
 
         assert!(stats.enriched_count > 0, "enriched_count should be > 0");
-        assert_eq!(stats.skipped_count, 1, "skipped_count should be 1 for NULL ip row");
-        assert!(stats.elapsed_secs >= 0.0, "elapsed_secs must be non-negative");
+        assert_eq!(
+            stats.skipped_count, 1,
+            "skipped_count should be 1 for NULL ip row"
+        );
+        assert!(
+            stats.elapsed_secs >= 0.0,
+            "elapsed_secs must be non-negative"
+        );
     }
 
     // Test E-08: Non-IP strings like "AWS" result in NULL geo columns (no error).
@@ -368,5 +389,3 @@ mod tests {
         );
     }
 }
-
-

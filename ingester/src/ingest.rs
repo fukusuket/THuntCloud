@@ -988,6 +988,9 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert!(cc.is_none(), "geo_country_code should be NULL without enricher");
+        assert!(
+            cc.is_none(),
+            "geo_country_code should be NULL without enricher"
+        );
     }
 }

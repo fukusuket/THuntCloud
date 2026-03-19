@@ -94,9 +94,7 @@ impl GeoipEnricher {
             .transpose()?;
 
         if city_reader.is_none() && country_reader.is_none() {
-            anyhow::bail!(
-                "GeoipConfig requires at least one of city_db_path or country_db_path"
-            );
+            anyhow::bail!("GeoipConfig requires at least one of city_db_path or country_db_path");
         }
 
         let asn_reader = config
@@ -186,12 +184,8 @@ impl GeoipEnricher {
         if let Some(asn_reader) = &self.asn_reader
             && let Ok(asn) = asn_reader.lookup::<geoip2::Asn>(addr)
         {
-            info.asn = asn
-                .autonomous_system_number
-                .map(|n| format!("AS{n}"));
-            info.org = asn
-                .autonomous_system_organization
-                .map(str::to_string);
+            info.asn = asn.autonomous_system_number.map(|n| format!("AS{n}"));
+            info.org = asn.autonomous_system_organization.map(str::to_string);
         }
 
         info
@@ -209,9 +203,8 @@ impl GeoipEnricher {
 /// archives, e.g. `GeoLite2-Country_20260317/GeoLite2-Country.mmdb`.
 fn open_reader(path: &Path, label: &str) -> Result<maxminddb::Reader<Vec<u8>>> {
     let resolved = resolve_mmdb_path(path, label)?;
-    let data = std::fs::read(&resolved).with_context(|| {
-        format!("Failed to read {label} database at {}", resolved.display())
-    })?;
+    let data = std::fs::read(&resolved)
+        .with_context(|| format!("Failed to read {label} database at {}", resolved.display()))?;
     maxminddb::Reader::from_source(data)
         .with_context(|| format!("Corrupt GeoIP database at {}", resolved.display()))
 }
@@ -229,9 +222,7 @@ fn resolve_mmdb_path(path: &Path, label: &str) -> Result<PathBuf> {
 
     if path.is_dir() {
         let mut entries: Vec<PathBuf> = std::fs::read_dir(path)
-            .with_context(|| {
-                format!("Failed to read directory {} for {label}", path.display())
-            })?
+            .with_context(|| format!("Failed to read directory {} for {label}", path.display()))?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("mmdb"))
@@ -576,8 +567,7 @@ mod tests {
             country_db_path: Some(test_country_db_path()),
             asn_db_path: Some(test_asn_db_path()),
         };
-        let enricher =
-            GeoipEnricher::open(&config).expect("should open country + ASN dbs");
+        let enricher = GeoipEnricher::open(&config).expect("should open country + ASN dbs");
 
         // 81.2.69.160 → GB from Country DB
         let info = enricher.lookup("81.2.69.160");
@@ -617,13 +607,15 @@ mod tests {
     fn test_resolve_mmdb_path_with_directory() {
         // The testdata/geoip directory contains .mmdb files.
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/geoip");
-        let resolved =
-            resolve_mmdb_path(&dir, "test").expect("should find .mmdb in directory");
+        let resolved = resolve_mmdb_path(&dir, "test").expect("should find .mmdb in directory");
         assert!(
             resolved.extension().and_then(|e| e.to_str()) == Some("mmdb"),
             "resolved path should have .mmdb extension"
         );
-        assert!(resolved.is_file(), "resolved path should be an existing file");
+        assert!(
+            resolved.is_file(),
+            "resolved path should be an existing file"
+        );
     }
 
     // Test G-25: GeoipEnricher::open accepts a directory path and finds the mmdb inside.
@@ -634,9 +626,9 @@ mod tests {
         // Note: the testdata/geoip dir contains multiple mmdb files; we only verify
         // that open() succeeds (i.e. it does not error on directory input).
         let config = GeoipConfig {
-            city_db_path: Some(test_city_db_path()),   // use known-good file for enricher
+            city_db_path: Some(test_city_db_path()), // use known-good file for enricher
             country_db_path: None,
-            asn_db_path: Some(dir.clone()),             // pass directory for ASN
+            asn_db_path: Some(dir.clone()), // pass directory for ASN
         };
         let enricher = GeoipEnricher::open(&config).expect("open should accept directory for ASN");
         // Just verify lookup works without panic.

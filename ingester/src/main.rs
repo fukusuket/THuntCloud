@@ -179,7 +179,14 @@ fn run() -> Result<()> {
                     asn_db_path: asn_path,
                 })
                 .context("Failed to open GeoIP database")?;
-                ingest_with_geoip(&path, &conn, !no_progress, &date_filter, &path_filter, &enricher)?
+                ingest_with_geoip(
+                    &path,
+                    &conn,
+                    !no_progress,
+                    &date_filter,
+                    &path_filter,
+                    &enricher,
+                )?
             } else {
                 ingest_with_filters(&path, &conn, !no_progress, &date_filter, &path_filter)?
             };
@@ -224,8 +231,7 @@ fn run() -> Result<()> {
             })
             .context("Failed to open GeoIP database")?;
 
-            let stats =
-                enrich_existing(&conn, &enricher).context("Failed to enrich database")?;
+            let stats = enrich_existing(&conn, &enricher).context("Failed to enrich database")?;
 
             println!(
                 "Enrichment complete: enriched_count={} skipped_count={} elapsed_secs={:.2}",

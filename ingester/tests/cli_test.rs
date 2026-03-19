@@ -11,8 +11,7 @@ use tempfile::{NamedTempFile, TempDir};
 
 /// Returns the path to the GeoLite2-City test mmdb fixture.
 fn test_city_db_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/geoip/GeoLite2-City-Test.mmdb")
 }
 
 /// Write a minimal CloudTrail JSON file and return the temp file handle.

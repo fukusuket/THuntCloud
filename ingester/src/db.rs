@@ -414,8 +414,14 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert!(cc.is_none(), "geo_country_code should be NULL without enricher");
-        assert!(cn.is_none(), "geo_country_name should be NULL without enricher");
+        assert!(
+            cc.is_none(),
+            "geo_country_code should be NULL without enricher"
+        );
+        assert!(
+            cn.is_none(),
+            "geo_country_name should be NULL without enricher"
+        );
         assert!(city.is_none(), "geo_city should be NULL without enricher");
     }
 
