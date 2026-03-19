@@ -35,6 +35,13 @@ def test_get_column_names_returns_list():
         "event_type",
         "recipient_account_id",
         "raw_event",
+        "geo_country_code",
+        "geo_country_name",
+        "geo_city",
+        "geo_latitude",
+        "geo_longitude",
+        "geo_asn",
+        "geo_org",
     ]
 
     columns = get_column_names()

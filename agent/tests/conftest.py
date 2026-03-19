@@ -69,7 +69,14 @@ def tmp_duckdb(tmp_path):
             read_only                BOOLEAN,
             event_type               VARCHAR,
             recipient_account_id     VARCHAR,
-            raw_event                JSON
+            raw_event                JSON,
+            geo_country_code         VARCHAR,
+            geo_country_name         VARCHAR,
+            geo_city                 VARCHAR,
+            geo_latitude             DOUBLE,
+            geo_longitude            DOUBLE,
+            geo_asn                  VARCHAR,
+            geo_org                  VARCHAR
         )
     """)
     conn.execute("""

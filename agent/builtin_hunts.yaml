@@ -984,3 +984,256 @@
     )
     ORDER BY event_time DESC
     LIMIT 100
+
+# ===========================================================================
+# GeoIP Analysis
+# ===========================================================================
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f30d Top Source Countries"
+  description: "Ranks source countries by API call volume. Identifies the geographic distribution of all activity."
+  prompt: |
+    Rank source countries by API call volume using the geo_country_code and
+    geo_country_name columns. Show event count and unique IP count per country.
+    Exclude private/loopback/link-local IPs.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_country_name,
+        COUNT(*)                            AS event_count,
+        COUNT(DISTINCT source_ip_address)   AS unique_ips,
+        COUNT(DISTINCT user_identity_arn)   AS unique_identities,
+        COUNT(*) FILTER (WHERE read_only = false) AS write_events
+    FROM cloudtrail_events
+    WHERE geo_country_code IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code, geo_country_name
+    ORDER BY event_count DESC
+    LIMIT 20
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f6a8 Unusual Country Access"
+  description: "Detects API calls from unexpected countries by showing rare country/identity combinations."
+  prompt: |
+    Find all source IPs from countries other than the expected baseline,
+    grouped by user identity ARN. Show event counts and countries.
+    Focus on countries with fewer than 10 total events — they are more likely
+    to represent attacker infrastructure.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_country_name,
+        user_identity_arn,
+        source_ip_address,
+        COUNT(*)        AS event_count,
+        MIN(event_time) AS first_seen,
+        MAX(event_time) AS last_seen
+    FROM cloudtrail_events
+    WHERE geo_country_code IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code, geo_country_name, user_identity_arn, source_ip_address
+    HAVING COUNT(*) < 10
+    ORDER BY event_count ASC
+    LIMIT 100
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f3e2 Top ASN / Organizations"
+  description: "Lists autonomous systems (ISPs/cloud providers) by API call volume. Spot VPN/hosting providers."
+  prompt: |
+    Show the top ASN organizations making API calls. Cloud provider ASNs
+    (AWS, GCP, Azure) are expected, but VPN/hosting providers may indicate
+    attacker infrastructure.
+  sql: |
+    SELECT
+        geo_asn,
+        geo_org,
+        geo_country_code,
+        COUNT(*)                            AS event_count,
+        COUNT(DISTINCT source_ip_address)   AS unique_ips,
+        COUNT(DISTINCT user_identity_arn)   AS unique_identities
+    FROM cloudtrail_events
+    WHERE geo_asn IS NOT NULL
+    GROUP BY geo_asn, geo_org, geo_country_code
+    ORDER BY event_count DESC
+    LIMIT 30
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\u26a0 Identity Multi-Country Access"
+  description: "Finds identities calling APIs from 2+ countries. May indicate credential theft used from different locations."
+  prompt: |
+    Identify user identities that made API calls from two or more distinct
+    countries. This is a strong indicator of credential compromise —
+    legitimate users rarely operate from multiple countries simultaneously.
+  sql: |
+    SELECT
+        user_identity_arn,
+        COUNT(DISTINCT geo_country_code)     AS distinct_countries,
+        array_agg(DISTINCT geo_country_code) AS countries,
+        COUNT(*)                             AS total_events,
+        MIN(event_time)                      AS first_seen,
+        MAX(event_time)                      AS last_seen
+    FROM cloudtrail_events
+    WHERE geo_country_code IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+      AND user_identity_arn IS NOT NULL
+    GROUP BY user_identity_arn
+    HAVING COUNT(DISTINCT geo_country_code) >= 2
+    ORDER BY distinct_countries DESC
+    LIMIT 50
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f575 Impossible Travel Detection"
+  description: "Detects the same identity calling APIs from distant cities within a short time window."
+  prompt: |
+    Find cases where the same user_identity_arn made API calls from
+    geographically distant locations (different cities or countries)
+    within a short time window (e.g., less than 2 hours apart).
+    This "impossible travel" pattern strongly indicates credential compromise.
+    Use geo_city and geo_country_code columns.
+  sql: |
+    WITH geo_sessions AS (
+        SELECT
+            user_identity_arn,
+            event_time,
+            source_ip_address,
+            geo_country_code,
+            geo_city,
+            LAG(event_time)        OVER w AS prev_time,
+            LAG(geo_country_code)  OVER w AS prev_country,
+            LAG(geo_city)          OVER w AS prev_city,
+            LAG(source_ip_address) OVER w AS prev_ip
+        FROM cloudtrail_events
+        WHERE user_identity_arn IS NOT NULL
+          AND geo_country_code IS NOT NULL
+          AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+        WINDOW w AS (PARTITION BY user_identity_arn ORDER BY event_time)
+    )
+    SELECT
+        user_identity_arn,
+        prev_time               AS from_time,
+        event_time              AS to_time,
+        prev_ip                 AS from_ip,
+        source_ip_address       AS to_ip,
+        prev_country            AS from_country,
+        prev_city               AS from_city,
+        geo_country_code        AS to_country,
+        geo_city                AS to_city,
+        EXTRACT(EPOCH FROM (event_time - prev_time)) / 60 AS minutes_apart
+    FROM geo_sessions
+    WHERE prev_country IS NOT NULL
+      AND (prev_country != geo_country_code OR prev_city != geo_city)
+      AND event_time - prev_time < INTERVAL '2 hours'
+    ORDER BY minutes_apart ASC
+    LIMIT 50
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f5fa Console Logins by Country"
+  description: "Maps console login events to their geographic origin. Logins from unexpected countries are high-risk."
+  prompt: |
+    Show all console login events with their GeoIP information.
+    Group by country and show success/failure counts. Console logins
+    from unexpected countries are a critical indicator of compromise.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_country_name,
+        geo_city,
+        source_ip_address,
+        user_identity_arn,
+        json_extract_string(raw_event, '$.responseElements.ConsoleLogin') AS login_result,
+        event_time,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'signin.amazonaws.com'
+      AND event_name   = 'ConsoleLogin'
+      AND geo_country_code IS NOT NULL
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f310 Private / Internal IP Summary"
+  description: "Summarizes events from private, loopback, and AWS-internal IPs. Baseline for expected internal traffic."
+  prompt: |
+    Summarize events originating from private IPs, loopback, and link-local
+    addresses. These represent internal AWS traffic and should dominate
+    the baseline. Show breakdown by IP type marker and top callers.
+  sql: |
+    SELECT
+        geo_country_code                    AS ip_type,
+        COUNT(*)                            AS event_count,
+        COUNT(DISTINCT source_ip_address)   AS unique_ips,
+        COUNT(DISTINCT user_identity_arn)   AS unique_identities,
+        COUNT(DISTINCT event_name)          AS distinct_apis
+    FROM cloudtrail_events
+    WHERE geo_country_code IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code
+    ORDER BY event_count DESC
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f50d Write Events by Country"
+  description: "Shows mutating (write) API calls grouped by country. Writes from unexpected countries are high-priority."
+  prompt: |
+    Show all write (mutating) API calls grouped by source country.
+    Writes from unexpected countries are a stronger signal than reads.
+    Include event counts, unique callers, and top event names per country.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_country_name,
+        COUNT(*)                            AS write_events,
+        COUNT(DISTINCT user_identity_arn)   AS unique_callers,
+        COUNT(DISTINCT event_name)          AS distinct_apis,
+        array_agg(DISTINCT event_name ORDER BY event_name)[:5] AS sample_apis
+    FROM cloudtrail_events
+    WHERE read_only = false
+      AND geo_country_code IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code, geo_country_name
+    ORDER BY write_events DESC
+    LIMIT 20
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f6ab Access Denied by Country"
+  description: "Groups access denied errors by source country. Concentrated denials from one country may signal an attack."
+  prompt: |
+    Show access denied errors grouped by source country. Concentrated
+    denials from a single foreign country may indicate a credential
+    stuffing or brute force attack from that region.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_country_name,
+        COUNT(*)                            AS denied_count,
+        COUNT(DISTINCT source_ip_address)   AS unique_ips,
+        COUNT(DISTINCT user_identity_arn)   AS unique_identities,
+        MIN(event_time)                     AS first_seen,
+        MAX(event_time)                     AS last_seen
+    FROM cloudtrail_events
+    WHERE error_code IN ('AccessDenied', 'AccessDeniedException', 'UnauthorizedAccess')
+      AND geo_country_code IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code, geo_country_name
+    ORDER BY denied_count DESC
+    LIMIT 20
+
+- category: "\U0001f30d GeoIP Analysis"
+  label: "\U0001f4cd Top Source Cities"
+  description: "Ranks source cities by event volume. Pinpoints the most active geographic origins."
+  prompt: |
+    Rank source cities by API call volume. Show country, city, event count,
+    and unique IPs. City-level data can help identify specific attacker
+    infrastructure or corporate office locations.
+  sql: |
+    SELECT
+        geo_country_code,
+        geo_city,
+        COUNT(*)                            AS event_count,
+        COUNT(DISTINCT source_ip_address)   AS unique_ips,
+        COUNT(DISTINCT user_identity_arn)   AS unique_callers
+    FROM cloudtrail_events
+    WHERE geo_city IS NOT NULL
+      AND geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
+    GROUP BY geo_country_code, geo_city
+    ORDER BY event_count DESC
+    LIMIT 30
+

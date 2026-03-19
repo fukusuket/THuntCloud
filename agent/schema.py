@@ -107,6 +107,48 @@ CLOUDTRAIL_COLUMNS: list[dict] = [
         "nullable": False,
         "description": "Full original CloudTrail event as JSON string",
     },
+    {
+        "name": "geo_country_code",
+        "type": "VARCHAR",
+        "nullable": True,
+        "description": "GeoIP country code (e.g. US, JP) or PRIVATE/LOOPBACK/LINK-LOCAL for special IPs",
+    },
+    {
+        "name": "geo_country_name",
+        "type": "VARCHAR",
+        "nullable": True,
+        "description": "GeoIP country name (e.g. United States, Japan)",
+    },
+    {
+        "name": "geo_city",
+        "type": "VARCHAR",
+        "nullable": True,
+        "description": "GeoIP city name (e.g. Tokyo, London)",
+    },
+    {
+        "name": "geo_latitude",
+        "type": "DOUBLE",
+        "nullable": True,
+        "description": "GeoIP latitude coordinate",
+    },
+    {
+        "name": "geo_longitude",
+        "type": "DOUBLE",
+        "nullable": True,
+        "description": "GeoIP longitude coordinate",
+    },
+    {
+        "name": "geo_asn",
+        "type": "VARCHAR",
+        "nullable": True,
+        "description": "Autonomous System Number (e.g. AS15169)",
+    },
+    {
+        "name": "geo_org",
+        "type": "VARCHAR",
+        "nullable": True,
+        "description": "Organization name associated with the ASN (e.g. Google LLC)",
+    },
 ]
 
 
