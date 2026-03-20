@@ -168,7 +168,6 @@ sequenceDiagram
 ```bash
 git clone https://github.com/fukusuket/THuntCloud.git
 cd THuntCloud
-export OPENAI_API_KEY="sk-..."   # Set your OpenAI API key
 ```
 
 ### 2. Place CloudTrail logs
@@ -183,8 +182,7 @@ cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 ```bash
 cd docker
 docker compose --profile ingest build ingester
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
 ```
 
 #### With GeoIP enrichment (optional)
@@ -235,8 +233,6 @@ docker compose --profile ingest run --rm ingester enrich \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
 
 ```
-
-The `enrich` command is **idempotent** — rows that already have a `geo_country_code` value are skipped automatically.
 
 ### 4. Start all services
 
