@@ -123,7 +123,6 @@ impl GeoipEnricher {
         let addr = match ip_str.parse::<IpAddr>() {
             Ok(a) => a,
             Err(_) => {
-                eprintln!("Warning: Skipping non-IP source_ip_address: {ip_str}");
                 return GeoInfo::all_none();
             }
         };
