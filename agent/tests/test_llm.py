@@ -3,7 +3,13 @@
 import openai
 import pandas as pd
 
-from llm import MAX_CONTEXT_TURNS, build_system_prompt, fix_sql_with_llm, generate_analysis, generate_sql
+from llm import (
+    MAX_CONTEXT_TURNS,
+    build_system_prompt,
+    fix_sql_with_llm,
+    generate_analysis,
+    generate_sql,
+)
 
 
 def test_build_system_prompt_includes_schema():
@@ -189,4 +195,3 @@ def test_fix_sql_with_llm_handles_api_error(mock_openai_client):
     )
 
     assert result.startswith("[error]")
-

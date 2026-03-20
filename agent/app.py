@@ -461,9 +461,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     error_message: str | None = None
     try:
         conn = connect_duckdb(db_path)
-        results, final_sql = execute_with_retry(
-            conn, sql, api_key=api_key, model=model
-        )
+        results, final_sql = execute_with_retry(conn, sql, api_key=api_key, model=model)
         conn.close()
         if final_sql != original_sql:
             sql = final_sql
@@ -502,8 +500,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
         assistant_content = (
             f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
             f"**Results:** {row_summary}\n\n"
-            f"**Summary:**\n{summary}"
-            + retry_notice
+            f"**Summary:**\n{summary}" + retry_notice
         )
 
     st.session_state.messages.append(

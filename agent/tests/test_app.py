@@ -778,4 +778,3 @@ def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
     assert len(mock_state["messages"]) == 1
     content = mock_state["messages"][0]["content"]
     assert "auto-corrected" in content
-

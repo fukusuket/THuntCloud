@@ -259,5 +259,6 @@ def execute_with_retry(
             sql = corrected
 
     # Unreachable; satisfies type checkers.
-    raise QueryValidationError("execute_with_retry exhausted without result")  # pragma: no cover
-
+    raise QueryValidationError(
+        "execute_with_retry exhausted without result"
+    )  # pragma: no cover

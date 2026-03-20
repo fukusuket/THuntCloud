@@ -348,4 +348,3 @@ def test_execute_with_retry_does_not_retry_on_timeout(tmp_duckdb):
 
     mock_fix.assert_not_called()
     conn.close()
-

@@ -61,9 +61,7 @@ def _create_client(api_key: str) -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
-def _build_context_messages(
-    context: list[dict], max_turns: int
-) -> list[dict]:
+def _build_context_messages(context: list[dict], max_turns: int) -> list[dict]:
     """Convert conversation context entries to OpenAI message pairs.
 
     Takes the most recent *max_turns* entries from *context* and formats
