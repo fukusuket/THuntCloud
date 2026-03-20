@@ -271,11 +271,6 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
-```bash
-cd docker
-docker compose --profile resync run --rm superset-resync
-```
-
 ---
 
 ## ingester CLI Reference
