@@ -71,6 +71,7 @@ def main() -> None:
                 print(f"    Dataset '{TABLE_NAME}' already registered — forcing metadata re-sync...")
                 _sync_metadata(existing)
                 _register_metrics(existing)
+                _register_geo_columns(existing)
             else:
                 print(f"    Dataset '{TABLE_NAME}' already registered — skipping.")
                 print("    Tip: set FORCE_RESYNC=true to re-sync column metadata.")
@@ -99,6 +100,9 @@ def main() -> None:
 
         # Register custom metrics required by dashboard charts.
         _register_metrics(dataset)
+        # Register GeoIP columns explicitly so dashboard charts can reference them
+        # even when the DuckDB table was ingested without a GeoLite2 database.
+        _register_geo_columns(dataset)
     finally:
         ctx.pop()
 
@@ -158,6 +162,59 @@ def _register_metrics(dataset: "SqlaTable") -> None:
         print(f"    Registered {added} custom metrics.")
     else:
         print("    Custom metrics already registered — skipping.")
+
+
+# GeoIP enrichment columns to register explicitly in the Superset dataset.
+# These columns are always added to the schema by the ingester (ALTER TABLE …
+# ADD COLUMN IF NOT EXISTS), but their values are NULL when ingested without a
+# GeoLite2 database.  Registering them here ensures that dashboard charts that
+# reference geo_* columns can be imported and rendered regardless of whether
+# GeoIP enrichment has been performed.
+GEO_COLUMNS = [
+    ("geo_country_code", "VARCHAR",  "Country Code",     True,  True),
+    ("geo_country_name", "VARCHAR",  "Country Name",     True,  True),
+    ("geo_city",         "VARCHAR",  "City",             True,  True),
+    ("geo_latitude",     "FLOAT",    "Latitude",         False, False),
+    ("geo_longitude",    "FLOAT",    "Longitude",        False, False),
+    ("geo_asn",          "INTEGER",  "ASN",              False, False),
+    ("geo_org",          "VARCHAR",  "ASN Organization", True,  True),
+]
+
+
+def _register_geo_columns(dataset: "SqlaTable") -> None:
+    """Explicitly register GeoIP columns in the Superset dataset.
+
+    fetch_metadata() only discovers columns that already exist in DuckDB.
+    When the ingester was run without a GeoLite2 database the geo_* columns
+    may not be present in the DuckDB file, so they are added here explicitly.
+    This prevents ImportDashboardsCommand from raising "Columns missing in
+    dataset" errors when importing the GeoIP charts (DSH-15 ~ DSH-18).
+    """
+    from superset.connectors.sqla.models import TableColumn  # noqa: PLC0415
+    from superset.extensions import db  # noqa: PLC0415
+
+    existing_names = {col.column_name for col in dataset.columns}
+    added = 0
+    for col_name, col_type, verbose_name, groupby, filterable in GEO_COLUMNS:
+        if col_name in existing_names:
+            continue
+        col = TableColumn(
+            column_name=col_name,
+            type=col_type,
+            verbose_name=verbose_name,
+            groupby=groupby,
+            filterable=filterable,
+            is_active=True,
+            table_id=dataset.id,
+        )
+        db.session.add(col)
+        added += 1
+
+    if added:
+        db.session.commit()
+        print(f"    Registered {added} GeoIP column(s) in dataset.")
+    else:
+        print("    GeoIP columns already registered — skipping.")
 
 
 if __name__ == "__main__":

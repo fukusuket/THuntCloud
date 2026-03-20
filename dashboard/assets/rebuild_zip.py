@@ -35,6 +35,11 @@ FILE_MAP = {
     "charts/sensitive_api_calls.yaml":            "charts/Sensitive_API_Calls.yaml",
     "charts/root_account_usage.yaml":             "charts/Root_Account_Usage.yaml",
     "charts/region_activity.yaml":                "charts/Region_Activity.yaml",
+    # GeoIP charts (DSH-15 ~ DSH-18)
+    "charts/geo_country_requests.yaml":           "charts/Geo_Country_Requests.yaml",
+    "charts/geo_world_map.yaml":                  "charts/Geo_World_Map.yaml",
+    "charts/geo_city_requests.yaml":              "charts/Geo_City_Requests.yaml",
+    "charts/geo_asn_org_requests.yaml":           "charts/Geo_ASN_Org_Requests.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

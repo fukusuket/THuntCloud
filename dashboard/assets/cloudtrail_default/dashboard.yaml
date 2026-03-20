@@ -13,7 +13,7 @@ published: true
 css: ""
 slug: cloudtrail-threat-hunting
 
-# Dashboard layout: 6-row grid
+# Dashboard layout: 9-row grid
 # Row 1: Full-width event time-series (DSH-01)
 # Row 2: Top API calls (DSH-02) | IAM entity table (DSH-03)
 # Row 3: Error trend (DSH-04)   | Source IP table  (DSH-05)
@@ -21,6 +21,8 @@ slug: cloudtrail-threat-hunting
 # Row 5: User agent analysis (DSH-11) — full width
 # Row 6: Sensitive API calls (DSH-12) — full width
 # Row 7: Root account usage (DSH-13) | Region activity (DSH-14)
+# Row 8: Top countries bar (DSH-15) | World map (DSH-16) [GeoIP]
+# Row 9: Top cities table (DSH-17) | Top ASN orgs table (DSH-18) [GeoIP]
 position:
   DASHBOARD_VERSION_KEY: "v2"
   ROOT_ID:
@@ -39,6 +41,8 @@ position:
       - ROW-5
       - ROW-6
       - ROW-7
+      - ROW-8
+      - ROW-9
   ROW-1:
     type: ROW
     id: ROW-1
@@ -90,6 +94,22 @@ position:
     children:
       - CHART-root-usage
       - CHART-region-activity
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-8:
+    type: ROW
+    id: ROW-8
+    children:
+      - CHART-geo-country
+      - CHART-geo-world-map
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-9:
+    type: ROW
+    id: ROW-9
+    children:
+      - CHART-geo-city
+      - CHART-geo-asn
     meta:
       background: BACKGROUND_TRANSPARENT
   CHART-timeseries:
@@ -191,6 +211,42 @@ position:
       width: 6
       height: 50
       sliceName: Region Activity
+  CHART-geo-country:
+    type: CHART
+    id: CHART-geo-country
+    meta:
+      chartId: 15
+      uuid: 15a6c7d8-e9f0-1234-5678-901234567890
+      width: 6
+      height: 50
+      sliceName: Top Countries by Request Volume
+  CHART-geo-world-map:
+    type: CHART
+    id: CHART-geo-world-map
+    meta:
+      chartId: 16
+      uuid: 16b7c8d9-e0f1-2345-6789-012345678901
+      width: 6
+      height: 50
+      sliceName: Global Request Origin Map
+  CHART-geo-city:
+    type: CHART
+    id: CHART-geo-city
+    meta:
+      chartId: 17
+      uuid: 17c8d9e0-f1a2-3456-7890-123456789012
+      width: 6
+      height: 50
+      sliceName: Top Cities by Request Volume
+  CHART-geo-asn:
+    type: CHART
+    id: CHART-geo-asn
+    meta:
+      chartId: 18
+      uuid: 18d9e0f1-a2b3-4567-8901-234567890123
+      width: 6
+      height: 50
+      sliceName: Top ASN Organizations by Request Volume
 
 metadata:
   # Native dashboard-level date range filter (DSH-15).
@@ -407,4 +463,16 @@ metadata:
     - slice_name: Region Activity
       viz_type: bar
       description: DSH-14 — Event distribution across AWS regions.
+    - slice_name: Top Countries by Request Volume
+      viz_type: dist_bar
+      description: DSH-15 — Top 20 source countries by API call volume (GeoIP enrichment required).
+    - slice_name: Global Request Origin Map
+      viz_type: world_map
+      description: DSH-16 — World map of API call origins by country (GeoIP enrichment required).
+    - slice_name: Top Cities by Request Volume
+      viz_type: table
+      description: DSH-17 — Top 25 source cities by API call volume (GeoIP enrichment required).
+    - slice_name: Top ASN Organizations by Request Volume
+      viz_type: table
+      description: DSH-18 — Top 25 ASN organizations by API call volume (GeoIP enrichment required).
 

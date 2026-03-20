@@ -171,6 +171,70 @@ columns:
     filterable: false
     description: Full original CloudTrail event as JSON
 
+  # GeoIP enrichment columns (7 columns, NULL when ingested without GeoLite2 DB)
+  - column_name: geo_country_code
+    verbose_name: Country Code
+    is_dttm: false
+    is_active: true
+    type: VARCHAR
+    groupby: true
+    filterable: true
+    description: ISO 3166-1 alpha-2 country code derived from source_ip_address (e.g. US, CN). NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_country_name
+    verbose_name: Country Name
+    is_dttm: false
+    is_active: true
+    type: VARCHAR
+    groupby: true
+    filterable: true
+    description: Full country name derived from source_ip_address (e.g. United States). NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_city
+    verbose_name: City
+    is_dttm: false
+    is_active: true
+    type: VARCHAR
+    groupby: true
+    filterable: true
+    description: City name derived from source_ip_address. NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_latitude
+    verbose_name: Latitude
+    is_dttm: false
+    is_active: true
+    type: FLOAT
+    groupby: false
+    filterable: false
+    description: Latitude coordinate derived from source_ip_address. NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_longitude
+    verbose_name: Longitude
+    is_dttm: false
+    is_active: true
+    type: FLOAT
+    groupby: false
+    filterable: false
+    description: Longitude coordinate derived from source_ip_address. NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_asn
+    verbose_name: ASN
+    is_dttm: false
+    is_active: true
+    type: INTEGER
+    groupby: false
+    filterable: false
+    description: Autonomous System Number (ASN) derived from source_ip_address. NULL if GeoLite2 DB was not used during ingestion.
+
+  - column_name: geo_org
+    verbose_name: ASN Organization
+    is_dttm: false
+    is_active: true
+    type: VARCHAR
+    groupby: true
+    filterable: true
+    description: ASN organization name derived from source_ip_address (e.g. AS16509 Amazon.com, Inc.). NULL if GeoLite2 DB was not used during ingestion.
+
 metrics:
   - metric_name: count
     verbose_name: "COUNT(*)"
