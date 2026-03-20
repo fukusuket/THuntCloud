@@ -39,6 +39,9 @@ parses them, and inserts the records into a DuckDB database. This is the
 | ING-07 | Per-file error logging (skipped files reported)  | ✅ |
 | ING-08 | Date-range filter (`--from` / `--to`)            | ✅ |
 | ING-09 | Path-pattern filter (`--include` / `--exclude`)  | ✅ |
+| ING-10 | GeoIP enrichment via MaxMind GeoLite2 (ingest)   | ✅ |
+| ING-11 | GeoIP back-fill for existing DB (`enrich`)       | ✅ |
+| ING-12 | Parallel file parsing with rayon (`--workers`)   | ✅ |
 
 ---
 
@@ -177,7 +180,7 @@ The ingester creates two tables on first run (both are idempotent):
 
 ### `cloudtrail_events`
 
-Stores every ingested CloudTrail event record.
+Stores every ingested CloudTrail event record. **24 columns total** (17 core + 7 GeoIP enrichment).
 
 | Column                    | Type        | Notes                                               |
 |---------------------------|-------------|-----------------------------------------------------|
@@ -190,19 +193,29 @@ Stores every ingested CloudTrail event record.
 | `user_identity_type`      | `VARCHAR`   | Expanded from `userIdentity.type`; nullable         |
 | `user_identity_arn`       | `VARCHAR`   | Expanded from `userIdentity.arn`; nullable          |
 | `user_identity_account_id`| `VARCHAR`   | Expanded from `userIdentity.accountId`; nullable    |
-| `request_parameters`      | `JSON`      | Full JSON blob; nullable                            |
-| `response_elements`       | `JSON`      | Full JSON blob; nullable                            |
+| `request_parameters`      | `VARCHAR`   | Full JSON blob as VARCHAR; use `json_extract_string()` |
+| `response_elements`       | `VARCHAR`   | Full JSON blob as VARCHAR; nullable                 |
 | `error_code`              | `VARCHAR`   | Nullable                                            |
 | `error_message`           | `VARCHAR`   | Nullable                                            |
 | `read_only`               | `BOOLEAN`   | Nullable                                            |
 | `event_type`              | `VARCHAR`   | Nullable                                            |
 | `recipient_account_id`    | `VARCHAR`   | Nullable                                            |
-| `raw_event`               | `JSON`      | Full original event JSON for forward compatibility  |
+| `raw_event`               | `VARCHAR`   | Full original event JSON as VARCHAR; for ad-hoc queries |
+| `geo_country_code`        | `VARCHAR`   | NULL unless GeoIP enrichment was performed          |
+| `geo_country_name`        | `VARCHAR`   | NULL unless GeoIP enrichment was performed          |
+| `geo_city`                | `VARCHAR`   | NULL unless GeoLite2-City database was used         |
+| `geo_latitude`            | `DOUBLE`    | NULL unless GeoLite2-City database was used         |
+| `geo_longitude`           | `DOUBLE`    | NULL unless GeoLite2-City database was used         |
+| `geo_asn`                 | `VARCHAR`   | NULL unless GeoLite2-ASN database was used          |
+| `geo_org`                 | `VARCHAR`   | NULL unless GeoLite2-ASN database was used          |
+
+GeoIP columns are added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (idempotent).  
+Private/loopback IPs store a marker string (`"PRIVATE"`, `"LOOPBACK"`, `"LINK-LOCAL"`) instead of NULL.
 
 **Design rationale**
 
 - `userIdentity` nested fields are expanded into top-level columns so that common filters like `WHERE user_identity_type = 'Root'` are fast without `json_extract`.
-- `request_parameters` and `response_elements` are kept as `JSON` because their structure varies by API call. Use DuckDB's `json_extract_string()` for ad-hoc queries.
+- `request_parameters`, `response_elements`, and `raw_event` are stored as `VARCHAR` (not DuckDB JSON type) because their structure varies by API call. Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 - `raw_event` preserves the original event, ensuring that fields not yet in the schema remain accessible.
 
 ### `ingested_files`
@@ -256,12 +269,14 @@ ingester/
 ├── README.md                    ← You are here
 ├── AGENTS.md                    ← Copilot agent instructions
 ├── src/
-│   ├── main.rs                  # CLI entry point (clap)
+│   ├── main.rs                  # CLI entry point (clap) — ingest + enrich subcommands
 │   ├── lib.rs                   # Public API re-exports
 │   ├── parser.rs                # CloudTrail JSON parsing (serde)
 │   ├── decompressor.rs          # Transparent gz decompression (flate2)
-│   ├── db.rs                    # DuckDB schema + batch insert (Appender)
-│   ├── ingest.rs                # Pipeline orchestration (walkdir → parse → insert)
+│   ├── db.rs                    # DuckDB schema + batch insert (Appender) + geo backfill
+│   ├── ingest.rs                # Pipeline orchestration (rayon parallel → insert)
+│   ├── enrich.rs                # Geo back-fill for existing rows (enrich subcommand)
+│   ├── geoip.rs                 # MaxMind GeoLite2 lookup + private-IP classification
 │   ├── date_filter.rs           # Date-range filter (--from / --to)
 │   ├── path_filter.rs           # Glob path-pattern filter (--include / --exclude)
 │   └── progress.rs              # Progress bar wrapper (indicatif)
@@ -282,47 +297,15 @@ ingester/
 The `ingester` crate exposes its internals as a library so that tests and future tooling can call the pipeline without spawning a subprocess.
 
 ```rust
-use ingester::ingest::{ingest_path, ingest_with_conn, ingest_with_date_filter,
-                       ingest_with_filters, IngestStats};
+use ingester::ingest::{ingest_with_filters, ingest_with_geoip, IngestStats};
+use ingester::enrich::{enrich_existing, EnrichStats};
+use ingester::geoip::{GeoipConfig, GeoipEnricher};
 use ingester::date_filter::DateFilter;
 use ingester::path_filter::PathFilter;
-use ingester::db::{ensure_table, insert_events};
+use ingester::db::{ensure_table, insert_events_with_geo};
 use ingester::parser::{parse_cloudtrail_log, CloudTrailEvent, CloudTrailLog};
 use ingester::decompressor::read_file_content;
 ```
-
-### `ingest_path`
-
-```rust
-pub fn ingest_path(path: &Path, db_path: &Path) -> anyhow::Result<IngestStats>
-```
-
-High-level entry point. Opens a DuckDB `READ_WRITE` connection at `db_path`,
-creates the schema if needed, walks `path`, and inserts all valid CloudTrail
-records.
-
-### `ingest_with_conn`
-
-```rust
-pub fn ingest_with_conn(path: &Path, conn: &Connection) -> anyhow::Result<IngestStats>
-```
-
-Same as `ingest_path` but accepts an existing `Connection`. Useful in tests
-where an in-memory database is preferred.
-
-### `ingest_with_date_filter`
-
-```rust
-pub fn ingest_with_date_filter(
-    path: &Path,
-    conn: &Connection,
-    show_progress: bool,
-    date_filter: &DateFilter,
-) -> anyhow::Result<IngestStats>
-```
-
-Same as `ingest_with_conn` but applies a date-range filter based on the
-`yyyy/mm/dd` directory segment in each file's path.
 
 ### `ingest_with_filters`
 
@@ -336,22 +319,39 @@ pub fn ingest_with_filters(
 ) -> anyhow::Result<IngestStats>
 ```
 
-Full-featured entry point. Applies both a date-range filter and a glob
-path-pattern filter before any I/O. Use this when ingesting from a shared S3
-bucket that contains logs from multiple AWS services.
+Full-featured ingest without GeoIP. Applies date-range and glob path filters before any I/O.
+
+### `ingest_with_geoip`
 
 ```rust
-use chrono::NaiveDate;
-use ingester::date_filter::DateFilter;
-use ingester::path_filter::PathFilter;
-use ingester::ingest::ingest_with_filters;
+pub fn ingest_with_geoip(
+    path: &Path,
+    conn: &Connection,
+    show_progress: bool,
+    date_filter: &DateFilter,
+    path_filter: &PathFilter,
+    geoip: &GeoipEnricher,
+) -> anyhow::Result<IngestStats>
+```
 
-let date_filter = DateFilter::new(
-    Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
-    Some(NaiveDate::from_ymd_opt(2024, 1, 31).unwrap()),
-);
-let path_filter = PathFilter::from_strs(Some("*CloudTrail*"), Some("*Digest*"))?;
-let stats = ingest_with_filters(&path, &conn, true, &date_filter, &path_filter)?;
+Same as `ingest_with_filters` but enriches each event's `source_ip_address` with GeoIP data at ingest time.
+
+### `enrich_existing`
+
+```rust
+pub fn enrich_existing(conn: &Connection, geoip: &GeoipEnricher) -> anyhow::Result<EnrichStats>
+```
+
+Back-fills geo columns for rows where `geo_country_code IS NULL`. Use this to add GeoIP data to a database ingested without the `--geoip-*` flags.
+
+### `GeoipEnricher`
+
+```rust
+let enricher = GeoipEnricher::open(&GeoipConfig {
+    city_db_path:    Some(PathBuf::from("/data/geoip/GeoLite2-City.mmdb")),
+    country_db_path: None,
+    asn_db_path:     Some(PathBuf::from("/data/geoip/GeoLite2-ASN.mmdb")),
+})?;
 ```
 
 ### `DateFilter`
@@ -360,36 +360,33 @@ let stats = ingest_with_filters(&path, &conn, true, &date_filter, &path_filter)?
 pub struct DateFilter { pub from: Option<NaiveDate>, pub to: Option<NaiveDate> }
 
 impl DateFilter {
-    pub fn new(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Self;
     pub fn from_strs(from: Option<&str>, to: Option<&str>) -> anyhow::Result<Self>;
     pub fn matches(&self, path: &Path) -> bool;
 }
 ```
 
-Matches files by the `yyyy/mm/dd` segment in their path. Files with no
-recognisable date segment always match (conservative behaviour).
-
 ### `PathFilter`
 
 ```rust
-pub struct PathFilter { /* include and exclude pattern lists */ }
-
 impl PathFilter {
     pub fn from_strs(include: Option<&str>, exclude: Option<&str>) -> anyhow::Result<Self>;
     pub fn matches(&self, path: &Path) -> bool;
 }
 ```
 
-Matches files by glob patterns against their full path string. `*` crosses
-path-separator boundaries. Comma-separate multiple patterns (OR logic).
-
-### `IngestStats`
+### `IngestStats` / `EnrichStats`
 
 ```rust
 pub struct IngestStats {
     pub files_processed: usize,
     pub records_inserted: usize,
     pub errors: usize,
+    pub elapsed_secs: f64,
+}
+
+pub struct EnrichStats {
+    pub enriched_count: usize,
+    pub skipped_count: usize,
     pub elapsed_secs: f64,
 }
 ```

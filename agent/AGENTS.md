@@ -6,7 +6,7 @@
 
 ## Module Purpose
 
-The agent provides an interactive Streamlit UI for AI-assisted threat hunting. Users enter natural language questions, the AI generates DuckDB SQL queries, executes them, and provides analysis. It also supports automated report generation.
+The agent provides an interactive Streamlit UI for AI-assisted threat hunting. Users enter natural language questions, the AI generates DuckDB SQL queries, executes them, and provides analysis. It also supports automated report generation and built-in preset queries.
 
 **DuckDB is always opened in `READ_ONLY` mode in this module.**
 
@@ -23,79 +23,83 @@ The agent provides an interactive Streamlit UI for AI-assisted threat hunting. U
 | Linter            | `ruff`                                   |
 | Formatter         | `black`                                  |
 
-## Planned Module Structure
+## Module Structure
 
 ```
 agent/
 ├── app.py                 # Streamlit entry point
-├── llm.py                 # OpenAI API integration
-├── query.py               # DuckDB query execution & validation
-├── report.py              # Threat hunting report generation (Markdown/PDF)
-├── schema.py              # CloudTrail table schema definitions
-├── config.py              # Configuration management (env vars, settings)
+├── llm.py                 # OpenAI API integration (SQL generation + analysis)
+├── query.py               # DuckDB query execution, validation, date filter, row limit
+├── report.py              # Threat hunting report generation (Markdown + sensitive data redaction)
+├── schema.py              # CloudTrail table schema definitions (column list, descriptions)
+├── config.py              # Configuration management (env vars)
+├── builtin_hunts.yaml     # Pre-built threat hunting queries (categorised, label/prompt/sql)
 ├── prompts/
-│   └── system_prompt.py   # System prompt templates for SQL generation
-├── requirements.txt       # Python dependencies
+│   ├── __init__.py
+│   └── system_prompt.py   # System prompt template for SQL generation
+├── requirements.txt       # Runtime dependencies
+├── requirements-dev.txt   # Dev/test dependencies
+├── Dockerfile
+├── pytest.ini             # Sets pythonpath = . so modules resolve as `llm`, not `agent.llm`
 ├── tests/
-│   ├── conftest.py        # Shared fixtures
-│   ├── test_llm.py        # LLM integration tests (mocked)
-│   ├── test_query.py      # DuckDB query tests
-│   ├── test_report.py     # Report generation tests
-│   ├── test_schema.py     # Schema helper tests
-│   └── test_config.py     # Config tests
+│   ├── __init__.py
+│   ├── conftest.py        # Shared fixtures (mock_openai_client, tmp_duckdb)
+│   ├── test_config.py
+│   ├── test_schema.py
+│   ├── test_query.py
+│   ├── test_llm.py
+│   ├── test_report.py
+│   └── test_app.py        # Streamlit session state tests
 └── AGENTS.md              ← You are here
 ```
 
-## TDD Test List
-
-When implementing the agent, follow this ordered test list. Each item should be a `def test_*` function in pytest. Proceed one test at a time using Red-Green-Refactor.
+## Implemented Tests
 
 ### config.py
-
-1. `test_config_reads_duckdb_path_from_env` — Config loads `DUCKDB_PATH` from environment variables.
-2. `test_config_default_model_is_gpt_5_4` — Default model is `gpt-5.4` when `OPENAI_MODEL` is unset.
-3. `test_config_rejects_empty_api_key` — Raises error if `OPENAI_API_KEY` is empty.
+1. `test_config_reads_duckdb_path_from_env` — Config loads `DUCKDB_PATH` from environment.
+2. `test_config_default_model_is_gpt_5_4` — Default model is `gpt-5.4`.
+3. `test_config_rejects_empty_api_key` — Raises `ValueError` if `OPENAI_API_KEY` is empty.
 
 ### schema.py
-
-4. `test_get_schema_description_returns_string` — Returns a human-readable description of the `cloudtrail_events` table.
-5. `test_get_column_names_returns_list` — Returns the expected list of column names.
+4. `test_get_schema_description_returns_string` — Returns a human-readable schema description.
+5. `test_get_column_names_returns_list` — Returns the expected column name list.
 
 ### query.py
-
-6. `test_connect_duckdb_readonly` — Opens DuckDB in read-only mode successfully.
-7. `test_execute_select_query` — Executes a simple `SELECT` and returns a pandas DataFrame.
-8. `test_execute_query_returns_empty_dataframe_for_no_results` — Empty result returns an empty DataFrame, not an error.
-9. `test_validate_query_with_explain` — Running `EXPLAIN <sql>` before execution does not raise on valid SQL.
-10. `test_validate_query_rejects_write_statements` — `INSERT`, `UPDATE`, `DELETE`, `DROP` statements are rejected before execution.
-11. `test_execute_query_timeout` — Queries exceeding the timeout limit raise an appropriate error.
+6. `test_connect_duckdb_readonly` — Opens DuckDB in read-only mode.
+7. `test_execute_select_query` — Executes `SELECT` and returns a `pd.DataFrame`.
+8. `test_execute_query_returns_empty_dataframe_for_no_results` — Empty result → empty DataFrame.
+9. `test_validate_query_with_explain` — `EXPLAIN <sql>` succeeds on valid SQL.
+10. `test_validate_query_rejects_write_statements` — `INSERT`/`UPDATE`/`DELETE`/`DROP` rejected.
+11. `test_execute_query_timeout` — Queries exceeding 30 s raise a timeout error.
+12. `test_apply_date_filter_both_bounds` — CTE injected with both start/end date.
+13. `test_apply_date_filter_no_bounds` — No dates → original SQL unchanged.
+14. `test_apply_row_limit_adds_limit` — Queries without `LIMIT` get capped at 1000 rows.
+15. `test_apply_row_limit_preserves_existing_limit` — Existing `LIMIT` not doubled.
 
 ### llm.py
-
-12. `test_build_system_prompt_includes_schema` — The system prompt includes the CloudTrail table schema.
-13. `test_build_system_prompt_includes_duckdb_dialect` — The system prompt specifies DuckDB SQL dialect.
-14. `test_generate_sql_returns_sql_string` — Given a mocked OpenAI response, `generate_sql()` returns a SQL string.
-15. `test_generate_sql_strips_markdown_fences` — If the LLM wraps SQL in ```sql ... ```, the fences are stripped.
-16. `test_generate_analysis_returns_markdown` — Given query results, `generate_analysis()` returns Markdown analysis text.
-17. `test_generate_sql_handles_api_error` — OpenAI API errors are caught and surfaced as user-friendly messages.
+16. `test_build_system_prompt_includes_schema` — System prompt includes schema description.
+17. `test_generate_sql_returns_sql_string` — Mocked OpenAI response → SQL string returned.
+18. `test_generate_sql_strips_markdown_fences` — ` ```sql ... ``` ` wrappers stripped.
+19. `test_generate_analysis_returns_markdown` — Query results → Markdown analysis.
+20. `test_generate_sql_handles_api_error` — `OpenAIError` caught → user-friendly message.
 
 ### report.py
+21. `test_generate_report_markdown` — Session produces Markdown report.
+22. `test_report_includes_timestamp` — Report header contains generation timestamp.
+23. `test_report_includes_all_queries` — All query/result/analysis triples included.
+24. `test_report_sanitizes_sensitive_data` — AWS key IDs and secrets redacted.
 
-18. `test_generate_report_markdown` — Given a session (queries + results + analysis), generates a Markdown report.
-19. `test_report_includes_timestamp` — The report header includes the generation timestamp.
-20. `test_report_includes_all_queries` — Each query-result-analysis triple is included in the report.
-21. `test_report_sanitizes_sensitive_data` — API keys or credentials in query results are redacted.
-
-### app.py (Streamlit integration — manual testing primarily)
-
-22. `test_session_state_initialization` — Session state contains expected keys on startup.
+### app.py
+25. `test_session_state_initialization` — Session state has expected keys on startup.
 
 ## OpenAI API Mocking Strategy
 
-All tests that involve OpenAI API calls MUST use mocks. Never call the real API in tests.
+All tests involving OpenAI API calls MUST use mocks. Never call the real API in tests.
+
+**Important**: `pytest.ini` sets `pythonpath = .`, so mock the module as `llm.OpenAI`, **not** `agent.llm.OpenAI`.
 
 ```python
-# conftest.py
+# agent/tests/conftest.py
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -103,20 +107,18 @@ from unittest.mock import MagicMock, patch
 @pytest.fixture
 def mock_openai_client():
     """Mock OpenAI client that returns a predefined SQL response."""
-    with patch("agent.llm.OpenAI") as mock_cls:
+    with patch("llm.OpenAI") as mock_cls:          # <-- 'llm.OpenAI', not 'agent.llm.OpenAI'
         client = MagicMock()
         mock_cls.return_value = client
 
-        # Default response: a simple SELECT query
         response = MagicMock()
         response.choices = [MagicMock()]
         response.choices[0].message.content = (
-            "SELECT event_name, COUNT(*) as cnt "
+            "SELECT event_name, COUNT(*) AS cnt "
             "FROM cloudtrail_events "
             "GROUP BY event_name ORDER BY cnt DESC LIMIT 10"
         )
         client.chat.completions.create.return_value = response
-
         yield client
 
 
@@ -129,93 +131,70 @@ def tmp_duckdb(tmp_path):
     conn = duckdb.connect(str(db_path))
     conn.execute("""
         CREATE TABLE cloudtrail_events (
-            event_time           TIMESTAMP,
-            event_name           VARCHAR,
-            event_source         VARCHAR,
-            aws_region           VARCHAR,
-            source_ip_address    VARCHAR,
-            user_agent           VARCHAR,
-            user_identity_type   VARCHAR,
-            user_identity_arn    VARCHAR,
+            event_time               TIMESTAMP,
+            event_name               VARCHAR,
+            event_source             VARCHAR,
+            aws_region               VARCHAR,
+            source_ip_address        VARCHAR,
+            user_agent               VARCHAR,
+            user_identity_type       VARCHAR,
+            user_identity_arn        VARCHAR,
             user_identity_account_id VARCHAR,
-            request_parameters   JSON,
-            response_elements    JSON,
-            error_code           VARCHAR,
-            error_message        VARCHAR,
-            read_only            BOOLEAN,
-            event_type           VARCHAR,
-            recipient_account_id VARCHAR,
-            raw_event            JSON
+            request_parameters       VARCHAR,   -- stored as VARCHAR, not JSON type
+            response_elements        VARCHAR,
+            error_code               VARCHAR,
+            error_message            VARCHAR,
+            read_only                BOOLEAN,
+            event_type               VARCHAR,
+            recipient_account_id     VARCHAR,
+            raw_event                VARCHAR    -- full original event JSON as VARCHAR
         )
     """)
-    # Insert sample data
     conn.execute("""
         INSERT INTO cloudtrail_events (event_time, event_name, event_source, aws_region)
         VALUES
             ('2024-01-15 10:30:00', 'DescribeInstances', 'ec2.amazonaws.com', 'us-east-1'),
             ('2024-01-15 10:31:00', 'DescribeInstances', 'ec2.amazonaws.com', 'us-east-1'),
-            ('2024-01-15 10:32:00', 'CreateUser', 'iam.amazonaws.com', 'us-east-1')
+            ('2024-01-15 10:32:00', 'CreateUser',        'iam.amazonaws.com', 'us-east-1')
     """)
     conn.close()
     yield str(db_path)
 ```
 
-## System Prompt Template (Reference)
-
-```python
-SYSTEM_PROMPT = """You are a DuckDB SQL expert specializing in AWS CloudTrail log analysis.
-
-You have access to a table called `cloudtrail_events` with the following schema:
-
-{schema}
-
-Rules:
-1. Generate ONLY DuckDB-compatible SQL. Do not use MySQL or PostgreSQL-specific syntax.
-2. Always use the table name `cloudtrail_events`.
-3. Return ONLY the SQL query, no explanation.
-4. Use appropriate WHERE clauses to filter relevant events.
-5. For time-based queries, `event_time` is a TIMESTAMP column.
-6. Use JSON extraction functions for `request_parameters`, `response_elements`, and `raw_event` columns.
-7. Limit results to 1000 rows unless the user specifically asks for more.
-8. Never generate INSERT, UPDATE, DELETE, DROP, or any DDL/DML statements.
-"""
-```
-
 ## SQL Safety Rules
 
-1. **READ_ONLY connection**: The DuckDB connection is always opened with `read_only=True`.
-2. **Pre-execution validation**: Before executing any AI-generated SQL:
-   - Check that the SQL does not contain `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE` keywords (case-insensitive).
-   - Run `EXPLAIN <sql>` to verify it's valid.
-3. **Result size limits**: Default `LIMIT 1000` on all queries.
-4. **Timeout**: Queries are limited to 30 seconds.
+1. **READ_ONLY connection**: `duckdb.connect(..., read_only=True)` always.
+2. **Keyword blocklist**: `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE` rejected (regex, word-boundary).
+3. **EXPLAIN validation**: `EXPLAIN <sql>` runs before execution.
+4. **Row-limit cap**: Queries without `LIMIT` are wrapped in `SELECT * FROM (...) LIMIT 1000`.
+5. **Timeout**: Queries are limited to `QUERY_TIMEOUT_SECONDS = 30` seconds.
 
 ## Environment Variables
 
-| Variable           | Default       | Description                              |
-| ------------------ | ------------- | ---------------------------------------- |
-| `DUCKDB_PATH`      | (required)    | Path to the DuckDB database file         |
-| `DUCKDB_READONLY`  | `true`        | Must be `true` for agent                 |
-| `OPENAI_API_KEY`   | (required)    | OpenAI API key                           |
-| `OPENAI_MODEL`     | `gpt-5.4`     | Model for SQL generation and analysis    |
-| `OPENAI_MODEL_LITE`| `gpt-5.4-mini`| Lightweight model for quick tasks        |
+| Variable            | Default           | Description                                      |
+| ------------------- | ----------------- | ------------------------------------------------ |
+| `DUCKDB_PATH`       | (required)        | Path to the DuckDB database file                 |
+| `OPENAI_API_KEY`    | (required)        | OpenAI API key                                   |
+| `OPENAI_MODEL`      | `gpt-5.4`         | Model for SQL generation and analysis            |
+| `OPENAI_MODEL_LITE` | `gpt-5.4-mini`    | Lightweight model for quick tasks                |
+| `DUCKDB_READONLY`   | `true`            | Must be `true` for agent                         |
+| `SSL_CERT_FILE`     | —                 | CA bundle path for corporate TLS inspection proxy|
+| `REQUESTS_CA_BUNDLE`| —                 | Alternative CA bundle path (same purpose)        |
 
-## Language Policy
+## Dependencies
 
-- **All Python docstrings, inline comments, type annotations, and documentation MUST be written in English.**
-- Non-English text is not permitted in code comments, commit messages, or PR descriptions.
-
-## Dependencies (requirements.txt)
-
+**requirements.txt**
 ```
 streamlit>=1.40.0
 openai>=1.60.0
 duckdb>=1.2.0
 pandas>=2.2.0
+pyyaml>=6.0.0
+tabulate>=0.9.0
+httpx>=0.27.0
 ```
 
-### Dev Dependencies (requirements-dev.txt)
-
+**requirements-dev.txt**
 ```
 pytest>=8.0.0
 pytest-mock>=3.14.0
@@ -223,3 +202,6 @@ ruff>=0.9.0
 black>=24.0.0
 ```
 
+## Language Policy
+
+- **All Python docstrings, inline comments, type annotations, and documentation MUST be written in English.**

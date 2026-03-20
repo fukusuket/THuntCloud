@@ -65,7 +65,12 @@ Never write production code without a corresponding failing test.
 
 ## DuckDB Schema (single table)
 
-`cloudtrail_events` has 17 columns. JSON blobs (`request_parameters`, `response_elements`, `raw_event`) are stored as **VARCHAR**, not DuckDB JSON type. Extract with `json_extract_string(raw_event, '$.key')`.
+`cloudtrail_events` has **24 columns**: 17 core event columns + 7 GeoIP enrichment columns.
+JSON blobs (`request_parameters`, `response_elements`, `raw_event`) are stored as **VARCHAR**, not DuckDB JSON type. Extract with `json_extract_string(raw_event, '$.key')`.
+
+**Core columns (17):** `event_time`, `event_name`, `event_source`, `aws_region`, `source_ip_address`, `user_agent`, `user_identity_type`, `user_identity_arn`, `user_identity_account_id`, `request_parameters`, `response_elements`, `error_code`, `error_message`, `read_only`, `event_type`, `recipient_account_id`, `raw_event`.
+
+**GeoIP columns (7, added via `ALTER TABLE … ADD COLUMN IF NOT EXISTS`):** `geo_country_code`, `geo_country_name`, `geo_city`, `geo_latitude`, `geo_longitude`, `geo_asn`, `geo_org`. These are `NULL` when ingested without a GeoLite2 database.
 
 `ingested_files (file_path PK, sha256, ingested_at)` tracks ingested files for deduplication (SHA-256 checksum).
 
@@ -85,12 +90,22 @@ Date-range UI filters inject a `_ct_filtered` CTE that wraps `cloudtrail_events`
 
 ```
 ingester ingest --path <dir>
-                [--db     <path>]    # DuckDB file path (overrides DUCKDB_PATH env var)
-                [--include <globs>]  # comma-separated globs, e.g. "*CloudTrail*,*Config*"
-                [--exclude <globs>]  # comma-separated globs, e.g. "*us-west-2*,*vpcflowlogs*"
-                [--from   <YYYYMMDD>]
-                [--to     <YYYYMMDD>]
-                [--workers <N>]      # parallel parser threads (default: CPU count; 1 = sequential)
+                [--db           <path>]    # DuckDB file path (overrides DUCKDB_PATH env var)
+                [--no-progress]            # Disable progress bar output
+                [--include      <globs>]   # comma-separated globs, e.g. "*CloudTrail*,*Config*"
+                [--exclude      <globs>]   # comma-separated globs, e.g. "*us-west-2*,*vpcflowlogs*"
+                [--from         <YYYYMMDD>]
+                [--to           <YYYYMMDD>]
+                [--workers      <N>]       # parallel parser threads (default: CPU count; 1 = sequential)
+                [--geoip-city   <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
+                [--geoip-country <path>]   # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
+                [--geoip-asn    <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
+
+ingester enrich
+                [--db           <path>]    # DuckDB file path (overrides DUCKDB_PATH env var)
+                [--geoip-city   <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
+                [--geoip-country <path>]   # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
+                [--geoip-asn    <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
 ```
 
 DB path resolution order: `--db` CLI arg → `DUCKDB_PATH` env var → `/data/db/threat_hunting.db`.
@@ -106,6 +121,10 @@ Date and path filters operate on the filesystem path (CloudTrail stores logs und
 | `OPENAI_MODEL` | agent | `gpt-5.4` |
 | `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` |
 | `DUCKDB_HOST_PATH` | docker host | `./data/db` |
+| `GEOIP_HOST_PATH` | docker host | `./data/geoip` |
+| `GEOIP_CITY_PATH` | ingester (GeoIP) | — |
+| `GEOIP_COUNTRY_PATH` | ingester (GeoIP) | — |
+| `GEOIP_ASN_PATH` | ingester (GeoIP) | — |
 | `SUPERSET_SECRET_KEY` | dashboard | `change-me-in-production` |
 | `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` | agent (proxy) | — |
 | `RAYON_NUM_THREADS` | ingester | CPU count |

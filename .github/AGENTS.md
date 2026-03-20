@@ -28,12 +28,13 @@
 │                            │                            │
 │                    ┌───────▼──────┐                     │
 │                    │   DuckDB     │                     │
-│                    │  Named Vol   │                     │
+│                    │ (Bind Mount) │                     │
 │                    └──────────────┘                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**DuckDB Access Model:** 1 writer (`ingester`, `READ_WRITE`) / n readers (`agent`, `dashboard`, `READ_ONLY`).
+**DuckDB Access Model:** 1 writer (`ingester`, `READ_WRITE`) / n readers (`agent`, `dashboard`, `READ_ONLY`).  
+DuckDB data is shared via a **bind mount** (not a named volume) — see `docker/docker-compose.yml`.
 
 ## Development Methodology: TDD
 
@@ -47,7 +48,7 @@ This project strictly follows **Test-Driven Development**. Every feature must be
 4. **Green** — Write the **minimum** code to make the test pass. Ugly code is fine.
 5. **Refactor** — Clean up duplication and improve design while keeping all tests green.
 6. **Baby steps** — Make the smallest possible change at each step. Never skip ahead.
-7. **Triangulation** — When unsure of the correct abstraction, add more specific test cases to "triangulate" toward the general solution.
+7. **Triangulation** — When unsure of the correct abstraction, add more specific test cases.
 
 ### TDD Workflow for Copilot
 
@@ -87,8 +88,8 @@ See [doc/TDD_GUIDE.md](../doc/TDD_GUIDE.md) for detailed examples.
 | Path             | `ingester/`                                      |
 | Language         | Rust (edition 2024)                              |
 | Build            | `cargo build` / `cargo test`                     |
-| Key Crates       | `serde`, `serde_json`, `flate2`, `duckdb`, `clap`, `anyhow`, `indicatif` |
-| Responsibility   | Parse CloudTrail JSON/gz logs → store in DuckDB  |
+| Key Crates       | `serde`, `serde_json`, `flate2`, `duckdb`, `clap`, `anyhow`, `indicatif`, `rayon`, `maxminddb` |
+| Responsibility   | Parse CloudTrail JSON/gz logs → store in DuckDB; optional GeoIP enrichment |
 | DuckDB Mode      | `READ_WRITE`                                     |
 
 See [ingester/AGENTS.md](../ingester/AGENTS.md) for module-specific instructions.
@@ -100,7 +101,7 @@ See [ingester/AGENTS.md](../ingester/AGENTS.md) for module-specific instructions
 | Path             | `agent/`                                         |
 | Language         | Python 3.12+                                     |
 | Framework        | Streamlit                                        |
-| Key Packages     | `streamlit`, `openai`, `duckdb`, `pandas`        |
+| Key Packages     | `streamlit`, `openai`, `duckdb`, `pandas`, `httpx`, `pyyaml` |
 | Test Framework   | `pytest`                                         |
 | Responsibility   | AI-assisted threat hunting UI, SQL gen & exec    |
 | DuckDB Mode      | `READ_ONLY`                                      |
@@ -112,8 +113,9 @@ See [agent/AGENTS.md](../agent/AGENTS.md) for module-specific instructions.
 | Attribute        | Value                                            |
 | ---------------- | ------------------------------------------------ |
 | Path             | `dashboard/`                                     |
-| Technology       | Apache Superset (Docker image)                   |
-| Config           | `dashboard/assets/` directory (YAML/ZIP exports)  |
+| Technology       | Apache Superset (custom Docker image)            |
+| Config           | `dashboard/assets/` (pre-built dashboard ZIP)    |
+| Init             | `dashboard/init/bootstrap.sh` (one-shot setup)   |
 | DuckDB Mode      | `READ_ONLY`                                      |
 
 ## Coding Conventions
@@ -127,11 +129,10 @@ See [agent/AGENTS.md](../agent/AGENTS.md) for module-specific instructions.
 
 - **Formatter**: `rustfmt` (default settings)
 - **Linter**: `clippy` — all warnings must be resolved
-- **Error handling**: Use `anyhow::Result` for application errors; `thiserror` for library-level custom errors
+- **Error handling**: Use `anyhow::Result` everywhere; `.with_context(|| ...)` for context
 - **Tests**: Unit tests in `#[cfg(test)] mod tests` within the same file; integration tests in `ingester/tests/`
 - **Naming**: snake_case for functions/variables, PascalCase for types/traits
 - **Documentation**: `///` doc comments on all public items
-- **Dependencies**: Prefer well-maintained crates; pin versions in `Cargo.toml`
 
 ### Python (agent)
 
@@ -142,6 +143,7 @@ See [agent/AGENTS.md](../agent/AGENTS.md) for module-specific instructions.
 - **Naming**: snake_case for functions/variables, PascalCase for classes
 - **Imports**: stdlib → third-party → local (enforce via `ruff`)
 - **Docstrings**: Google style
+- **OpenAI mocks**: mock as `llm.OpenAI` (not `agent.llm.OpenAI` — `pytest.ini` sets `pythonpath = .`)
 
 ### General
 
@@ -160,47 +162,61 @@ conn = duckdb.connect("/data/db/threat_hunting.db", read_only=True)
 
 ```rust
 // Ingester (READ_WRITE)
-let db = Connection::open("/data/db/threat_hunting.db")?;
+let conn = Connection::open("/data/db/threat_hunting.db")?;
 ```
 
 ### Important Rules
 
 1. **Never open READ_WRITE from agent or dashboard** — this will conflict with the ingester lock.
 2. **Ingester must be run first**, then agent/dashboard query the data.
-3. **Tests must use temporary databases** — use `tempfile` (Rust) or `tmp_path` (pytest) to create isolated DuckDB files.
-4. **SSD storage is strongly recommended** for the DuckDB volume.
+3. **Tests must use temporary databases** — use `tempfile` (Rust) or `tmp_path` (pytest).
+4. **SSD storage is strongly recommended** for the DuckDB bind mount.
 
 ## CloudTrail Table Schema (Reference)
 
-The ingester creates a `cloudtrail_events` table:
+The ingester creates a `cloudtrail_events` table with **24 columns** (17 core + 7 GeoIP).  
+JSON blobs are stored as **`VARCHAR`**, not DuckDB JSON type — use `json_extract_string()` to query them.
 
 ```sql
 CREATE TABLE IF NOT EXISTS cloudtrail_events (
-    event_time           TIMESTAMP,
-    event_name           VARCHAR,
-    event_source         VARCHAR,
-    aws_region           VARCHAR,
-    source_ip_address    VARCHAR,
-    user_agent           VARCHAR,
-    user_identity_type   VARCHAR,
-    user_identity_arn    VARCHAR,
+    -- Core columns (17)
+    event_time               TIMESTAMP,
+    event_name               VARCHAR,
+    event_source             VARCHAR,
+    aws_region               VARCHAR,
+    source_ip_address        VARCHAR,
+    user_agent               VARCHAR,
+    user_identity_type       VARCHAR,
+    user_identity_arn        VARCHAR,
     user_identity_account_id VARCHAR,
-    request_parameters   JSON,
-    response_elements    JSON,
-    error_code           VARCHAR,
-    error_message        VARCHAR,
-    read_only            BOOLEAN,
-    event_type           VARCHAR,
-    recipient_account_id VARCHAR,
-    raw_event            JSON
+    request_parameters       VARCHAR,   -- JSON stored as VARCHAR
+    response_elements        VARCHAR,   -- JSON stored as VARCHAR
+    error_code               VARCHAR,
+    error_message            VARCHAR,
+    read_only                BOOLEAN,
+    event_type               VARCHAR,
+    recipient_account_id     VARCHAR,
+    raw_event                VARCHAR    -- full original event JSON as VARCHAR
 );
+
+-- GeoIP columns (7) — added via ALTER TABLE ADD COLUMN IF NOT EXISTS
+-- NULL when ingested without a GeoLite2 database
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_code VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_name VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_city         VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_latitude     DOUBLE;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_longitude    DOUBLE;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_asn          VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
 ```
+
+`ingested_files (file_path PK, sha256, ingested_at)` tracks ingested files for deduplication.
 
 ## Security Rules
 
 1. **API keys**: Never hardcode OpenAI API keys. Always read from environment variables or `.env` file.
-2. **SQL injection prevention**: Agent module opens DuckDB in `READ_ONLY` mode. Run `EXPLAIN` before executing AI-generated SQL to validate it.
-3. **No cloud upload**: v1.0 has no functionality to send data externally (except OpenAI API calls for SQL generation).
+2. **SQL injection prevention**: Agent opens DuckDB in `READ_ONLY` mode. Run `EXPLAIN` + keyword filter before executing AI-generated SQL.
+3. **No cloud upload**: v1.0 sends data only to the OpenAI API for SQL generation. No other external calls.
 4. **Network**: All services are local-only; no ports exposed to the public internet.
 
 ## File Structure
@@ -208,43 +224,63 @@ CREATE TABLE IF NOT EXISTS cloudtrail_events (
 ```
 THuntCloud/
 ├── .github/
-│   └── AGENTS.md              ← You are here
+│   ├── AGENTS.md              ← You are here
+│   └── copilot-instructions.md
 ├── ingester/                  # Rust log ingestion engine
-│   ├── AGENTS.md              # Module-specific Copilot instructions
+│   ├── AGENTS.md
+│   ├── README.md
 │   ├── Cargo.toml
 │   ├── src/
-│   │   ├── main.rs
+│   │   ├── main.rs            # CLI entry point (ingest + enrich subcommands)
+│   │   ├── lib.rs
 │   │   ├── parser.rs          # CloudTrail JSON parsing
 │   │   ├── decompressor.rs    # gz decompression
-│   │   ├── db.rs              # DuckDB operations
-│   │   └── ingest.rs          # Orchestration logic
+│   │   ├── db.rs              # DuckDB schema, batch insert, geo backfill
+│   │   ├── ingest.rs          # Pipeline orchestration (rayon parallel)
+│   │   ├── enrich.rs          # Geo back-fill for existing rows
+│   │   ├── geoip.rs           # MaxMind GeoLite2 lookup
+│   │   ├── date_filter.rs     # --from / --to filter
+│   │   ├── path_filter.rs     # --include / --exclude glob filter
+│   │   └── progress.rs        # Progress bar
 │   └── tests/
+│       ├── cli_test.rs
 │       ├── integration_test.rs
-│       └── testdata/          # Sample CloudTrail JSON/gz files
+│       └── testdata/
 ├── agent/                     # Streamlit AI-Agent UI
-│   ├── AGENTS.md              # Module-specific Copilot instructions
+│   ├── AGENTS.md
 │   ├── app.py                 # Streamlit entry point
 │   ├── llm.py                 # OpenAI API integration
-│   ├── query.py               # DuckDB query execution
-│   ├── report.py              # Report generation
-│   ├── prompts/               # Built-in prompt templates
+│   ├── query.py               # DuckDB query execution + safety guards
+│   ├── report.py              # Report generation + redaction
+│   ├── schema.py              # Schema definitions
+│   ├── config.py              # Env var configuration
+│   ├── builtin_hunts.yaml     # Pre-built hunting queries
+│   ├── prompts/
+│   │   └── system_prompt.py
 │   ├── requirements.txt
+│   ├── requirements-dev.txt
 │   └── tests/
 │       ├── conftest.py
-│       ├── test_llm.py
+│       ├── test_config.py
+│       ├── test_schema.py
 │       ├── test_query.py
-│       └── test_report.py
-├── dashboard/                 # Superset config + pre-built dashboard assets
-│   └── assets/                # Dashboard definitions and ZIP exports
-├── data/                      # Log data (git-ignored)
+│       ├── test_llm.py
+│       ├── test_report.py
+│       └── test_app.py
+├── dashboard/                 # Apache Superset config + pre-built dashboard
+│   ├── Dockerfile
+│   ├── superset_config.py
+│   ├── assets/                # Dashboard ZIP export + YAML definitions
+│   └── init/                  # bootstrap.sh, register_duckdb.py, etc.
 ├── docker/
-│   └── docker-compose.yml
+│   └── docker-compose.yml     # ingester + agent + superset + superset-init + superset-resync
 ├── doc/
 │   ├── ARCHITECTURE.md
 │   ├── DEVELOPMENT.md
 │   ├── TDD_GUIDE.md
-│   └── TESTING.md
-└── .env.example
+│   ├── TESTING.md
+│   └── PRD.md
+└── README.md
 ```
 
 ## Quick Reference Commands
@@ -256,11 +292,17 @@ cd ingester && cargo test
 # Run agent tests
 cd agent && pytest
 
-# Build and start all services
-cd docker && docker compose up -d
+# Build and start all services (agent + dashboard)
+cd docker && docker compose up -d --build
 
-# Run ingester to load logs
+# Ingest logs (first time or re-ingest)
 cd docker && docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+# Back-fill GeoIP on existing database
+cd docker && docker compose --profile ingest run --rm ingester enrich --geoip-country /data/geoip
+
+# Re-sync Superset dataset metadata after re-ingest
+cd docker && docker compose --profile resync run --rm superset-resync
 
 # Lint (Rust)
 cd ingester && cargo clippy -- -D warnings
@@ -269,9 +311,8 @@ cd ingester && cargo clippy -- -D warnings
 cd agent && ruff check .
 
 # Format (Rust)
-cd ingester && cargo fmt --check
+cd ingester && cargo fmt
 
 # Format (Python)
-cd agent && black --check .
+cd agent && black .
 ```
-

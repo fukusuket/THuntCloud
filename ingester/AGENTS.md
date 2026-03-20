@@ -6,7 +6,7 @@
 
 ## Module Purpose
 
-The ingester reads AWS CloudTrail log files (JSON and `.json.gz`) from the local filesystem, parses them, and inserts the records into a DuckDB database. It is the **only** component that opens DuckDB in `READ_WRITE` mode.
+The ingester reads AWS CloudTrail log files (JSON and `.json.gz`) from the local filesystem, parses them, and inserts the records into a DuckDB database. It is the **only** component that opens DuckDB in `READ_WRITE` mode. Optional GeoIP enrichment populates 7 geo columns using MaxMind GeoLite2 databases.
 
 ## Technology Stack
 
@@ -14,8 +14,8 @@ The ingester reads AWS CloudTrail log files (JSON and `.json.gz`) from the local
 | ----------------- | -------------------------------- |
 | Language          | Rust (edition 2024)              |
 | Build system      | Cargo                            |
-| Key crates        | `serde`, `serde_json`, `flate2`, `duckdb`, `clap`, `anyhow`, `indicatif`, `walkdir`, `sha2` |
-| Test crates       | `tempfile`, `assert_cmd` (optional for CLI integration tests) |
+| Key crates        | `serde`, `serde_json`, `flate2`, `duckdb`, `clap`, `anyhow`, `indicatif`, `walkdir`, `sha2`, `rayon`, `chrono`, `glob`, `maxminddb`, `tracing` |
+| Test crates       | `tempfile`, `assert_cmd`, `predicates` |
 | DuckDB mode       | `READ_WRITE`                     |
 
 ## Planned Module Structure
@@ -24,102 +24,51 @@ The ingester reads AWS CloudTrail log files (JSON and `.json.gz`) from the local
 ingester/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs            # CLI entry point (clap)
+│   ├── main.rs            # CLI entry point (clap) — ingest + enrich subcommands
 │   ├── lib.rs             # Public API re-exports
-│   ├── parser.rs          # CloudTrail JSON parsing
-│   ├── decompressor.rs    # gz decompression (flate2)
-│   ├── db.rs              # DuckDB connection, table creation, batch insert
-│   ├── ingest.rs          # Orchestration: walk directory → parse → insert
-│   └── progress.rs        # Progress bar (indicatif)
+│   ├── parser.rs          # CloudTrail JSON parsing (serde)
+│   ├── decompressor.rs    # Transparent gz decompression (flate2)
+│   ├── db.rs              # DuckDB schema, batch insert (Appender), geo backfill
+│   ├── ingest.rs          # Pipeline orchestration: walkdir → parallel parse → insert
+│   ├── enrich.rs          # Geo back-fill for existing rows (enrich subcommand)
+│   ├── geoip.rs           # MaxMind GeoLite2 lookup + private-IP classification
+│   ├── date_filter.rs     # Date-range filter (--from / --to)
+│   ├── path_filter.rs     # Glob path-pattern filter (--include / --exclude)
+│   └── progress.rs        # Progress bar wrapper (indicatif)
 ├── tests/
-│   ├── integration_test.rs  # End-to-end ingestion tests
+│   ├── cli_test.rs          # CLI integration tests (assert_cmd)
+│   ├── integration_test.rs  # End-to-end pipeline tests
 │   └── testdata/
-│       ├── single_event.json
-│       ├── multi_event.json
-│       ├── single_event.json.gz
-│       └── malformed.json
+│       ├── single_event.json    # 1 CloudTrail event
+│       ├── multi_event.json     # 3 CloudTrail events
+│       ├── single_event.json.gz # 1 event, gzip-compressed
+│       └── malformed.json       # Invalid JSON (error handling)
 └── AGENTS.md              ← You are here
 ```
-
-## TDD Test List
-
-When implementing the ingester, follow this ordered test list. Each item should be a `#[test]` function. Proceed one test at a time using Red-Green-Refactor.
-
-### parser.rs
-
-1. `test_parse_single_cloudtrail_event` — Parse a minimal CloudTrail JSON record into a struct.
-2. `test_parse_cloudtrail_records_array` — Parse a CloudTrail file containing `{"Records": [...]}` with multiple events.
-3. `test_parse_handles_missing_optional_fields` — Fields like `errorCode` may be absent; parse should not panic.
-4. `test_parse_malformed_json_returns_error` — Invalid JSON input returns an appropriate error.
-5. `test_parse_empty_records_array` — `{"Records": []}` returns an empty vec, not an error.
-
-### decompressor.rs
-
-6. `test_decompress_gz_file` — Read a `.json.gz` file and produce the decompressed JSON string.
-7. `test_detect_gz_by_extension` — `.json.gz` → decompress; `.json` → read directly.
-8. `test_decompress_invalid_gz_returns_error` — Corrupted gz file returns an error.
-
-### db.rs
-
-9. `test_create_cloudtrail_table` — `ensure_table()` creates the `cloudtrail_events` table in a temp DuckDB.
-10. `test_create_table_is_idempotent` — Calling `ensure_table()` twice does not error.
-11. `test_insert_single_event` — Insert one parsed event and verify it can be queried back.
-12. `test_insert_batch_events` — Insert 100 events in a batch and verify the row count.
-13. `test_insert_event_with_null_fields` — Events with `None` optional fields are inserted without error.
-
-### ingest.rs
-
-14. `test_ingest_single_json_file` — Ingest one `.json` file into a temp DuckDB; verify row count.
-15. `test_ingest_single_gz_file` — Ingest one `.json.gz` file; verify row count.
-16. `test_ingest_directory` — Ingest a directory with multiple files; verify total row count.
-17. `test_ingest_skips_non_json_files` — Non-JSON files in the directory are silently skipped.
-18. `test_ingest_duplicate_prevention` — Ingesting the same file twice does not duplicate records (if ING-06 is implemented).
-19. `test_ingest_returns_stats` — The ingest function returns `IngestStats { files_processed, records_inserted, errors }`.
-
-### main.rs (CLI integration)
-
-20. `test_cli_ingest_command` — Running `ingester ingest --path <dir>` exits successfully.
-21. `test_cli_missing_path_shows_error` — Running without `--path` produces a usage error.
 
 ## Data Structures
 
 ```rust
-use serde::{Deserialize, Serialize};
-
 /// A single CloudTrail event record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudTrailEvent {
-    #[serde(rename = "eventTime")]
-    pub event_time: String,
-    #[serde(rename = "eventName")]
-    pub event_name: String,
-    #[serde(rename = "eventSource")]
-    pub event_source: String,
-    #[serde(rename = "awsRegion")]
-    pub aws_region: String,
-    #[serde(rename = "sourceIPAddress")]
-    pub source_ip_address: Option<String>,
-    #[serde(rename = "userAgent")]
-    pub user_agent: Option<String>,
-    #[serde(rename = "userIdentity")]
-    pub user_identity: Option<serde_json::Value>,
-    #[serde(rename = "requestParameters")]
-    pub request_parameters: Option<serde_json::Value>,
-    #[serde(rename = "responseElements")]
-    pub response_elements: Option<serde_json::Value>,
-    #[serde(rename = "errorCode")]
-    pub error_code: Option<String>,
-    #[serde(rename = "errorMessage")]
-    pub error_message: Option<String>,
-    #[serde(rename = "readOnly")]
-    pub read_only: Option<bool>,
-    #[serde(rename = "eventType")]
-    pub event_type: Option<String>,
-    #[serde(rename = "recipientAccountId")]
-    pub recipient_account_id: Option<String>,
+    #[serde(rename = "eventTime")]       pub event_time:      String,
+    #[serde(rename = "eventName")]       pub event_name:      String,
+    #[serde(rename = "eventSource")]     pub event_source:    String,
+    #[serde(rename = "awsRegion")]       pub aws_region:      String,
+    #[serde(rename = "sourceIPAddress")] pub source_ip_address: Option<String>,
+    #[serde(rename = "userAgent")]       pub user_agent:      Option<String>,
+    #[serde(rename = "userIdentity")]    pub user_identity:   Option<serde_json::Value>,
+    #[serde(rename = "requestParameters")] pub request_parameters: Option<serde_json::Value>,
+    #[serde(rename = "responseElements")] pub response_elements: Option<serde_json::Value>,
+    #[serde(rename = "errorCode")]       pub error_code:      Option<String>,
+    #[serde(rename = "errorMessage")]    pub error_message:   Option<String>,
+    #[serde(rename = "readOnly")]        pub read_only:       Option<bool>,
+    #[serde(rename = "eventType")]       pub event_type:      Option<String>,
+    #[serde(rename = "recipientAccountId")] pub recipient_account_id: Option<String>,
 }
 
-/// Wrapper for the CloudTrail JSON file format.
+/// Wrapper for the CloudTrail JSON file format `{"Records": [...]}`.
 #[derive(Debug, Deserialize)]
 pub struct CloudTrailLog {
     #[serde(rename = "Records")]
@@ -134,7 +83,87 @@ pub struct IngestStats {
     pub errors: usize,
     pub elapsed_secs: f64,
 }
+
+/// Statistics returned after a geo-enrichment run.
+#[derive(Debug, Default)]
+pub struct EnrichStats {
+    pub enriched_count: usize,
+    pub skipped_count: usize,
+    pub elapsed_secs: f64,
+}
+
+/// GeoIP lookup result for a single IP address.
+pub struct GeoInfo {
+    pub country_code: Option<String>,
+    pub country_name: Option<String>,
+    pub city:         Option<String>,
+    pub latitude:     Option<f64>,
+    pub longitude:    Option<f64>,
+    pub asn:          Option<String>,
+    pub org:          Option<String>,
+}
 ```
+
+## TDD Test Coverage (implemented)
+
+Tests are organised by module. Add new tests in `#[cfg(test)] mod tests` within the same source file.
+
+### parser.rs
+- `test_parse_single_cloudtrail_event` — parse a minimal CloudTrail JSON record
+- `test_parse_cloudtrail_records_array` — parse `{"Records": [...]}` with multiple events
+- `test_parse_handles_missing_optional_fields` — missing optional fields do not panic
+- `test_parse_malformed_json_returns_error` — invalid JSON returns `Err`
+- `test_parse_empty_records_array` — `{"Records": []}` → empty vec, not error
+
+### decompressor.rs
+- `test_decompress_gz_file` — `.json.gz` decompresses correctly
+- `test_detect_gz_by_extension` — `.json.gz` → decompress; `.json` → read directly
+- `test_decompress_invalid_gz_returns_error` — corrupted gz returns `Err`
+
+### db.rs
+- `test_create_cloudtrail_table` — `ensure_table()` creates both tables
+- `test_create_table_is_idempotent` — calling twice does not error
+- `test_insert_single_event` — insert one event, verify query-back
+- `test_insert_batch_events` — insert 100 events, verify row count
+- `test_insert_event_with_null_fields` — `None` optional fields insert without error
+- `test_ensure_geo_columns_adds_seven_columns` — 7 geo columns added via `ALTER TABLE`
+- `test_ensure_geo_columns_is_idempotent` — calling twice does not error
+- `test_insert_events_with_geo_populates_columns` — GeoInfo provided → correct DB values
+- `test_insert_events_without_geo_columns_are_null` — no enricher → geo columns NULL
+- `test_insert_events_private_ip_stores_marker` — `"PRIVATE"` marker stored for RFC-1918 IPs
+
+### ingest.rs
+- `test_ingest_single_json_file` — ingest `.json` → correct row count
+- `test_ingest_single_gz_file` — ingest `.json.gz` → correct row count
+- `test_ingest_directory` — ingest directory with multiple files → total row count
+- `test_ingest_skips_non_json_files` — non-JSON files silently skipped
+- `test_ingest_duplicate_prevention` — ingesting same file twice does not duplicate records
+- `test_ingest_returns_stats` — returns `IngestStats { files_processed, records_inserted, errors, elapsed_secs }`
+
+### geoip.rs
+- `test_classify_rfc1918_*` — RFC-1918 addresses → `"PRIVATE"` marker
+- `test_classify_loopback_*` — loopback addresses → `"LOOPBACK"` marker
+- `test_classify_link_local_*` — link-local addresses → `"LINK-LOCAL"` marker
+- `test_classify_public_returns_none` — public IPs → `None` (requires mmdb lookup)
+- `test_parse_invalid_ip_string` — non-IP string → `Err`
+- `test_enricher_private_ip_skips_mmdb_access` — private IPs bypass mmdb lookup
+- `test_enricher_none_returns_all_none` — no enricher → all geo fields `None`
+
+### enrich.rs
+- `test_enrich_public_ip_writes_geo_data` — public IP rows get geo data via UPDATE
+- `test_enrich_private_ip_writes_marker` — RFC-1918 IP rows get `"PRIVATE"` marker
+- `test_enrich_skips_null_source_ip` — NULL source_ip rows are skipped
+- `test_enrich_is_idempotent` — already-enriched rows (`geo_country_code IS NOT NULL`) are not overwritten
+- `test_enrich_returns_stats` — returns `EnrichStats { enriched_count, skipped_count, elapsed_secs }`
+
+### date_filter.rs / path_filter.rs
+- `test_date_filter_*` — various from/to boundary cases; no-date files always match
+- `test_path_filter_*` — include/exclude glob matching; `*` crosses path separators
+
+### CLI (tests/cli_test.rs)
+- `test_cli_ingest_command` — `ingester ingest --path <dir>` exits 0
+- `test_cli_missing_path_shows_error` — missing `--path` produces usage error
+- `test_cli_enrich_requires_geoip_arg` — `enrich` without GeoIP arg exits non-zero
 
 ## Testing Patterns
 
@@ -151,73 +180,25 @@ mod tests {
         let conn = Connection::open(tmp.path()).unwrap();
         (conn, tmp)
     }
-
-    #[test]
-    fn test_example() {
-        let (conn, _tmp) = temp_db();
-        // Use conn for testing...
-    }
 }
 ```
-
-### Test Data
-
-Place minimal CloudTrail JSON files in `tests/testdata/`. Example:
-
-```json
-{
-  "Records": [
-    {
-      "eventTime": "2024-01-15T10:30:00Z",
-      "eventName": "DescribeInstances",
-      "eventSource": "ec2.amazonaws.com",
-      "awsRegion": "us-east-1",
-      "sourceIPAddress": "198.51.100.1",
-      "userAgent": "aws-cli/2.0",
-      "userIdentity": {
-        "type": "IAMUser",
-        "arn": "arn:aws:iam::123456789012:user/testuser",
-        "accountId": "123456789012"
-      },
-      "readOnly": true,
-      "eventType": "AwsApiCall",
-      "recipientAccountId": "123456789012"
-    }
-  ]
-}
-```
-
-### Creating Test gz Files
-
-```rust
-use flate2::write::GzEncoder;
-use flate2::Compression;
-use std::io::Write;
-
-fn create_test_gz(json_content: &str, path: &std::path::Path) {
-    let file = std::fs::File::create(path).unwrap();
-    let mut encoder = GzEncoder::new(file, Compression::default());
-    encoder.write_all(json_content.as_bytes()).unwrap();
-    encoder.finish().unwrap();
-}
-```
-
-## Language Policy
-
-- **All Rust doc comments (`///`, `//!`), inline comments, and documentation MUST be written in English.**
-- Non-English text is not permitted in code comments, commit messages, or PR descriptions.
 
 ## Error Handling
 
 - Use `anyhow::Result` as the return type for all functions.
-- Use `anyhow::Context` for adding context to errors (e.g., `.with_context(|| format!("Failed to parse {}", path))`).
-- Log errors with `tracing` or `log` crate, but always propagate them up.
-- In the CLI, catch errors at the top level and print a user-friendly message.
+- Use `.with_context(|| format!("Failed to parse {}", path))` for context.
+- Log errors via `tracing`; always propagate up to the CLI entry point.
+- In `main.rs`, catch at top level and print with `eprintln!("error: {e:#}")`.
 
-## Performance Considerations
+## Performance
 
-- Use **batch inserts** (prepared statement + appender) rather than individual INSERT statements.
-- Use `BufReader` for file I/O.
-- Process files sequentially in v1.0 (parallel file processing can be added later).
-- Target: 10 GB ingestion in under 5 minutes; 50 GB on 16 GB RAM.
+- **Parallel parsing**: `rayon` reads, decompresses, and parses files concurrently (up to `PARSE_CHUNK_SIZE = 64` files per chunk). Control with `--workers N` or `RAYON_NUM_THREADS`.
+- **Single file read**: each file is read once — SHA-256, decompression, and parsing share the same byte buffer.
+- **Batch duplicate check**: `ingested_files` table loaded into a `HashMap` at startup (one `SELECT`).
+- **Chunked memory**: events held in memory only for the current chunk, then dropped.
+- **Batch insert**: `duckdb::Appender` yields 10–50× higher throughput vs. individual INSERTs.
+- **Target**: 10 GB in under 5 minutes on a standard laptop.
 
+## Language Policy
+
+- **All Rust doc comments (`///`, `//!`), inline comments, and documentation MUST be written in English.**

@@ -47,7 +47,7 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 │                            │                            │
 │                    ┌───────▼──────┐                     │
 │                    │   DuckDB     │                     │
-│                    │  (Named Vol) │                     │
+│                    │ (Bind Mount) │                     │
 │                    │  (SSD)       │                     │
 │                    └──────────────┘                     │
 └─────────────────────────────────────────────────────────┘
@@ -277,6 +277,7 @@ docker compose up -d --build
 ```
 ingester ingest --path <dir>
                 [--db             <path>]    # DuckDB file (default: /data/db/threat_hunting.db)
+                [--no-progress]              # Disable progress bar output
                 [--include        <globs>]   # comma-separated include patterns, e.g. "*CloudTrail*"
                 [--exclude        <globs>]   # comma-separated exclude patterns, e.g. "*vpcflowlogs*"
                 [--from           <YYYYMMDD>]# ingest files on or after this date

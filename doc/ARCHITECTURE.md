@@ -129,55 +129,71 @@ CloudTrail logs (.json / .json.gz)
 
 ## CloudTrail Table Schema
 
-The ingester creates and populates the following table:
+The ingester creates and populates `cloudtrail_events` with **24 columns** (17 core + 7 GeoIP).  
+JSON blobs are stored as **`VARCHAR`**, not DuckDB JSON type — use `json_extract_string()` to query them.
 
 ```sql
 CREATE TABLE IF NOT EXISTS cloudtrail_events (
-    event_time           TIMESTAMP,
-    event_name           VARCHAR,
-    event_source         VARCHAR,
-    aws_region           VARCHAR,
-    source_ip_address    VARCHAR,
-    user_agent           VARCHAR,
-    user_identity_type   VARCHAR,
-    user_identity_arn    VARCHAR,
+    -- Core columns (17)
+    event_time               TIMESTAMP,
+    event_name               VARCHAR,
+    event_source             VARCHAR,
+    aws_region               VARCHAR,
+    source_ip_address        VARCHAR,
+    user_agent               VARCHAR,
+    user_identity_type       VARCHAR,
+    user_identity_arn        VARCHAR,
     user_identity_account_id VARCHAR,
-    request_parameters   JSON,
-    response_elements    JSON,
-    error_code           VARCHAR,
-    error_message        VARCHAR,
-    read_only            BOOLEAN,
-    event_type           VARCHAR,
-    recipient_account_id VARCHAR,
-    raw_event            JSON
+    request_parameters       VARCHAR,   -- JSON stored as VARCHAR
+    response_elements        VARCHAR,   -- JSON stored as VARCHAR
+    error_code               VARCHAR,
+    error_message            VARCHAR,
+    read_only                BOOLEAN,
+    event_type               VARCHAR,
+    recipient_account_id     VARCHAR,
+    raw_event                VARCHAR    -- full original event JSON as VARCHAR
 );
+
+-- GeoIP columns (7) — added via ALTER TABLE ADD COLUMN IF NOT EXISTS
+-- NULL when ingested without a GeoLite2 database
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_code VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_name VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_city         VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_latitude     DOUBLE;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_longitude    DOUBLE;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_asn          VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
 ```
 
 ### Schema Design Decisions
 
-| Decision                           | Rationale                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| Flatten `userIdentity` fields      | Most queries filter/group by identity type, ARN, or account ID           |
-| Keep `request/response` as JSON    | Too varied to normalize; DuckDB's JSON functions provide flexible access |
-| Store `raw_event` as JSON          | Preserves the original record for auditing and ad-hoc deep inspection    |
-| Use `TIMESTAMP` for `event_time`   | Enables native time-range queries and DuckDB temporal functions          |
-| No primary key in v1.0             | DuckDB does not enforce PK constraints; duplicate prevention is external |
+| Decision                                  | Rationale                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| Flatten `userIdentity` fields             | Most queries filter/group by identity type, ARN, or account ID           |
+| Store `request/response` as VARCHAR       | Too varied to normalize; use `json_extract_string()` for ad-hoc access   |
+| Store `raw_event` as VARCHAR              | Preserves the original record; fields not in schema remain accessible    |
+| Use `TIMESTAMP` for `event_time`          | Enables native time-range queries and DuckDB temporal functions          |
+| No primary key                            | DuckDB does not enforce PK constraints; dedup via `ingested_files` table |
+| GeoIP columns added via `ALTER TABLE`     | Idempotent; columns absent when ingested without GeoLite2 (remain NULL)  |
 
 ## Docker Compose Services
 
-| Service          | Port  | Volume Access | Description                                 |
-| ---------------- | ----- | ------------- | ------------------------------------------- |
-| `ingester`       | —     | READ_WRITE    | CLI log ingestion (profile: `ingest`)       |
-| `agent`          | 8501  | READ_ONLY     | Streamlit AI hunting UI                     |
-| `superset`       | 8088  | READ_ONLY     | Apache Superset BI dashboard                |
-| `superset-init`  | —     | —             | One-shot Superset initialization            |
+| Service            | Port  | Volume Access | Description                                  |
+| ------------------ | ----- | ------------- | -------------------------------------------- |
+| `ingester`         | —     | READ_WRITE    | CLI log ingestion (profile: `ingest`)        |
+| `agent`            | 8501  | READ_ONLY     | Streamlit AI hunting UI                      |
+| `superset`         | 8088  | READ_ONLY     | Apache Superset BI dashboard                 |
+| `superset-init`    | —     | —             | One-shot Superset initialization             |
+| `superset-resync`  | —     | READ_ONLY     | Re-sync dataset metadata after re-ingest (profile: `resync`) |
 
 ### Volumes
 
-| Volume              | Purpose                                      |
-| ------------------- | -------------------------------------------- |
-| `duckdb_data`       | Shared DuckDB database file                  |
-| `superset_home`     | Superset metadata and configuration          |
+| Volume              | Type         | Purpose                                      |
+| ------------------- | ------------ | -------------------------------------------- |
+| `${DUCKDB_HOST_PATH:-./data/db}` | Bind mount | Shared DuckDB database file  |
+| `superset_home`     | Named volume | Superset metadata and configuration          |
+
+> **Note:** DuckDB data uses a **bind mount** (not a named volume). Docker Engine on Linux/WSL2 misresolves relative paths for named-volume `driver_opts`, so each service declares its own `volumes:` entry with a direct bind mount.
 
 ## Security Architecture
 
