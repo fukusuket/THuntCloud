@@ -852,7 +852,7 @@ metadata:
       viz_type: table
       description: DSH-18 - Top 25 ASN organizations (GeoIP enrichment required).
     - slice_name: Login Activity Heatmap
-      viz_type: pivot_table_v2
+      viz_type: table
       description: DSH-19 - Console login counts by hour-of-day and day-of-week.
     - slice_name: Write/Read Ratio Trend
       viz_type: echarts_timeseries_bar
