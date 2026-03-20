@@ -530,8 +530,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             else ""
         )
         assistant_content = (
-            f"**Results:** {row_summary}\n\n"
-            f"**Summary:**\n{summary}" + retry_notice
+            f"**Results:** {row_summary}\n\n" f"**Summary:**\n{summary}" + retry_notice
         )
 
     st.session_state.messages.append(
