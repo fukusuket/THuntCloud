@@ -3,6 +3,9 @@
 Test #22: session state initialization (Phase 6 of TDD plan).
 Tests #23-#25: built-in hunt YAML structure and Direct SQL execution.
 Tests #DF-A/B: date range filter session state and _handle_direct_sql integration.
+Tests #CTX: conversation context retention (Proposal 1).
+Tests #RETRY: SQL auto-correction retry loop (Proposal 2).
+Tests #BANNER: no-api-key guidance banner (Proposal 3).
 """
 
 import json
@@ -454,3 +457,325 @@ def test_handle_direct_sql_applies_date_filter_from_session_state(tmp_duckdb):
     # All 3 rows must be returned (all are within 2024)
     assert mock_state["last_results"] is not None
     assert len(mock_state["last_results"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests #BANNER — Proposal 3: no-api-key guidance banner
+# ---------------------------------------------------------------------------
+
+
+def test_render_chat_no_api_key_shows_info_banner():
+    """render_chat() shows an info banner guiding users to Direct SQL when no API key is set.
+
+    Test #BANNER-1: st.info must be called exactly once.
+    """
+    from tests.conftest import MockSessionState
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.header"),
+        patch("streamlit.caption"),
+        patch("streamlit.chat_input", return_value=None),
+        patch("streamlit.info") as mock_info,
+    ):
+        from app import render_chat
+
+        render_chat()
+
+    mock_info.assert_called_once()
+
+
+def test_render_chat_with_api_key_does_not_show_info_banner():
+    """render_chat() does not show the no-api-key info banner when an API key is set.
+
+    Test #BANNER-2: st.info must NOT be called.
+    """
+    from tests.conftest import MockSessionState
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.header"),
+        patch("streamlit.caption"),
+        patch("streamlit.chat_input", return_value=None),
+        patch("streamlit.info") as mock_info,
+    ):
+        from app import render_chat
+
+        render_chat()
+
+    mock_info.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests #CTX — Proposal 1: conversation context retention
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_has_conversation_context_default():
+    """SESSION_STATE_DEFAULTS includes conversation_context defaulting to [].
+
+    Test #CTX-1: verifies _init_session_state() creates the key.
+    """
+    mock_state = {}
+    with patch("streamlit.session_state", mock_state):
+        from app import _init_session_state
+
+        _init_session_state()
+
+    assert "conversation_context" in mock_state
+    assert mock_state["conversation_context"] == []
+
+
+def test_handle_user_query_passes_context_to_generate_sql(tmp_duckdb):
+    """_handle_user_query() passes conversation_context to generate_sql.
+
+    Test #CTX-2: verifies the context kwarg is forwarded correctly.
+    """
+    from tests.conftest import MockSessionState
+
+    existing_context = [{"user_query": "prev", "sql": "SELECT 1", "summary": "test"}]
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=list(existing_context),
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=sql) as mock_gen_sql,
+        patch("app.execute_with_retry", return_value=(result_df, sql)),
+        patch("app.generate_analysis", return_value="Test summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me all events", tmp_duckdb)
+
+    mock_gen_sql.assert_called_once_with(
+        "Show me all events",
+        api_key="sk-test",
+        model="gpt-5.4",
+        context=existing_context,
+    )
+
+
+def test_conversation_context_appended_after_successful_query(tmp_duckdb):
+    """conversation_context gains a new entry after a successful query.
+
+    Test #CTX-3: verifies the entry structure is correct.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=sql),
+        patch("app.execute_with_retry", return_value=(result_df, sql)),
+        patch("app.generate_analysis", return_value="Test summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me events", tmp_duckdb)
+
+    assert len(mock_state["conversation_context"]) == 1
+    entry = mock_state["conversation_context"][0]
+    assert entry["user_query"] == "Show me events"
+    assert entry["sql"] == sql
+    assert entry["summary"] == "Test summary"
+
+
+def test_conversation_context_max_size_enforced(tmp_duckdb):
+    """conversation_context is trimmed to MAX_CONTEXT_TURNS after exceeding the limit.
+
+    Test #CTX-4: oldest entries are dropped; the newest entry is at the end.
+    """
+    from tests.conftest import MockSessionState
+
+    from app import MAX_CONTEXT_TURNS
+
+    existing_context = [
+        {"user_query": f"query {i}", "sql": f"SELECT {i}", "summary": f"summary {i}"}
+        for i in range(MAX_CONTEXT_TURNS)
+    ]
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=list(existing_context),
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=sql),
+        patch("app.execute_with_retry", return_value=(result_df, sql)),
+        patch("app.generate_analysis", return_value="New summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("New query", tmp_duckdb)
+
+    assert len(mock_state["conversation_context"]) == MAX_CONTEXT_TURNS
+    assert mock_state["conversation_context"][-1]["user_query"] == "New query"
+    assert mock_state["conversation_context"][0]["user_query"] == "query 1"
+
+
+# ---------------------------------------------------------------------------
+# Tests #RETRY — Proposal 2: SQL auto-correction retry loop in _handle_user_query
+# ---------------------------------------------------------------------------
+
+
+def test_handle_user_query_uses_execute_with_retry(tmp_duckdb):
+    """_handle_user_query() calls execute_with_retry instead of execute_query directly.
+
+    Test #RETRY-1: verifies the retry-capable path is used for AI-generated queries.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=sql),
+        patch("app.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch("app.generate_analysis", return_value="Summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me all events", tmp_duckdb)
+
+    mock_retry.assert_called_once()
+
+
+def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
+    """When SQL is auto-corrected, the assistant message contains a retry notice.
+
+    Test #RETRY-2: verifies that a correction notice is appended when the
+    final SQL differs from the originally generated SQL.
+    """
+    from tests.conftest import MockSessionState
+
+    original_sql = "SELECT * FROM cloudtrail_events"
+    corrected_sql = "SELECT event_name FROM cloudtrail_events LIMIT 10"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=original_sql),
+        patch("app.execute_with_retry", return_value=(result_df, corrected_sql)),
+        patch("app.generate_analysis", return_value="Summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me all events", tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    content = mock_state["messages"][0]["content"]
+    assert "auto-corrected" in content
+

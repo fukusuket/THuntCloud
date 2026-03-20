@@ -1,5 +1,13 @@
 # DSH-12: Sensitive / High-Risk API Calls
 # Table listing invocations of known security-sensitive AWS API actions.
+# Expanded to cover CloudTrail Lake query sample patterns:
+#   - IAM credential changes and policy modifications
+#   - STS token operations and cross-account access
+#   - S3 bucket policy / encryption / logging changes
+#   - Security service disabling (GuardDuty, Config, SecurityHub)
+#   - Secrets Manager and Parameter Store reads
+#   - KMS key management
+#   - Organizations management
 uuid: a5b6c7d8-e9f0-1234-ef01-234567890123
 version: 1.0.0
 dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
@@ -8,7 +16,8 @@ viz_type: table
 description: >
   Invocations of known security-sensitive AWS API actions (DSH-12).
   Covers IAM credential changes, policy modifications, S3 bucket policy changes,
-  security group modifications, key management, and STS token operations.
+  security group modifications, key management, STS token operations, security
+  service disabling, Secrets Manager reads, and Organizations management.
   These calls should be rare in normal operations; unexpected occurrences
   may indicate privilege escalation, persistence, or data exfiltration.
 query_context: ""
@@ -40,22 +49,29 @@ params:
       filterOptionName: filter_sensitive_apis
       sqlExpression: >-
         event_name IN (
-          'CreateUser', 'CreateAccessKey', 'DeleteAccessKey',
+          'CreateUser', 'CreateAccessKey', 'DeleteAccessKey', 'UpdateAccessKey',
           'CreateLoginProfile', 'UpdateLoginProfile',
           'AttachUserPolicy', 'AttachRolePolicy', 'AttachGroupPolicy',
           'PutUserPolicy', 'PutRolePolicy', 'PutGroupPolicy',
           'CreateRole', 'UpdateAssumeRolePolicy',
-          'CreatePolicy', 'CreatePolicyVersion',
+          'CreatePolicy', 'CreatePolicyVersion', 'SetDefaultPolicyVersion',
           'AssumeRole', 'AssumeRoleWithSAML', 'AssumeRoleWithWebIdentity',
           'GetFederationToken', 'GetSessionToken',
           'PutBucketPolicy', 'PutBucketAcl', 'PutObjectAcl',
+          'DeleteBucketPolicy', 'DeleteBucketEncryption', 'PutPublicAccessBlock',
           'AuthorizeSecurityGroupIngress', 'AuthorizeSecurityGroupEgress',
           'CreateSecurityGroup', 'RevokeSecurityGroupIngress',
           'StopLogging', 'DeleteTrail', 'UpdateTrail',
-          'DisableKey', 'ScheduleKeyDeletion',
+          'DisableKey', 'ScheduleKeyDeletion', 'CancelKeyDeletion', 'CreateGrant',
           'ConsoleLogin', 'RunInstances', 'CreateFunction20150331',
           'CreateBucket', 'DeleteBucket',
-          'DeactivateMFADevice', 'DeleteVirtualMFADevice'
+          'DeactivateMFADevice', 'DeleteVirtualMFADevice',
+          'DisableDetector', 'DeleteDetector',
+          'DeleteConfigRule', 'StopConfigurationRecorder',
+          'DisableSecurityHub', 'DeleteAnalyzer',
+          'GetSecretValue', 'GetParameter', 'GetParametersByPath',
+          'RegisterDelegatedAdministrator', 'LeaveOrganization',
+          'DeleteFlowLogs', 'DeleteLogGroup'
         )
   row_limit: 100
   order_desc: true
@@ -70,24 +86,7 @@ cache_timeout: null
 #     COUNT(DISTINCT user_identity_arn)                    AS unique_callers,
 #     COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)   AS error_count
 # FROM cloudtrail_events
-# WHERE event_name IN (
-#     'CreateUser', 'CreateAccessKey', 'DeleteAccessKey',
-#     'CreateLoginProfile', 'UpdateLoginProfile',
-#     'AttachUserPolicy', 'AttachRolePolicy', 'AttachGroupPolicy',
-#     'PutUserPolicy', 'PutRolePolicy', 'PutGroupPolicy',
-#     'CreateRole', 'UpdateAssumeRolePolicy',
-#     'CreatePolicy', 'CreatePolicyVersion',
-#     'AssumeRole', 'AssumeRoleWithSAML', 'AssumeRoleWithWebIdentity',
-#     'GetFederationToken', 'GetSessionToken',
-#     'PutBucketPolicy', 'PutBucketAcl', 'PutObjectAcl',
-#     'AuthorizeSecurityGroupIngress', 'AuthorizeSecurityGroupEgress',
-#     'CreateSecurityGroup', 'RevokeSecurityGroupIngress',
-#     'StopLogging', 'DeleteTrail', 'UpdateTrail',
-#     'DisableKey', 'ScheduleKeyDeletion',
-#     'ConsoleLogin', 'RunInstances', 'CreateFunction20150331',
-#     'CreateBucket', 'DeleteBucket',
-#     'DeactivateMFADevice', 'DeleteVirtualMFADevice'
-# )
+# WHERE event_name IN (...)
 # GROUP BY event_name, event_source
 # ORDER BY call_count DESC
 # LIMIT 100

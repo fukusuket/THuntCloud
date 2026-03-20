@@ -2,6 +2,7 @@
 
 import concurrent.futures
 from datetime import date
+from unittest.mock import patch
 
 import duckdb
 import pandas as pd
@@ -14,6 +15,7 @@ from query import (
     apply_row_limit,
     connect_duckdb,
     execute_query,
+    execute_with_retry,
     validate_query,
 )
 
@@ -280,3 +282,70 @@ def test_apply_date_filter_actually_filters_rows(tmp_duckdb):
     assert len(df_out) == 0, "Expected 0 rows for the 2025 range"
 
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Proposal 2 — execute_with_retry
+# ---------------------------------------------------------------------------
+
+
+def test_execute_with_retry_succeeds_on_first_attempt(tmp_duckdb):
+    """execute_with_retry returns (DataFrame, sql) when the first attempt succeeds."""
+    conn = connect_duckdb(tmp_duckdb)
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    df, final_sql = execute_with_retry(conn, sql, api_key="", model="gpt-5.4")
+
+    assert isinstance(df, pd.DataFrame)
+    assert final_sql == sql
+    conn.close()
+
+
+def test_execute_with_retry_calls_fix_sql_on_validation_error(tmp_duckdb):
+    """execute_with_retry calls fix_sql_with_llm and retries when QueryValidationError occurs."""
+    conn = connect_duckdb(tmp_duckdb)
+    bad_sql = "SELECT * FROM nonexistent_table"
+    good_sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    with patch("query.fix_sql_with_llm", return_value=good_sql) as mock_fix:
+        df, final_sql = execute_with_retry(
+            conn, bad_sql, api_key="sk-test", model="gpt-5.4"
+        )
+
+    mock_fix.assert_called_once()
+    assert isinstance(df, pd.DataFrame)
+    assert final_sql == good_sql
+    conn.close()
+
+
+def test_execute_with_retry_raises_after_max_retries_exceeded(tmp_duckdb):
+    """execute_with_retry re-raises QueryValidationError after exhausting all retries."""
+    conn = connect_duckdb(tmp_duckdb)
+    bad_sql = "SELECT * FROM nonexistent_table"
+
+    # fix_sql returns the same bad SQL on every attempt
+    with patch("query.fix_sql_with_llm", return_value=bad_sql) as mock_fix:
+        with pytest.raises(QueryValidationError):
+            execute_with_retry(
+                conn, bad_sql, api_key="sk-test", model="gpt-5.4", max_retries=1
+            )
+
+    assert mock_fix.call_count == 1  # one correction attempt was made
+    conn.close()
+
+
+def test_execute_with_retry_does_not_retry_on_timeout(tmp_duckdb):
+    """execute_with_retry does not call fix_sql_with_llm when a TimeoutError occurs."""
+    conn = connect_duckdb(tmp_duckdb)
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    with (
+        patch("query.execute_query", side_effect=TimeoutError("timed out")),
+        patch("query.fix_sql_with_llm") as mock_fix,
+    ):
+        with pytest.raises(TimeoutError):
+            execute_with_retry(conn, sql, api_key="sk-test", model="gpt-5.4")
+
+    mock_fix.assert_not_called()
+    conn.close()
+

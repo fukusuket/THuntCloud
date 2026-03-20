@@ -17,6 +17,9 @@ from schema import get_schema_description
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of prior conversation turns to inject into the SQL generation prompt.
+MAX_CONTEXT_TURNS: int = 5
+
 
 def build_system_prompt() -> str:
     """Build the system prompt including the CloudTrail schema description.
@@ -58,10 +61,43 @@ def _create_client(api_key: str) -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
+def _build_context_messages(
+    context: list[dict], max_turns: int
+) -> list[dict]:
+    """Convert conversation context entries to OpenAI message pairs.
+
+    Takes the most recent *max_turns* entries from *context* and formats
+    each as a user/assistant message pair so the LLM understands prior
+    exchanges when generating the next SQL query.
+
+    Args:
+        context:   List of dicts with 'user_query', 'sql', and 'summary' keys.
+        max_turns: Maximum number of prior turns to include.
+
+    Returns:
+        A flat list of OpenAI message dicts (role + content), alternating
+        user and assistant entries.
+    """
+    recent = context[-max_turns:] if len(context) > max_turns else context
+    messages: list[dict] = []
+    for turn in recent:
+        messages.append({"role": "user", "content": turn.get("user_query", "")})
+        sql_text = turn.get("sql", "")
+        summary_text = turn.get("summary", "(no summary)") or "(no summary)"
+        messages.append(
+            {
+                "role": "assistant",
+                "content": f"```sql\n{sql_text}\n```\n\n{summary_text}",
+            }
+        )
+    return messages
+
+
 def generate_sql(
     user_query: str,
     api_key: str,
     model: str = "gpt-5.4",
+    context: list[dict] | None = None,
 ) -> str:
     """Generate a DuckDB SQL query from a natural language question.
 
@@ -69,24 +105,78 @@ def generate_sql(
         user_query: The natural language threat hunting question.
         api_key:    OpenAI API key.
         model:      Model name to use for generation (default: gpt-5.4).
+        context:    Optional list of prior conversation turns. Each entry
+                    must contain 'user_query', 'sql', and 'summary' keys.
+                    When provided, the most recent MAX_CONTEXT_TURNS entries
+                    are injected as user/assistant message pairs before the
+                    current query, enabling follow-up questions.
 
     Returns:
         A DuckDB SQL string. On API error, returns a user-friendly error message.
     """
     client = _create_client(api_key)
     try:
+        messages: list[dict] = [
+            {"role": "system", "content": build_system_prompt()},
+        ]
+        if context:
+            messages.extend(_build_context_messages(context, MAX_CONTEXT_TURNS))
+        messages.append({"role": "user", "content": user_query})
+
         response = client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": build_system_prompt()},
-                {"role": "user", "content": user_query},
-            ],
+            messages=messages,
             temperature=0,
         )
         raw = response.choices[0].message.content or ""
         return _strip_markdown_fences(raw)
     except OpenAIError as exc:
         logger.exception("OpenAI API error during SQL generation")
+        return f"[error] OpenAI API error: {exc}"
+
+
+def fix_sql_with_llm(
+    broken_sql: str,
+    error_message: str,
+    api_key: str,
+    model: str = "gpt-5.4",
+) -> str:
+    """Attempt to fix a SQL query that failed validation using the LLM.
+
+    Sends the broken SQL along with the validation error message to the LLM
+    and asks it to return a corrected DuckDB-compatible SQL string.
+
+    Args:
+        broken_sql:    The SQL query that failed validation.
+        error_message: The error message produced by the validation failure.
+        api_key:       OpenAI API key.
+        model:         Model name to use (default: gpt-5.4).
+
+    Returns:
+        A corrected DuckDB SQL string. On API error, returns a string
+        starting with '[error]'.
+    """
+    client = _create_client(api_key)
+    user_message = (
+        f"The following SQL query failed validation:\n\n"
+        f"```sql\n{broken_sql}\n```\n\n"
+        f"Error: {error_message}\n\n"
+        f"Please fix the SQL so it is valid DuckDB SQL for the cloudtrail_events table. "
+        f"Return only the corrected SQL, with no explanation."
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": build_system_prompt()},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0,
+        )
+        raw = response.choices[0].message.content or ""
+        return _strip_markdown_fences(raw)
+    except OpenAIError as exc:
+        logger.exception("OpenAI API error during SQL fix")
         return f"[error] OpenAI API error: {exc}"
 
 

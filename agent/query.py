@@ -12,6 +12,8 @@ from datetime import date
 import duckdb
 import pandas as pd
 
+from llm import fix_sql_with_llm
+
 logger = logging.getLogger(__name__)
 
 QUERY_TIMEOUT_SECONDS: int = 30
@@ -201,3 +203,61 @@ def execute_query(
             raise TimeoutError(
                 f"Query exceeded the {QUERY_TIMEOUT_SECONDS}s timeout limit."
             ) from exc
+
+
+def execute_with_retry(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    api_key: str,
+    model: str,
+    max_retries: int = 2,
+) -> tuple[pd.DataFrame, str]:
+    """Execute a SQL query with automatic LLM-assisted correction on validation failure.
+
+    Attempts to run the query via :func:`execute_query`. If a
+    :class:`QueryValidationError` occurs and *api_key* is set, calls
+    :func:`~llm.fix_sql_with_llm` to obtain a corrected SQL and retries.
+    At most *max_retries* corrections are attempted.
+
+    :class:`TimeoutError` is never retried — it propagates immediately.
+
+    Args:
+        conn:        An open DuckDB connection (READ_ONLY).
+        sql:         The SQL query to execute.
+        api_key:     OpenAI API key for LLM-assisted correction.
+                     When empty, no retries are attempted.
+        model:       Model name used for SQL correction.
+        max_retries: Maximum number of LLM correction retries (default: 2).
+
+    Returns:
+        A tuple ``(DataFrame, final_sql)`` where *final_sql* may differ from
+        the input *sql* when LLM corrections were applied.
+
+    Raises:
+        QueryValidationError: If the query fails validation after all retries
+                              are exhausted, or when *api_key* is empty.
+        TimeoutError:         If the query exceeds the timeout limit.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            df = execute_query(conn, sql)
+            return df, sql
+        except QueryValidationError as exc:
+            if attempt == max_retries or not api_key:
+                raise
+            logger.info(
+                "SQL validation failed (attempt %d/%d), requesting LLM correction: %s",
+                attempt + 1,
+                max_retries,
+                exc,
+            )
+            corrected = fix_sql_with_llm(sql, str(exc), api_key, model)
+            if corrected.startswith("[error]"):
+                raise QueryValidationError(
+                    f"LLM-based SQL correction failed: {corrected}"
+                ) from exc
+            sql = corrected
+
+    # Unreachable; satisfies type checkers.
+    raise QueryValidationError("execute_with_retry exhausted without result")  # pragma: no cover
+

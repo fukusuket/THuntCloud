@@ -3,7 +3,7 @@
 import openai
 import pandas as pd
 
-from llm import build_system_prompt, generate_analysis, generate_sql
+from llm import MAX_CONTEXT_TURNS, build_system_prompt, fix_sql_with_llm, generate_analysis, generate_sql
 
 
 def test_build_system_prompt_includes_schema():
@@ -76,3 +76,117 @@ def test_generate_sql_handles_api_error(mock_openai_client):
 
     assert isinstance(result, str)
     assert "error" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Proposal 1 — conversation context injection
+# ---------------------------------------------------------------------------
+
+
+def test_generate_sql_with_context_injects_messages(mock_openai_client):
+    """generate_sql() injects context entries as user/assistant message pairs."""
+    context = [
+        {
+            "user_query": "Show me root events",
+            "sql": "SELECT * FROM cloudtrail_events WHERE user_identity_type = 'Root'",
+            "summary": "3 root events found",
+        }
+    ]
+
+    generate_sql("Drill down further", api_key="sk-test", context=context)
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    messages = call_kwargs["messages"]
+    # system + user(context) + assistant(context) + user(new query)
+    assert len(messages) == 4
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "Show me root events"
+    assert messages[2]["role"] == "assistant"
+    assert messages[3]["role"] == "user"
+    assert messages[3]["content"] == "Drill down further"
+
+
+def test_generate_sql_context_none_is_backward_compatible(mock_openai_client):
+    """generate_sql() with context=None sends exactly system + user messages."""
+    generate_sql("Show me all events", api_key="sk-test", context=None)
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    messages = call_kwargs["messages"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "Show me all events"
+
+
+def test_generate_sql_context_max_items_truncated(mock_openai_client):
+    """generate_sql() only includes the last MAX_CONTEXT_TURNS context entries."""
+    context = [
+        {"user_query": f"Query {i}", "sql": f"SELECT {i}", "summary": f"Summary {i}"}
+        for i in range(MAX_CONTEXT_TURNS + 3)  # 3 extra entries beyond the limit
+    ]
+
+    generate_sql("Latest query", api_key="sk-test", context=context)
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    messages = call_kwargs["messages"]
+    # Expected: 1 system + 2 * MAX_CONTEXT_TURNS (user+assistant pairs) + 1 user
+    expected_count = 1 + 2 * MAX_CONTEXT_TURNS + 1
+    assert len(messages) == expected_count
+    # The oldest entries should have been excluded
+    message_contents = " ".join(m["content"] for m in messages)
+    assert "Query 0" not in message_contents
+
+
+# ---------------------------------------------------------------------------
+# Proposal 2 — fix_sql_with_llm
+# ---------------------------------------------------------------------------
+
+
+def test_fix_sql_with_llm_returns_corrected_sql(mock_openai_client):
+    """fix_sql_with_llm() returns the corrected SQL string from the LLM."""
+    mock_openai_client.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "SELECT event_name FROM cloudtrail_events LIMIT 10"
+
+    result = fix_sql_with_llm(
+        broken_sql="SELECT * FROM wrong_table",
+        error_message="Table 'wrong_table' does not exist",
+        api_key="sk-test",
+        model="gpt-5.4",
+    )
+
+    assert "SELECT" in result.upper()
+    assert "cloudtrail_events" in result
+
+
+def test_fix_sql_with_llm_strips_markdown_fences(mock_openai_client):
+    """fix_sql_with_llm() strips ```sql ... ``` wrappers from the LLM response."""
+    mock_openai_client.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "```sql\nSELECT event_name FROM cloudtrail_events LIMIT 10\n```"
+
+    result = fix_sql_with_llm(
+        broken_sql="bad sql",
+        error_message="syntax error",
+        api_key="sk-test",
+    )
+
+    assert not result.startswith("```")
+    assert not result.endswith("```")
+
+
+def test_fix_sql_with_llm_handles_api_error(mock_openai_client):
+    """fix_sql_with_llm() returns an [error] string when the OpenAI API fails."""
+    mock_openai_client.chat.completions.create.side_effect = openai.OpenAIError(
+        "API down"
+    )
+
+    result = fix_sql_with_llm(
+        broken_sql="bad sql",
+        error_message="syntax error",
+        api_key="sk-test",
+    )
+
+    assert result.startswith("[error]")
+

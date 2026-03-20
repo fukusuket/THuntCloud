@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+"""Regenerate dashboard.yaml — 4-tab layout with 30 charts and 12 native filters.
+
+Run from the project root:
+    python3 dashboard/assets/generate_dashboard_yaml.py
+"""
+import os
+
+DEST = os.path.join(
+    os.path.dirname(__file__),
+    "cloudtrail_default",
+    "dashboard.yaml",
+)
+
+CONTENT = """\
 # CloudTrail Threat Hunting — Dashboard Definition (v2)
 # 4-tab layout: Identity & Access | Threat Detection |
 # Data & Infrastructure | GeoIP Intelligence.
@@ -49,7 +64,7 @@ position:
       - ROW-ia-4
       - ROW-ia-5
     meta:
-      text: "\U0001f511 Identity & Access"
+      text: "\\U0001f511 Identity & Access"
       defaultText: "Tab 1"
       tooltip: "Login monitoring, privilege escalation, and sensitive API tracking"
   ROW-ia-1:
@@ -102,7 +117,7 @@ position:
       - ROW-td-5
       - ROW-td-6
     meta:
-      text: "\U0001f3af Threat Detection"
+      text: "\\U0001f3af Threat Detection"
       defaultText: "Tab 2"
       tooltip: "Defense evasion, anomalous patterns, and baseline deviations"
   ROW-td-1:
@@ -162,7 +177,7 @@ position:
       - ROW-di-4
       - ROW-di-5
     meta:
-      text: "\U0001f5c4 Data & Infrastructure"
+      text: "\\U0001f5c4 Data & Infrastructure"
       defaultText: "Tab 3"
       tooltip: "Data access anomalies and infrastructure change tracking"
   ROW-di-1:
@@ -211,7 +226,7 @@ position:
       - ROW-geo-1
       - ROW-geo-2
     meta:
-      text: "\U0001f30d GeoIP Intelligence"
+      text: "\\U0001f30d GeoIP Intelligence"
       defaultText: "Tab 4"
       tooltip: "Geographic origin of API calls (requires GeoIP enrichment)"
   ROW-geo-1:
@@ -887,3 +902,10 @@ metadata:
     - slice_name: Privilege Escalation Timeline
       viz_type: echarts_timeseries_bar
       description: DSH-30 - Daily privilege-escalation API calls by event name.
+"""
+
+with open(DEST, "w", encoding="utf-8") as fh:
+    fh.write(CONTENT)
+
+print(f"Written {DEST} ({CONTENT.count(chr(10))} lines)")
+

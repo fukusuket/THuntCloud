@@ -14,13 +14,14 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-from llm import generate_analysis, generate_sql
+from llm import MAX_CONTEXT_TURNS, generate_analysis, generate_sql
 from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
     apply_date_filter,
     connect_duckdb,
     execute_query,
+    execute_with_retry,
 )
 from report import ReportEntry, generate_report
 
@@ -33,6 +34,13 @@ logger = logging.getLogger(__name__)
 # Path to the built-in threat hunting prompts YAML file.
 _BUILTIN_PROMPTS_PATH = Path(__file__).parent / "builtin_hunts.yaml"
 
+# Info banner shown in the chat area when no API key is configured.
+_NO_API_KEY_BANNER = (
+    "💡 **No API key needed for preset queries.** "
+    "Select a category in the sidebar and click **⚡ Direct SQL** to run "
+    "pre-built threat hunting queries instantly."
+)
+
 # Session state keys and their default values.
 SESSION_STATE_DEFAULTS: dict = {
     "messages": [],  # chat history: list of {role, content}
@@ -44,6 +52,7 @@ SESSION_STATE_DEFAULTS: dict = {
     "model": "gpt-5.4",  # selected model
     "date_start": None,  # date | None — lower bound for event_time filter
     "date_end": None,  # date | None — upper bound for event_time filter
+    "conversation_context": [],  # recent (user_query, sql, summary) turns for LLM context
 }
 
 
@@ -309,6 +318,7 @@ def render_sidebar() -> None:
                 st.session_state.last_sql = ""
                 st.session_state.last_results = None
                 st.session_state.last_summary = ""
+                st.session_state.conversation_context = []
                 st.rerun()
 
 
@@ -410,6 +420,12 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     The summary step (AGT-05) produces only fact-based bullet points;
     speculative threat assessments are excluded by the LLM prompt.
 
+    Conversation context from previous turns is forwarded to generate_sql()
+    so that follow-up questions such as "drill down on that" work naturally.
+
+    If the generated SQL fails validation, execute_with_retry() asks the LLM
+    to correct it (up to 2 attempts) before surfacing the error to the user.
+
     Args:
         user_input: The natural language question from the user.
         db_path:    Path to the DuckDB database file.
@@ -426,22 +442,32 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
         )
         return
 
-    # Step 1: Generate SQL (AGT-02)
+    # Step 1: Generate SQL (AGT-02), injecting prior conversation context.
+    # Take a snapshot so that the context passed to the LLM is not mutated
+    # by the append at the end of this function.
+    context = list(st.session_state.conversation_context)
     with st.spinner("🤖 Generating SQL…"):
-        sql = generate_sql(user_input, api_key=api_key, model=model)
+        sql = generate_sql(user_input, api_key=api_key, model=model, context=context)
 
     # Apply date range filter to the AI-generated SQL (wraps in CTE when active).
     sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
 
+    original_sql = sql  # preserve to detect LLM corrections later
+    final_sql = sql
     st.session_state.last_sql = sql
 
-    # Step 2: Execute query (AGT-03/04)
+    # Step 2: Execute query with automatic SQL correction on validation failure (AGT-03/04).
     results = pd.DataFrame()
     error_message: str | None = None
     try:
         conn = connect_duckdb(db_path)
-        results = execute_query(conn, sql)
+        results, final_sql = execute_with_retry(
+            conn, sql, api_key=api_key, model=model
+        )
         conn.close()
+        if final_sql != original_sql:
+            sql = final_sql
+            st.session_state.last_sql = sql
     except QueryValidationError as exc:
         error_message = f"🚫 SQL validation error: {exc}"
     except TimeoutError:
@@ -458,7 +484,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             summary = generate_analysis(sql, results, api_key=api_key, model=model)
     st.session_state.last_summary = summary
 
-    # Step 4: Append to chat history and query history
+    # Step 4: Append to chat history and query history.
     if error_message:
         assistant_content = error_message
     else:
@@ -468,10 +494,16 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             if truncated
             else ""
         )
+        retry_notice = (
+            "\n\n⚠️ _SQL was auto-corrected by the AI assistant._"
+            if final_sql != original_sql
+            else ""
+        )
         assistant_content = (
             f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
             f"**Results:** {row_summary}\n\n"
             f"**Summary:**\n{summary}"
+            + retry_notice
         )
 
     st.session_state.messages.append(
@@ -482,6 +514,16 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
         st.session_state.query_history.append(
             ReportEntry(sql=sql, results=results, analysis=summary)
         )
+        # Update conversation context for follow-up queries.
+        summary_text = summary if summary else "(no summary)"
+        st.session_state.conversation_context.append(
+            {"user_query": user_input, "sql": sql, "summary": summary_text}
+        )
+        # Keep only the most recent MAX_CONTEXT_TURNS entries.
+        if len(st.session_state.conversation_context) > MAX_CONTEXT_TURNS:
+            st.session_state.conversation_context = (
+                st.session_state.conversation_context[-MAX_CONTEXT_TURNS:]
+            )
 
 
 def render_chat() -> None:
@@ -619,6 +661,10 @@ def render_chat() -> None:
                     ):
                         st.session_state["_pending_ai_analysis"] = True
                         st.rerun()
+
+    # ---- No API key guidance banner (Proposal 3) ----
+    if not st.session_state.api_key:
+        st.info(_NO_API_KEY_BANNER)
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset

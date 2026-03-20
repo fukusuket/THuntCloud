@@ -1,6 +1,7 @@
 # DSH-08: Console Login Activity
-# Table showing AWS Management Console sign-in attempts with success/failure breakdown.
-# Failed sign-ins may indicate brute-force attacks or credential stuffing.
+# Table showing AWS Management Console sign-in attempts with success/failure
+# and MFA-less count breakdown.  Failed sign-ins may indicate brute-force
+# attacks or credential stuffing.  MFA-less logins are a high-priority alert.
 uuid: c1d2e3f4-a5b6-7890-abcd-ef0123456789
 version: 1.0.0
 dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
@@ -8,8 +9,9 @@ slice_name: Console Login Activity
 viz_type: table
 description: >
   AWS Management Console sign-in events grouped by IAM identity (DSH-08).
-  Tracks successful and failed login attempts. A high failure-to-success ratio
-  may indicate brute-force attacks, credential stuffing, or compromised credentials.
+  Tracks successful, failed, and MFA-less login attempts.  A high
+  failure-to-success ratio may indicate brute-force or credential stuffing.
+  mfa_less_count (MFAUsed = 'No') is a direct account-compromise indicator.
   Events are filtered to event_type = 'AwsConsoleSignIn'.
 query_context: ""
 params:
@@ -29,9 +31,18 @@ params:
       label: success_logins
       hasCustomLabel: true
       optionName: metric_success_logins
+    - expressionType: SQL
+      sqlExpression: >-
+        COUNT(*) FILTER (
+          WHERE json_extract_string(raw_event, '$.additionalEventData.MFAUsed') = 'No'
+        )
+      label: mfa_less_count
+      hasCustomLabel: true
+      optionName: metric_mfa_less_count
   groupby:
     - user_identity_arn
     - source_ip_address
+    - geo_country_code
   granularity_sqla: event_time
   time_range: "No filter"
   adhoc_filters:
@@ -46,14 +57,18 @@ cache_timeout: null
 
 # SQL used to power this chart:
 # SELECT
-#     COALESCE(user_identity_arn, 'Unknown') AS identity,
+#     COALESCE(user_identity_arn, 'Unknown')  AS identity,
 #     source_ip_address,
-#     COUNT(*)                                                  AS total_logins,
-#     COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)        AS failed_logins,
-#     COUNT(CASE WHEN error_code IS NULL THEN 1 END)            AS success_logins
+#     geo_country_code,
+#     COUNT(*)                                 AS total_logins,
+#     COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)  AS failed_logins,
+#     COUNT(CASE WHEN error_code IS NULL THEN 1 END)      AS success_logins,
+#     COUNT(*) FILTER (
+#       WHERE json_extract_string(raw_event, '$.additionalEventData.MFAUsed') = 'No'
+#     )                                        AS mfa_less_count
 # FROM cloudtrail_events
 # WHERE event_type = 'AwsConsoleSignIn'
-# GROUP BY 1, 2
+# GROUP BY 1, 2, 3
 # ORDER BY failed_logins DESC
 # LIMIT 50
 
