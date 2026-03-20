@@ -221,15 +221,6 @@ docker compose --profile ingest run --rm ingester ingest \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
 ```
 
-**Lightweight enrichment (Country only — pass the directory directly):**
-
-```bash
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs \
-  --geoip-country /data/geoip
-```
-
-When these are set, no CLI flags are needed:
 
 ```bash
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
@@ -289,11 +280,6 @@ rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
-
-### Dashboard shows no data after ingest
-
-If the Superset dashboard is blank after ingestion (especially after re-ingestion),
-re-sync the dataset column metadata:
 
 ```bash
 cd docker
