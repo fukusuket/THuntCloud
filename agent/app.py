@@ -385,10 +385,7 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
         row_info = f"{len(results)} row(s)" + (
             f" _(truncated to {row_limit:,})_" if truncated else ""
         )
-        assistant_content = (
-            f"**Direct SQL query executed:**\n```sql\n{effective_sql}\n```\n\n"
-            f"**Results:** {row_info}"
-        )
+        assistant_content = f"**Direct SQL query executed.** **Results:** {row_info}"
 
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_content}
@@ -533,7 +530,6 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             else ""
         )
         assistant_content = (
-            f"**Generated SQL:**\n```sql\n{effective_sql}\n```\n\n"
             f"**Results:** {row_summary}\n\n"
             f"**Summary:**\n{summary}" + retry_notice
         )
@@ -634,7 +630,7 @@ def render_chat() -> None:
                             {
                                 "role": "assistant",
                                 "content": (
-                                    f"**Re-run SQL:**\n```sql\n{effective_edited_sql}\n```\n\n"
+                                    f"**Re-run SQL executed.** "
                                     f"**Results:** {row_count} row(s)"
                                     + (
                                         f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
