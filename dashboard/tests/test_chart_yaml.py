@@ -69,6 +69,40 @@ def test_chart_params_not_empty(fname: str, chart: dict) -> None:
 # Global tests
 # ---------------------------------------------------------------------------
 
+# Valid aggregator names accepted by React Pivottable (used in Superset pivot_table_v2).
+# Superset throws "this.props.aggregatorsFactory(...)[this.props.aggregatorName] is not a
+# function" when this value is not an exact case-sensitive match.
+_VALID_AGGREGATE_FUNCTIONS: frozenset[str] = frozenset({
+    "Count", "Count Unique Values", "List Unique Values",
+    "Sum", "Integer Sum", "Average", "Median",
+    "Sample Variance", "Sample Standard Deviation",
+    "Minimum", "Maximum", "First", "Last",
+    "Sum as Fraction of Total", "Sum as Fraction of Rows",
+    "Sum as Fraction of Columns", "Count as Fraction of Total",
+    "Count as Fraction of Rows", "Count as Fraction of Columns",
+})
+
+
+def test_pivot_table_aggregate_function_valid() -> None:
+    """pivot_table_v2 charts must use a valid React Pivottable aggregator name.
+
+    Using an invalid name (e.g. 'SUM' instead of 'Sum') causes:
+      TypeError: this.props.aggregatorsFactory(...)[this.props.aggregatorName]
+                 is not a function
+    """
+    offenders = []
+    for fname, chart in load_all_charts():
+        if chart.get("viz_type") != "pivot_table_v2":
+            continue
+        agg = chart.get("params", {}).get("aggregateFunction")
+        if agg is not None and agg not in _VALID_AGGREGATE_FUNCTIONS:
+            offenders.append((fname, agg))
+    assert not offenders, (
+        f"pivot_table_v2 charts have invalid aggregateFunction: {offenders}\n"
+        f"Valid values: {sorted(_VALID_AGGREGATE_FUNCTIONS)}"
+    )
+
+
 def test_all_chart_uuids_unique() -> None:
     """No two chart files may share the same UUID."""
     charts = load_all_charts()

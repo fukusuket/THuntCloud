@@ -48,7 +48,7 @@ params:
   granularity_sqla: event_time
   time_range: "No filter"
   row_limit: 10000
-  aggregateFunction: SUM
+  aggregateFunction: Sum
   valueFormat: SMART_NUMBER
   rowTotals: true
   colTotals: true

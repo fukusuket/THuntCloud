@@ -259,6 +259,7 @@ docker compose up -d superset                            # Dashboard only
 docker compose up -d agent                               # Agent only
 docker compose logs -f                                   # View logs
 docker compose down -v                                   # Full reset (delete data)
+docker compose --profile resync run --rm superset-resync # Fix blank dashboard (re-syncs column metadata)
 ```
 
 ### Re-ingest Logs
@@ -268,6 +269,7 @@ docker compose down
 rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
+docker compose --profile resync run --rm superset-resync  # Re-sync dashboard column metadata
 ```
 
 ---
