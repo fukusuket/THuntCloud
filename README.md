@@ -209,9 +209,6 @@ Three database types are supported:
 | `--geoip-country` | GeoLite2-Country.mmdb | Country only (lighter alternative to City) |
 | `--geoip-asn` | GeoLite2-ASN.mmdb | ASN number + organization name |
 
-> **Note:** `--geoip-city` and `--geoip-country` are mutually exclusive in effect — when both are provided, `--geoip-city` takes precedence.  
-> Both flags accept a **file path or a directory path** — when a directory is given, the first `.mmdb` file inside it is used automatically.
-
 **Full enrichment (City + ASN):**
 
 ```bash
@@ -237,9 +234,6 @@ docker compose --profile ingest run --rm ingester enrich \
   --geoip-city /data/geoip/GeoLite2-City.mmdb \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
 
-# Country DB only (pass the directory — auto-detects the .mmdb inside)
-docker compose --profile ingest run --rm ingester enrich \
-  --geoip-country /data/geoip
 ```
 
 The `enrich` command is **idempotent** — rows that already have a `geo_country_code` value are skipped automatically.
