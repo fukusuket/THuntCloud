@@ -302,9 +302,6 @@ ingester enrich
                 [--geoip-country  <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
                 [--geoip-asn      <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
 ```
-
-> At least one of `--geoip-city` or `--geoip-country` is required for both `ingest` (to enable enrichment) and `enrich` commands. When both are provided, `--geoip-city` takes precedence.
-
 ---
 
 ## Module Overview
