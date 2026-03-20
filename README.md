@@ -1,4 +1,4 @@
-# THuntCloud
+# 🪽THuntCloud🪽
 
 ## AWS Log Threat Hunting Tool
 
