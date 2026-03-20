@@ -485,7 +485,10 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     try:
         conn = connect_duckdb(db_path)
         results, final_sql = execute_with_retry(
-            conn, sql, api_key=api_key, model=model,
+            conn,
+            sql,
+            api_key=api_key,
+            model=model,
             row_limit=st.session_state.row_limit,
         )
         conn.close()
@@ -508,7 +511,9 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     summary = ""
     if error_message is None:
         with st.spinner("📋 Summarising results…"):
-            summary = generate_analysis(effective_sql, results, api_key=api_key, model=model)
+            summary = generate_analysis(
+                effective_sql, results, api_key=api_key, model=model
+            )
     st.session_state.last_summary = summary
 
     # Step 4: Append to chat history and query history.
@@ -601,7 +606,8 @@ def render_chat() -> None:
                     try:
                         conn = connect_duckdb(db_path)
                         results = execute_query(
-                            conn, edited_sql,
+                            conn,
+                            edited_sql,
                             row_limit=st.session_state.row_limit,
                         )
                         conn.close()
@@ -644,7 +650,9 @@ def render_chat() -> None:
                         st.session_state.last_summary = ""
                         st.session_state.query_history.append(
                             ReportEntry(
-                                sql=effective_edited_sql, results=results, analysis=summary
+                                sql=effective_edited_sql,
+                                results=results,
+                                analysis=summary,
                             )
                         )
                         st.rerun()

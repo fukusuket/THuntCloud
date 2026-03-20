@@ -936,5 +936,3 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (1000) → False,
     # so no truncation notice is emitted and "truncated to 777" is absent.
     assert "truncated to 777" in content
-
-

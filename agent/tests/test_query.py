@@ -378,4 +378,3 @@ def test_execute_with_retry_forwards_row_limit(tmp_duckdb):
 
     mock_exec.assert_called_once_with(conn, sql, row_limit=50)
     conn.close()
-
