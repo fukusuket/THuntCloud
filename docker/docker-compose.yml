@@ -30,6 +30,13 @@ services:
     build:
       context: ../ingester
       dockerfile: Dockerfile
+      # Build target:
+      #   runtime          (default) — compile from source (Rust + DuckDB C++ bundled)
+      #   prebuilt-runtime           — download a pre-built binary from GitHub Releases
+      #                                (requires INGESTER_VERSION to be set)
+      target: ${INGESTER_BUILD_TARGET:-runtime}
+      args:
+        INGESTER_VERSION: ${INGESTER_VERSION:-}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE

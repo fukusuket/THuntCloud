@@ -1,0 +1,65 @@
+# Release — THuntCloud ingester
+# Triggered on every version tag (v*).
+# Builds the ingester binary for x86_64 Linux (glibc) and publishes it as a
+# GitHub Release asset named `ingester-x86_64-linux`.
+#
+# The pre-built binary can then be consumed by the Docker prebuilt-runtime
+# target to skip Rust compilation during `docker compose build`.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  release-ingester:
+    name: Release ingester binary (x86_64-linux)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build dependencies for DuckDB bundled build
+        run: sudo apt-get update && sudo apt-get install -y cmake g++
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ingester/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('ingester/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        working-directory: ingester
+        run: cargo build --release --locked
+
+      - name: Stage binary with platform-tagged name
+        run: cp ingester/target/release/ingester /tmp/ingester-x86_64-linux
+
+      - name: Generate SHA256 checksum
+        run: |
+          cd /tmp
+          sha256sum ingester-x86_64-linux > ingester-x86_64-linux.sha256
+
+      - name: Create GitHub Release and upload binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            /tmp/ingester-x86_64-linux
+            /tmp/ingester-x86_64-linux.sha256
+          generate_release_notes: true
