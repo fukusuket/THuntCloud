@@ -97,26 +97,37 @@ def apply_date_filter(
 
 
 def apply_row_limit(sql: str, limit: int) -> str:
-    """Wrap *sql* in a row-capping subquery if it has no LIMIT clause.
+    """Apply *limit* to *sql*, always honouring the caller's value.
 
-    If the SQL already contains a ``LIMIT`` keyword (case-insensitive) it is
-    returned unchanged.  Otherwise the whole statement is wrapped with
-    ``SELECT * FROM (...) AS _limited LIMIT {limit}`` so that at most
-    *limit* rows are ever fetched from DuckDB.
+    If the SQL already contains a trailing ``LIMIT`` clause it is replaced
+    **in-place** with *limit* so that the caller's value is always the
+    effective row cap — regardless of any limit already present in the SQL.
+    This ensures the sidebar row-limit setting overrides hard-coded limits in
+    preset queries.
 
-    A trailing semicolon is stripped before wrapping to keep the resulting
+    If the SQL has no ``LIMIT`` clause the whole statement is wrapped with
+    ``SELECT * FROM (...) AS _limited LIMIT {limit}``.
+
+    A trailing semicolon is stripped before processing to keep the resulting
     SQL syntactically valid.
 
     Args:
-        sql:   SQL string to potentially wrap.
+        sql:   SQL string to apply the row limit to.
         limit: Maximum number of rows to return.
 
     Returns:
         SQL string guaranteed to return at most *limit* rows.
     """
-    if re.search(r"\bLIMIT\b", sql, re.IGNORECASE):
-        return sql
-    stripped = sql.rstrip().rstrip(";")
+    stripped = sql.rstrip().rstrip(";").rstrip()
+    if re.search(r"\bLIMIT\b", stripped, re.IGNORECASE):
+        # Replace the trailing LIMIT N (with optional OFFSET M) in-place so
+        # that CTEs and subqueries are not re-wrapped inside a subquery.
+        return re.sub(
+            r"\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$",
+            f"LIMIT {limit}",
+            stripped,
+            flags=re.IGNORECASE,
+        )
     return f"SELECT * FROM ({stripped}) AS _limited LIMIT {limit}"
 
 
@@ -211,6 +222,7 @@ def execute_with_retry(
     api_key: str,
     model: str,
     max_retries: int = 2,
+    row_limit: int = DEFAULT_ROW_LIMIT,
 ) -> tuple[pd.DataFrame, str]:
     """Execute a SQL query with automatic LLM-assisted correction on validation failure.
 
@@ -228,6 +240,8 @@ def execute_with_retry(
                      When empty, no retries are attempted.
         model:       Model name used for SQL correction.
         max_retries: Maximum number of LLM correction retries (default: 2).
+        row_limit:   Maximum number of rows to return (default: DEFAULT_ROW_LIMIT).
+                     Forwarded to :func:`execute_query` on every attempt.
 
     Returns:
         A tuple ``(DataFrame, final_sql)`` where *final_sql* may differ from
@@ -240,7 +254,7 @@ def execute_with_retry(
     """
     for attempt in range(max_retries + 1):
         try:
-            df = execute_query(conn, sql)
+            df = execute_query(conn, sql, row_limit=row_limit)
             return df, sql
         except QueryValidationError as exc:
             if attempt == max_retries or not api_key:

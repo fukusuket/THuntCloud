@@ -116,18 +116,27 @@ def test_apply_row_limit_adds_limit_when_missing():
     assert "cloudtrail_events" in result
 
 
-def test_apply_row_limit_preserves_existing_limit():
-    """apply_row_limit returns SQL unchanged when a LIMIT clause already exists."""
+def test_apply_row_limit_overrides_existing_limit():
+    """apply_row_limit replaces an existing LIMIT clause with the new limit.
+
+    Behaviour change from the original safety-cap design: the caller's *limit*
+    always wins so that the sidebar row-limit setting is honoured even when
+    the SQL already contains a LIMIT clause.
+    """
     sql = "SELECT * FROM cloudtrail_events LIMIT 5"
     result = apply_row_limit(sql, 100)
-    assert result == sql
+    # Original LIMIT 5 must be replaced by LIMIT 100
+    assert result.upper().endswith("LIMIT 100")
+    assert "LIMIT 5" not in result
 
 
 def test_apply_row_limit_case_insensitive():
-    """apply_row_limit detects lower-case 'limit' as well."""
+    """apply_row_limit replaces a lower-case 'limit' clause too."""
     sql = "SELECT * FROM cloudtrail_events limit 10"
     result = apply_row_limit(sql, 500)
-    assert result == sql
+    # lower-case limit 10 must be replaced with the new limit
+    assert result.upper().endswith("LIMIT 500")
+    assert result != sql
 
 
 def test_apply_row_limit_strips_trailing_semicolon():
@@ -156,11 +165,16 @@ def test_execute_query_uses_default_row_limit(tmp_duckdb):
     conn.close()
 
 
-def test_execute_query_respects_existing_sql_limit(tmp_duckdb):
-    """execute_query does not override a LIMIT clause already in the SQL."""
+def test_execute_query_overrides_existing_sql_limit(tmp_duckdb):
+    """execute_query overrides a SQL LIMIT clause with the row_limit parameter.
+
+    LIMIT 1 in the SQL is replaced by row_limit=100; the fixture has 3 rows
+    so all 3 are returned.
+    """
     conn = connect_duckdb(tmp_duckdb)
-    df = execute_query(conn, "SELECT * FROM cloudtrail_events LIMIT 1")
-    assert len(df) == 1
+    df = execute_query(conn, "SELECT * FROM cloudtrail_events LIMIT 1", row_limit=100)
+    # LIMIT 1 was replaced by row_limit=100; fixture has 3 rows
+    assert len(df) == 3
     conn.close()
 
 
@@ -348,3 +362,20 @@ def test_execute_with_retry_does_not_retry_on_timeout(tmp_duckdb):
 
     mock_fix.assert_not_called()
     conn.close()
+
+
+def test_execute_with_retry_forwards_row_limit(tmp_duckdb):
+    """execute_with_retry passes the row_limit argument to execute_query.
+
+    Test #RL-Q1: verifies the row_limit kwarg is forwarded so the caller
+    can control the per-query row cap end-to-end.
+    """
+    conn = connect_duckdb(tmp_duckdb)
+    sql = "SELECT * FROM cloudtrail_events"
+
+    with patch("query.execute_query", return_value=pd.DataFrame()) as mock_exec:
+        execute_with_retry(conn, sql, api_key="", model="gpt-5.4", row_limit=50)
+
+    mock_exec.assert_called_once_with(conn, sql, row_limit=50)
+    conn.close()
+

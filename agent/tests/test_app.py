@@ -231,7 +231,10 @@ def test_handle_direct_sql_no_api_key_shows_results(tmp_duckdb):
     """Direct SQL execution must succeed and populate session state without an API key.
 
     Test #25: verifies the _handle_direct_sql() path that bypasses OpenAI.
+    last_sql must reflect the effective SQL (with row_limit applied), not the
+    original SQL passed in.
     """
+    from query import apply_row_limit, DEFAULT_ROW_LIMIT
     from tests.conftest import MockSessionState
 
     sql = (
@@ -264,8 +267,9 @@ def test_handle_direct_sql_no_api_key_shows_results(tmp_duckdb):
 
         _handle_direct_sql(sql, tmp_duckdb)
 
-    # Results must be stored
-    assert mock_state["last_sql"] == sql
+    # last_sql must be the effective SQL (LIMIT replaced by row_limit)
+    expected_sql = apply_row_limit(sql, DEFAULT_ROW_LIMIT)
+    assert mock_state["last_sql"] == expected_sql
     assert mock_state["last_results"] is not None
     assert len(mock_state["last_results"]) == 3  # 3 rows from conftest fixture
     # Without an API key, summary should be empty
@@ -602,7 +606,9 @@ def test_conversation_context_appended_after_successful_query(tmp_duckdb):
     """conversation_context gains a new entry after a successful query.
 
     Test #CTX-3: verifies the entry structure is correct.
+    The sql field must contain the effective SQL (with row_limit applied).
     """
+    from query import apply_row_limit
     from tests.conftest import MockSessionState
 
     sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
@@ -619,6 +625,7 @@ def test_conversation_context_appended_after_successful_query(tmp_duckdb):
         date_start=None,
         date_end=None,
         conversation_context=[],
+        row_limit=1000,
     )
 
     with (
@@ -638,7 +645,8 @@ def test_conversation_context_appended_after_successful_query(tmp_duckdb):
     assert len(mock_state["conversation_context"]) == 1
     entry = mock_state["conversation_context"][0]
     assert entry["user_query"] == "Show me events"
-    assert entry["sql"] == sql
+    # sql in context must be the effective SQL (LIMIT 5 replaced by row_limit=1000)
+    assert entry["sql"] == apply_row_limit(sql, mock_state["row_limit"])
     assert entry["summary"] == "Test summary"
 
 
@@ -759,6 +767,7 @@ def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
         date_start=None,
         date_end=None,
         conversation_context=[],
+        row_limit=1000,
     )
 
     with (
@@ -778,3 +787,154 @@ def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
     assert len(mock_state["messages"]) == 1
     content = mock_state["messages"][0]["content"]
     assert "auto-corrected" in content
+
+
+# ---------------------------------------------------------------------------
+# Tests #RL — Row limit sidebar setting
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_has_row_limit_default():
+    """SESSION_STATE_DEFAULTS includes row_limit defaulting to DEFAULT_ROW_LIMIT.
+
+    Test #RL-A1: verifies that _init_session_state() creates the row_limit key.
+    """
+    from query import DEFAULT_ROW_LIMIT
+
+    mock_state = {}
+    with patch("streamlit.session_state", mock_state):
+        from app import _init_session_state
+
+        _init_session_state()
+
+    assert "row_limit" in mock_state, "Expected 'row_limit' key in session state"
+    assert mock_state["row_limit"] == DEFAULT_ROW_LIMIT
+
+
+def test_handle_direct_sql_uses_session_row_limit(tmp_duckdb):
+    """_handle_direct_sql passes st.session_state.row_limit to execute_query.
+
+    Test #RL-A2: verifies a custom row_limit from session state is forwarded
+    instead of using the module-level DEFAULT_ROW_LIMIT constant.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT * FROM cloudtrail_events LIMIT 10"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=50,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.execute_query", return_value=pd.DataFrame()) as mock_exec,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    mock_exec.assert_called_once()
+    assert mock_exec.call_args.kwargs.get("row_limit") == 50
+
+
+def test_handle_user_query_uses_session_row_limit(tmp_duckdb):
+    """_handle_user_query passes st.session_state.row_limit to execute_with_retry.
+
+    Test #RL-A3: verifies a custom row_limit from session state is forwarded.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+        row_limit=200,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.generate_sql", return_value=sql),
+        patch("app.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch("app.generate_analysis", return_value="Summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me all events", tmp_duckdb)
+
+    mock_retry.assert_called_once()
+    assert mock_retry.call_args.kwargs.get("row_limit") == 200
+
+
+def test_truncation_message_shows_session_row_limit(tmp_duckdb):
+    """Direct SQL truncation notice uses st.session_state.row_limit, not DEFAULT_ROW_LIMIT.
+
+    Test #RL-A4: result count >= row_limit triggers the truncation message
+    which must contain the session row_limit value (not the hard-coded 1000).
+    """
+    from tests.conftest import MockSessionState
+
+    custom_limit = 777  # Unique value distinct from DEFAULT_ROW_LIMIT (1000)
+    # Return exactly custom_limit rows so truncation is detected.
+    result_df = pd.DataFrame({"event_name": ["A"] * custom_limit})
+
+    sql = "SELECT * FROM cloudtrail_events"
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=custom_limit,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("app.execute_query", return_value=result_df),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    content = mock_state["messages"][0]["content"]
+    # The truncation notice must contain the session row_limit (777), not 1,000.
+    # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (1000) → False,
+    # so no truncation notice is emitted and "truncated to 777" is absent.
+    assert "truncated to 777" in content
+
+

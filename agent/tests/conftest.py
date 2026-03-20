@@ -10,7 +10,19 @@ class MockSessionState(dict):
     Mimics Streamlit's ``st.session_state`` which supports both
     ``session_state["key"]`` and ``session_state.key`` syntax.
     Used in tests that need to inspect state after production code runs.
+
+    Pre-populates keys that have session-wide defaults so tests that do not
+    explicitly set them do not raise ``AttributeError`` when production code
+    accesses them.  Explicit keyword arguments always override the defaults.
     """
+
+    def __init__(self, **kwargs) -> None:
+        from query import DEFAULT_ROW_LIMIT
+
+        # Apply defaults first so explicit kwargs take precedence.
+        defaults = {"row_limit": DEFAULT_ROW_LIMIT}
+        defaults.update(kwargs)
+        super().__init__(defaults)
 
     def __getattr__(self, key: str):
         try:

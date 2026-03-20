@@ -19,6 +19,7 @@ from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
     apply_date_filter,
+    apply_row_limit,
     connect_duckdb,
     execute_query,
     execute_with_retry,
@@ -52,6 +53,7 @@ SESSION_STATE_DEFAULTS: dict = {
     "model": "gpt-5.4",  # selected model
     "date_start": None,  # date | None — lower bound for event_time filter
     "date_end": None,  # date | None — upper bound for event_time filter
+    "row_limit": DEFAULT_ROW_LIMIT,  # maximum rows returned per query
     "conversation_context": [],  # recent (user_query, sql, summary) turns for LLM context
 }
 
@@ -185,6 +187,22 @@ def render_sidebar() -> None:
             start_s = str(new_start) if new_start else "—"
             end_s = str(new_end) if new_end else "—"
             st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
+
+        # Result limit (per-query row cap)
+        st.subheader("⚙️ Result Limit")
+        new_row_limit = st.number_input(
+            "Max rows",
+            min_value=1,
+            max_value=100_000,
+            value=st.session_state.row_limit,
+            step=100,
+            help=(
+                "Maximum number of rows returned per query. "
+                "Overrides any LIMIT clause already present in the SQL."
+            ),
+        )
+        if int(new_row_limit) != st.session_state.row_limit:
+            st.session_state.row_limit = int(new_row_limit)
 
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
@@ -335,6 +353,9 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     """
     # Apply date range filter (wraps sql in a date-scoped CTE when active).
     sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
+    # Pre-compute the effective SQL (with row_limit applied) so that last_sql
+    # and the chat message always reflect what was actually executed.
+    effective_sql = apply_row_limit(sql, st.session_state.row_limit)
 
     results = pd.DataFrame()
     error_message: str | None = None
@@ -342,7 +363,7 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     with st.spinner("⚡ Running direct SQL…"):
         try:
             conn = connect_duckdb(db_path)
-            results = execute_query(conn, sql)
+            results = execute_query(conn, sql, row_limit=st.session_state.row_limit)
             conn.close()
         except QueryValidationError as exc:
             error_message = f"🚫 SQL validation error: {exc}"
@@ -351,7 +372,7 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
         except Exception as exc:  # noqa: BLE001
             error_message = f"❌ Query execution error: {exc}"
 
-    st.session_state.last_sql = sql
+    st.session_state.last_sql = effective_sql
     st.session_state.last_results = results if error_message is None else None
     st.session_state.last_summary = ""
 
@@ -359,12 +380,13 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     if error_message:
         assistant_content = error_message
     else:
-        truncated = len(results) >= DEFAULT_ROW_LIMIT
+        row_limit = st.session_state.row_limit
+        truncated = len(results) >= row_limit
         row_info = f"{len(results)} row(s)" + (
-            f" _(truncated to {DEFAULT_ROW_LIMIT:,})_" if truncated else ""
+            f" _(truncated to {row_limit:,})_" if truncated else ""
         )
         assistant_content = (
-            f"**Direct SQL query executed:**\n```sql\n{sql}\n```\n\n"
+            f"**Direct SQL query executed:**\n```sql\n{effective_sql}\n```\n\n"
             f"**Results:** {row_info}"
         )
 
@@ -374,7 +396,7 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
 
     if error_message is None:
         st.session_state.query_history.append(
-            ReportEntry(sql=sql, results=results, analysis="")
+            ReportEntry(sql=effective_sql, results=results, analysis="")
         )
 
 
@@ -459,13 +481,20 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     # Step 2: Execute query with automatic SQL correction on validation failure (AGT-03/04).
     results = pd.DataFrame()
     error_message: str | None = None
+    effective_sql = sql  # updated to effective SQL (row_limit applied) on success
     try:
         conn = connect_duckdb(db_path)
-        results, final_sql = execute_with_retry(conn, sql, api_key=api_key, model=model)
+        results, final_sql = execute_with_retry(
+            conn, sql, api_key=api_key, model=model,
+            row_limit=st.session_state.row_limit,
+        )
         conn.close()
         if final_sql != original_sql:
             sql = final_sql
-            st.session_state.last_sql = sql
+        # Store the effective SQL (with row_limit applied) so the SQL editor
+        # shows exactly what was executed, not the pre-limit original.
+        effective_sql = apply_row_limit(sql, st.session_state.row_limit)
+        st.session_state.last_sql = effective_sql
     except QueryValidationError as exc:
         error_message = f"🚫 SQL validation error: {exc}"
     except TimeoutError:
@@ -479,16 +508,17 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     summary = ""
     if error_message is None:
         with st.spinner("📋 Summarising results…"):
-            summary = generate_analysis(sql, results, api_key=api_key, model=model)
+            summary = generate_analysis(effective_sql, results, api_key=api_key, model=model)
     st.session_state.last_summary = summary
 
     # Step 4: Append to chat history and query history.
     if error_message:
         assistant_content = error_message
     else:
-        truncated = len(results) >= DEFAULT_ROW_LIMIT
+        row_limit = st.session_state.row_limit
+        truncated = len(results) >= row_limit
         row_summary = f"{len(results)} row(s)" + (
-            f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
+            f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
             if truncated
             else ""
         )
@@ -498,7 +528,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             else ""
         )
         assistant_content = (
-            f"**Generated SQL:**\n```sql\n{sql}\n```\n\n"
+            f"**Generated SQL:**\n```sql\n{effective_sql}\n```\n\n"
             f"**Results:** {row_summary}\n\n"
             f"**Summary:**\n{summary}" + retry_notice
         )
@@ -509,12 +539,12 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
 
     if error_message is None:
         st.session_state.query_history.append(
-            ReportEntry(sql=sql, results=results, analysis=summary)
+            ReportEntry(sql=effective_sql, results=results, analysis=summary)
         )
         # Update conversation context for follow-up queries.
         summary_text = summary if summary else "(no summary)"
         st.session_state.conversation_context.append(
-            {"user_query": user_input, "sql": sql, "summary": summary_text}
+            {"user_query": user_input, "sql": effective_sql, "summary": summary_text}
         )
         # Keep only the most recent MAX_CONTEXT_TURNS entries.
         if len(st.session_state.conversation_context) > MAX_CONTEXT_TURNS:
@@ -570,17 +600,25 @@ def render_chat() -> None:
                 else:
                     try:
                         conn = connect_duckdb(db_path)
-                        results = execute_query(conn, edited_sql)
+                        results = execute_query(
+                            conn, edited_sql,
+                            row_limit=st.session_state.row_limit,
+                        )
                         conn.close()
-                        st.session_state.last_sql = edited_sql
+                        # Store the effective SQL (row_limit applied) in last_sql.
+                        effective_edited_sql = apply_row_limit(
+                            edited_sql, st.session_state.row_limit
+                        )
+                        st.session_state.last_sql = effective_edited_sql
                         st.session_state.last_results = results
 
                         row_count = len(results)
-                        truncated = row_count >= DEFAULT_ROW_LIMIT
+                        row_limit = st.session_state.row_limit
+                        truncated = row_count >= row_limit
 
                         with st.spinner("📋 Summarising results…"):
                             summary = generate_analysis(
-                                edited_sql,
+                                effective_edited_sql,
                                 results,
                                 api_key=api_key,
                                 model=st.session_state.model,
@@ -590,10 +628,10 @@ def render_chat() -> None:
                             {
                                 "role": "assistant",
                                 "content": (
-                                    f"**Re-run SQL:**\n```sql\n{edited_sql}\n```\n\n"
+                                    f"**Re-run SQL:**\n```sql\n{effective_edited_sql}\n```\n\n"
                                     f"**Results:** {row_count} row(s)"
                                     + (
-                                        f" _(truncated to {DEFAULT_ROW_LIMIT:,} — add LIMIT to your SQL for more control)_"
+                                        f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
                                         if truncated
                                         else ""
                                     )
@@ -606,7 +644,7 @@ def render_chat() -> None:
                         st.session_state.last_summary = ""
                         st.session_state.query_history.append(
                             ReportEntry(
-                                sql=edited_sql, results=results, analysis=summary
+                                sql=effective_edited_sql, results=results, analysis=summary
                             )
                         )
                         st.rerun()
@@ -629,9 +667,9 @@ def render_chat() -> None:
                 st.code(entry.sql, language="sql")
 
                 if entry.results is not None and not entry.results.empty:
-                    if len(entry.results) >= DEFAULT_ROW_LIMIT:
+                    if len(entry.results) >= st.session_state.row_limit:
                         st.warning(
-                            f"⚠️ Results are truncated to **{DEFAULT_ROW_LIMIT:,} rows**. "
+                            f"⚠️ Results are truncated to **{st.session_state.row_limit:,} rows**. "
                             "Add a `LIMIT` clause or narrow your query for more specific results."
                         )
                     st.dataframe(entry.results, use_container_width=True)
