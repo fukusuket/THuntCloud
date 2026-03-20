@@ -229,14 +229,6 @@ docker compose --profile ingest run --rm ingester ingest \
   --geoip-country /data/geoip
 ```
 
-Alternatively, set environment variables in a `.env` file (placed next to `docker-compose.yml`):
-
-```bash
-# docker/.env
-GEOIP_CITY_PATH=/data/geoip/GeoLite2-City.mmdb
-GEOIP_ASN_PATH=/data/geoip/GeoLite2-ASN.mmdb
-```
-
 When these are set, no CLI flags are needed:
 
 ```bash
@@ -273,73 +265,6 @@ docker compose up -d --build
 |---------|-----|-------------|
 | Agent (AI hunting) | http://localhost:8501 | — |
 | Dashboard (Superset) | http://localhost:8088 | `admin` / `admin` |
-
-### Example queries
-
-- Who accessed the S3 buckets and from which IP addresses?
-- Show me all IAM-related API calls ordered by time
-- List any failed authentication attempts
-- Show API calls from outside Japan grouped by country
-- Which ASNs generated the most failed authentication attempts?
-
----
-
-## GeoIP Enrichment
-
-### Added columns
-
-When GeoIP enrichment is enabled, the following 7 columns are added to `cloudtrail_events`:
-
-| Column | Type | Example | Notes |
-|--------|------|---------|-------|
-| `geo_country_code` | VARCHAR | `"US"`, `"JP"`, `"PRIVATE"` | ISO 3166-1 alpha-2 or special marker |
-| `geo_country_name` | VARCHAR | `"United States"` | English name |
-| `geo_city` | VARCHAR | `"Tokyo"` | City DB only; NULL with Country DB |
-| `geo_latitude` | DOUBLE | `35.6895` | City DB only; NULL with Country DB |
-| `geo_longitude` | DOUBLE | `139.6917` | City DB only; NULL with Country DB |
-| `geo_asn` | VARCHAR | `"AS16509"` | Requires `GeoLite2-ASN.mmdb` |
-| `geo_org` | VARCHAR | `"Amazon.com, Inc."` | Requires `GeoLite2-ASN.mmdb` |
-
-### Special markers for `geo_country_code`
-
-| Value | Meaning |
-|-------|---------|
-| `PRIVATE` | RFC 1918 private address or IPv6 unique-local |
-| `LOOPBACK` | 127.x.x.x or ::1 |
-| `LINK-LOCAL` | 169.254.x.x or fe80::/10 |
-| `SPECIAL` | Broadcast, documentation, multicast, etc. |
-| `NULL` | Non-IP string (e.g. CloudTrail `"AWS"` service identifier) |
-
-### Example queries
-
-```sql
--- Top 10 source countries (excluding internal traffic)
-SELECT geo_country_code, geo_country_name, COUNT(*) AS events
-FROM cloudtrail_events
-WHERE geo_country_code NOT IN ('PRIVATE', 'LOOPBACK', 'LINK-LOCAL', 'SPECIAL')
-  AND geo_country_code IS NOT NULL
-GROUP BY geo_country_code, geo_country_name
-ORDER BY events DESC
-LIMIT 10;
-
--- Failed auth attempts by ASN
-SELECT geo_asn, geo_org, COUNT(*) AS failures
-FROM cloudtrail_events
-WHERE error_code IN ('AccessDenied', 'AuthFailure', 'UnauthorizedOperation')
-  AND geo_asn IS NOT NULL
-GROUP BY geo_asn, geo_org
-ORDER BY failures DESC
-LIMIT 20;
-
--- API calls from unexpected countries (excluding JP and US baseline)
-SELECT source_ip_address, geo_country_code, geo_city,
-       user_identity_arn, COUNT(*) AS events
-FROM cloudtrail_events
-WHERE geo_country_code NOT IN ('JP', 'US', 'PRIVATE', 'LOOPBACK')
-  AND geo_country_code IS NOT NULL
-GROUP BY source_ip_address, geo_country_code, geo_city, user_identity_arn
-ORDER BY events DESC;
-```
 
 ---
 
@@ -399,20 +324,6 @@ ingester enrich
 ```
 
 > At least one of `--geoip-city` or `--geoip-country` is required for both `ingest` (to enable enrichment) and `enrich` commands. When both are provided, `--geoip-city` takes precedence.
-
-### Environment variables
-
-| Variable | Used by | Default |
-|----------|---------|---------|
-| `OPENAI_API_KEY` | agent | — |
-| `DUCKDB_PATH` | ingester, agent | — |
-| `OPENAI_MODEL` | agent | `gpt-5.4` |
-| `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` |
-| `GEOIP_CITY_PATH` | ingester | — |
-| `GEOIP_COUNTRY_PATH` | ingester | — |
-| `GEOIP_ASN_PATH` | ingester | — |
-| `DUCKDB_HOST_PATH` | docker host | `./data/db` |
-| `SUPERSET_SECRET_KEY` | dashboard | `change-me-in-production` |
 
 ---
 
