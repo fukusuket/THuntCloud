@@ -162,7 +162,7 @@ sequenceDiagram
 - *(Optional)* OpenAI API key (`gpt-5.4` access) — agent module requires this
 - *(Optional)* [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) `.mmdb` files for GeoIP enrichment
 
-### 1. Clone and configure
+### 1. Clone
 
 ```bash
 git clone https://github.com/fukusuket/THuntCloud.git
