@@ -15,7 +15,6 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 - **No SIEM required** — all analysis runs locally via DuckDB
 - **AI-assisted** — natural language → SQL generation via OpenAI API (`gpt-5.4`)
-- **High performance** — ingest 10 GB in under 5 minutes; supports 50 GB on 16 GB RAM
 - **GeoIP enrichment** — enrich `source_ip_address` with country, city, ASN via MaxMind GeoLite2
 - **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
 - **Single-command launch** — `docker compose up -d`
