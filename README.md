@@ -159,7 +159,7 @@ sequenceDiagram
 
 - Docker Desktop (or Docker Engine + Docker Compose v2)
 - 16 GB RAM minimum, SSD recommended
-- OpenAI API key (`gpt-5.4` access) — agent module requires this
+- *(Optional)* OpenAI API key (`gpt-5.4` access) — agent module requires this
 - *(Optional)* [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) `.mmdb` files for GeoIP enrichment
 
 ### 1. Clone and configure
