@@ -328,9 +328,17 @@ fn ingest_core(
     // Propagate any parser thread panic (logic bugs, not parse errors).
     parser_handle.join().expect("parser thread must not panic");
 
-    insert_result?; // propagate DB insertion error after thread is joined
+    // Always finalize the progress bar BEFORE propagating a potential insertion
+    // error.  Previously `insert_result?` came first, so `reporter.finish()` was
+    // never reached on the error path, leaving the bar visually incomplete.
+    if insert_result.is_err() {
+        reporter.abandon("error");
+    } else {
+        reporter.finish();
+    }
 
-    reporter.finish();
+    insert_result?; // propagate DB insertion error after the bar is finalized
+
     stats.elapsed_secs = start.elapsed().as_secs_f64();
     Ok(stats)
 }
@@ -1157,6 +1165,42 @@ mod tests {
             row_count(&conn),
             10,
             "DB must contain exactly 10 rows after both runs"
+        );
+    }
+
+    // Test P-06: When a DuckDB insertion error occurs, ingest_with_progress returns
+    // an error and does not panic (progress bar is properly abandoned on the error path).
+    //
+    // This test exercises the code path where `reporter.abandon()` must be called
+    // before `insert_result?` propagates the error.  Before the fix, `reporter.finish()`
+    // was placed AFTER `insert_result?`, so it was never reached on error, leaving the
+    // progress bar in an incomplete visual state.
+    #[test]
+    fn test_progress_bar_abandoned_on_db_insertion_error() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+
+        // Create a DB whose cloudtrail_events table has only a single wrong column.
+        // ensure_table() will add the 7 geo columns via ALTER TABLE, but the 17 core
+        // columns will be missing, causing the Appender to fail when it tries to write
+        // 24 values to a table that does not have the expected column layout.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE cloudtrail_events (wrong_col TEXT)", [])
+            .unwrap();
+        conn.execute(
+            "CREATE TABLE ingested_files \
+             (file_path TEXT PRIMARY KEY, sha256 TEXT, ingested_at TIMESTAMP DEFAULT now())",
+            [],
+        )
+        .unwrap();
+
+        // show_progress=true exercises the visible ProgressReporter code path.
+        // After the fix, reporter.abandon("error") is called before the error is
+        // returned, so the terminal is left in a clean state.
+        let result = ingest_with_progress(tmp.path(), &conn, true);
+
+        assert!(
+            result.is_err(),
+            "ingest_with_progress must return an error when the DB schema is incompatible"
         );
     }
 
