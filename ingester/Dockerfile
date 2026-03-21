@@ -1,8 +1,8 @@
-# ── Build arg: set to a release tag (e.g. v0.1.0) to download a prebuilt
+# ── Build arg: set to a release tag (e.g. v0.1.3) to download a prebuilt
 # binary from GitHub Releases and skip Rust compilation entirely.
 # Used by the `prebuilt-runtime` target below.
 # Leave empty (default) to compile from source with the `runtime` target.
-ARG INGESTER_VERSION="v0.1.0"
+ARG INGESTER_VERSION="v0.1.3"
 
 # ── Stage 1: Builder (compile from source) ────────────────────────────────────
 FROM rust:1.94-slim AS builder
@@ -101,7 +101,7 @@ RUN test -n "$INGESTER_VERSION" || { echo "Error: INGESTER_VERSION build arg mus
 # executed when Docker BuildKit resolves this target.
 #
 # Usage (from docker/ directory):
-#   INGESTER_BUILD_TARGET=prebuilt-runtime INGESTER_VERSION=v0.1.0 \
+#   INGESTER_BUILD_TARGET=prebuilt-runtime INGESTER_VERSION=v0.1.3 \
 #     docker compose build ingester
 FROM debian:trixie-slim AS prebuilt-runtime
 

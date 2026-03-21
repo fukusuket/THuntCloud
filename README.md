@@ -192,8 +192,8 @@ the Rust + DuckDB C++ compilation step by downloading a pre-built binary from a
 
 ```bash
 cd docker
-# Replace v0.1.0 with the latest release tag
-INGESTER_VERSION=v0.1.0 INGESTER_BUILD_TARGET=prebuilt-runtime \
+# Replace v0.1.3 with the latest release tag
+INGESTER_VERSION=v0.1.3 INGESTER_BUILD_TARGET=prebuilt-runtime \
   docker compose --profile ingest build ingester
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 ```
