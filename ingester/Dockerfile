@@ -75,18 +75,26 @@ CMD ["--help"]
 # ── Stage 3: Prebuilt binary downloader ───────────────────────────────────────
 # Downloads the ingester binary from a tagged GitHub Release.
 # Only used when the `prebuilt-runtime` build target is selected.
+# TARGETARCH is set automatically by Docker BuildKit (amd64 / arm64).
 FROM debian:trixie-slim AS downloader
 ARG INGESTER_VERSION
+ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN test -n "$INGESTER_VERSION" || { echo "Error: INGESTER_VERSION build arg must be set"; exit 1; } \
+    && case "$TARGETARCH" in \
+        amd64) BINARY="ingester-x86_64-linux"  ;; \
+        arm64) BINARY="ingester-aarch64-linux" ;; \
+        *)     echo "Error: unsupported architecture: $TARGETARCH"; exit 1 ;; \
+    esac \
     && BASE_URL="https://github.com/fukusuket/THuntCloud/releases/download/${INGESTER_VERSION}" \
-    && curl -fsSL -o /usr/local/bin/ingester       "${BASE_URL}/ingester-x86_64-linux" \
-    && curl -fsSL -o /tmp/ingester.sha256           "${BASE_URL}/ingester-x86_64-linux.sha256" \
-    && (cd /usr/local/bin && sha256sum -c /tmp/ingester.sha256) \
-    && chmod +x /usr/local/bin/ingester
+    && curl -fsSL -o /tmp/${BINARY}          "${BASE_URL}/${BINARY}" \
+    && curl -fsSL -o /tmp/${BINARY}.sha256   "${BASE_URL}/${BINARY}.sha256" \
+    && (cd /tmp && sha256sum -c ${BINARY}.sha256) \
+    && install -m 755 /tmp/${BINARY} /usr/local/bin/ingester \
+    && rm /tmp/${BINARY} /tmp/${BINARY}.sha256
 
 # ── Stage 4: Prebuilt runtime ─────────────────────────────────────────────────
 # Uses the binary downloaded by Stage 3 — the Rust builder stage is NOT
