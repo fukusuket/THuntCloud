@@ -442,6 +442,20 @@ cargo build
 cargo build --release
 ```
 
+#### Using a pre-built binary (faster Docker build)
+
+If you are on **x86_64 Linux** (or WSL2 / Docker Desktop on amd64), you can skip
+the Rust + DuckDB C++ compilation step by downloading a pre-built binary from a
+[GitHub Release](https://github.com/fukusuket/THuntCloud/releases):
+
+```bash
+cd docker
+# Replace v0.1.3 with the latest release tag
+INGESTER_VERSION=v0.1.3 INGESTER_BUILD_TARGET=prebuilt-runtime \
+  docker compose --profile ingest build ingester
+docker compose --profile ingest run --rm ingester ingest --path /data/logs
+```
+
 ### Test
 
 ```bash
