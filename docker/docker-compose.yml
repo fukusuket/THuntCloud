@@ -36,7 +36,7 @@ services:
       #                                Set INGESTER_BUILD_TARGET=runtime to opt in.
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
-        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.0}
+        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.2}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
