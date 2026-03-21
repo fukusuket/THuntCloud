@@ -84,9 +84,6 @@ cd docker
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 ```
 
-> The image is built automatically on first run (downloads a pre-built binary by default — no Rust toolchain required).
-> To compile from source or pin a specific release, see [ingester/README.md — Build](ingester/README.md#build).
-
 #### With GeoIP enrichment (optional)
 
 Download [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) and place them in `docker/data/geoip/`, then run:
@@ -118,11 +115,22 @@ docker compose up -d --build
 All commands are run from the `docker/` directory.
 
 ```bash
-docker compose down && docker compose up -d              # Restart (keep data)
 docker compose down && docker compose up -d --build      # Rebuild & restart
 docker compose logs -f                                   # View logs
 docker compose --profile resync run --rm superset-resync # Fix blank dashboard (re-syncs column metadata)
 ```
+
+---
+
+## Modules
+
+Each module has its own README with detailed usage and development notes.
+
+| Module | Language | Role | README |
+|--------|----------|------|--------|
+| `ingester` | Rust | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
+| `agent` | Python / Streamlit | AI-assisted threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
+| `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
 
 ---
 
