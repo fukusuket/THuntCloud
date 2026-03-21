@@ -11,16 +11,11 @@
 
 ## Overview
 
-> 💡 **The biggest idea behind THuntCloud:** a single, ordinary laptop can do what a SIEM does for AWS CloudTrail log investigation — no dedicated server, no cloud subscription, no license fee.
-
-THuntCloud packages log ingestion, AI-assisted querying, and a BI dashboard into one Docker Compose stack.
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
-- **SIEM-equivalent analysis on a laptop** — DuckDB handles hundreds of millions of events on commodity hardware
-- **No SIEM required** — zero external infrastructure; all data stays on your machine
-- **AI-assisted** — natural language → SQL generation via OpenAI API (`gpt-5.4`)
-- **GeoIP enrichment** — enrich `source_ip_address` with country, city, ASN via MaxMind GeoLite2
-- **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
+- **AI-assisted querying** — natural language → SQL via OpenAI API (`gpt-5.4`)
+- **GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
+- **Built-in BI dashboard** — Apache Superset with pre-built CloudTrail charts
 - **Single-command launch** — `docker compose up -d`
 
 ## Screenshots
@@ -61,7 +56,6 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ## Prerequisites
 
-> 💻 **All you need is an ordinary laptop with Docker.** No dedicated server, no cloud subscription, no SIEM license.
 
 | Requirement | Details |
 |-------------|---------|
