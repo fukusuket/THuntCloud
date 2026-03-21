@@ -255,7 +255,7 @@ fn ingest_core(
         for (file_path, result) in parse_results {
             let path_key = file_path.to_string_lossy().to_string();
             match result {
-                Err(e) => {
+                Err(_e) => {
                     stats.errors += 1;
                 }
                 Ok((sha256, records)) => {
