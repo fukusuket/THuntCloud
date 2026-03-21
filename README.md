@@ -35,13 +35,17 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 │  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
 │  │   ingester   │   │    agent     │  │  dashboard  │   │
 │  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
-│  │ READ_WRITE   │   │  READ_ONLY   │  │  READ_ONLY  │   │
+│  │              │   │              │  │             │   │
+│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
+│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
+│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
 │  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
 │         └──────────────────┴─────────────────┘          │
 │                            │                            │
 │                    ┌───────▼──────┐                     │
 │                    │   DuckDB     │                     │
 │                    │ (Bind Mount) │                     │
+│                    │  (SSD)       │                     │
 │                    └──────────────┘                     │
 └─────────────────────────────────────────────────────────┘
 ```
