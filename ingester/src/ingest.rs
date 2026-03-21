@@ -326,9 +326,7 @@ fn ingest_core(
     drop(rx);
 
     // Propagate any parser thread panic (logic bugs, not parse errors).
-    parser_handle
-        .join()
-        .expect("parser thread must not panic");
+    parser_handle.join().expect("parser thread must not panic");
 
     insert_result?; // propagate DB insertion error after thread is joined
 
@@ -1088,8 +1086,8 @@ mod tests {
         }
 
         let conn = setup_db();
-        let stats = ingest_with_conn(dir.path(), &conn)
-            .expect("pipeline multi-chunk ingest must succeed");
+        let stats =
+            ingest_with_conn(dir.path(), &conn).expect("pipeline multi-chunk ingest must succeed");
 
         assert_eq!(
             stats.files_processed, FILE_COUNT,
@@ -1143,12 +1141,10 @@ mod tests {
 
         let conn = setup_db();
 
-        let stats1 =
-            ingest_with_conn(dir.path(), &conn).expect("first pipeline run must succeed");
+        let stats1 = ingest_with_conn(dir.path(), &conn).expect("first pipeline run must succeed");
         assert_eq!(stats1.records_inserted, 10, "first run inserts 10 records");
 
-        let stats2 =
-            ingest_with_conn(dir.path(), &conn).expect("second pipeline run must succeed");
+        let stats2 = ingest_with_conn(dir.path(), &conn).expect("second pipeline run must succeed");
         assert_eq!(
             stats2.records_inserted, 0,
             "second run must insert nothing (all already ingested)"
@@ -1172,18 +1168,17 @@ mod tests {
 
         // Two valid files + one intentionally malformed JSON file.
         std::fs::write(dir.path().join("valid1.json"), SINGLE_EVENT_JSON).unwrap();
-        std::fs::write(
-            dir.path().join("malformed.json"),
-            r#"{ not: valid json }"#,
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("malformed.json"), r#"{ not: valid json }"#).unwrap();
         std::fs::write(dir.path().join("valid2.json"), THREE_EVENT_JSON).unwrap();
 
         let conn = setup_db();
         let stats = ingest_with_conn(dir.path(), &conn)
             .expect("ingest must succeed even when one file is malformed");
 
-        assert_eq!(stats.errors, 1, "malformed file must be counted as an error");
+        assert_eq!(
+            stats.errors, 1,
+            "malformed file must be counted as an error"
+        );
         assert_eq!(
             stats.files_processed, 2,
             "two valid files must be processed"
