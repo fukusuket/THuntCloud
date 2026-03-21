@@ -26,7 +26,7 @@ jobs:
     permissions:
       contents: write
     strategy:
-      fail_fast: false
+      fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
