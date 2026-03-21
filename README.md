@@ -1,6 +1,6 @@
 # 🪽THuntCloud🪽
 
-## AWS Log Threat Hunting Tool
+## AWS CloudTrail Log Threat Hunting Tool
 
 > Locally-executed, AI-assisted threat hunting for AWS CloudTrail logs — no SIEM required.
 
