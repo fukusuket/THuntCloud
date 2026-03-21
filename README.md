@@ -2,7 +2,7 @@
 
 ## AWS CloudTrail Log Threat Hunting Tool
 
-> Locally-executed, AI-assisted threat hunting for AWS CloudTrail logs — no SIEM required.
+> SIEM-equivalent AWS CloudTrail threat hunting on a single ordinary laptop — no cloud infrastructure required.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
@@ -11,9 +11,13 @@
 
 ## Overview
 
-THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs directly on a local PC.
+> 💡 **The biggest idea behind THuntCloud:** a single, ordinary laptop can do what a SIEM does for AWS CloudTrail log investigation — no dedicated server, no cloud subscription, no license fee.
 
-- **No SIEM required** — all analysis runs locally via DuckDB
+THuntCloud packages log ingestion, AI-assisted querying, and a BI dashboard into one Docker Compose stack.
+Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
+
+- **SIEM-equivalent analysis on a laptop** — DuckDB handles hundreds of millions of events on commodity hardware
+- **No SIEM required** — zero external infrastructure; all data stays on your machine
 - **AI-assisted** — natural language → SQL generation via OpenAI API (`gpt-5.4`)
 - **GeoIP enrichment** — enrich `source_ip_address` with country, city, ASN via MaxMind GeoLite2
 - **Built-in dashboard** — Apache Superset with pre-seeded CloudTrail dashboards
@@ -55,14 +59,22 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 ---
 
+## Prerequisites
+
+> 💻 **All you need is an ordinary laptop with Docker.** No dedicated server, no cloud subscription, no SIEM license.
+
+| Requirement | Details |
+|-------------|---------|
+| **Docker** | Docker Desktop or Docker Engine + Compose v2 |
+| **Resources** | 16 GB RAM minimum, SSD recommended |
+| **CloudTrail logs** | `.json` or `.json.gz` files exported from AWS |
+| *(Optional)* **OpenAI API key** | `gpt-5.4` access — required for AI query generation |
+| *(Optional)* **MaxMind GeoLite2** | [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) for GeoIP enrichment |
+
+---
+
 ## Quick Start
 
-### Prerequisites
-
-- Docker Desktop (or Docker Engine + Docker Compose v2)
-- 16 GB RAM minimum, SSD recommended
-- *(Optional)* OpenAI API key (`gpt-5.4` access) — required for AI query generation
-- *(Optional)* [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) `.mmdb` files for GeoIP enrichment
 
 ### 1. Clone
 
