@@ -55,101 +55,11 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 
 ## Processing Sequence
 
-### 1. Log Ingestion Flow
+For detailed processing flow diagrams, see each module's documentation:
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant FS as Local Filesystem<br/>(CloudTrail .json.gz)
-    participant Ingester as ingester<br/>(Rust)
-    participant DuckDB
-
-    User->>Ingester: docker compose run ingester ingest --path /data/logs
-    activate Ingester
-    Ingester->>FS: Walk directory & list .json / .json.gz files
-    loop For each file
-        Ingester->>FS: Read file
-        alt .json.gz
-            Ingester->>Ingester: Decompress (flate2)
-        end
-        Ingester->>Ingester: Parse JSON (serde_json)
-        Ingester->>Ingester: Compute checksum (duplicate check)
-        Ingester->>DuckDB: Batch INSERT into cloudtrail_events (READ_WRITE)
-        DuckDB-->>Ingester: OK
-    end
-    Ingester-->>User: Ingestion complete (stats: records, duration)
-    deactivate Ingester
-```
-
-### 2. AI-Assisted Threat Hunting Flow
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as agent<br/>(Streamlit UI)
-    participant LLM as OpenAI API<br/>(gpt-5.4)
-    participant Validator as SQL Validator<br/>(EXPLAIN + keyword filter)
-    participant DuckDB
-
-    User->>UI: Enter natural language query
-    activate UI
-    UI->>LLM: Send query + schema context (system prompt)
-    activate LLM
-    LLM-->>UI: Return generated SQL
-    deactivate LLM
-    UI->>Validator: Validate SQL
-    activate Validator
-    alt Unsafe keyword detected (DROP / INSERT / UPDATE …)
-        Validator-->>UI: Reject — return error
-        UI-->>User: Show validation error
-    else EXPLAIN passes
-        Validator->>DuckDB: EXPLAIN <generated SQL> (READ_ONLY)
-        DuckDB-->>Validator: Execution plan OK
-        Validator-->>UI: SQL approved
-        deactivate Validator
-        UI->>DuckDB: Execute SQL (READ_ONLY)
-        DuckDB-->>UI: Result rows
-        UI->>LLM: Send results + "analyze for threats" prompt
-        activate LLM
-        LLM-->>UI: Threat analysis summary
-        deactivate LLM
-        UI-->>User: Display results + analysis (+ optional PDF report)
-    end
-    deactivate UI
-```
-
-### 3. Dashboard Visualization Flow
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant Superset as dashboard<br/>(Apache Superset)
-    participant Init as superset-init<br/>(one-shot)
-    participant DuckDB
-
-    Note over Init,DuckDB: First startup only
-    Init->>Superset: Register DuckDB connection (READ_ONLY)
-    Init->>Superset: Import pre-built CloudTrail dashboards & charts
-    Init->>Superset: Register dataset (cloudtrail_events)
-
-    User->>Superset: Open http://localhost:8088
-    activate Superset
-    Superset-->>User: Show CloudTrail dashboard
-
-    loop For each chart panel
-        Superset->>DuckDB: Execute chart SQL (READ_ONLY)
-        DuckDB-->>Superset: Result rows
-        Superset-->>User: Render chart / table
-    end
-
-    opt Ad-hoc SQL (SQL Lab)
-        User->>Superset: Enter custom SQL in SQL Lab
-        Superset->>DuckDB: Execute SQL (READ_ONLY)
-        DuckDB-->>Superset: Result rows
-        Superset-->>User: Display results / visualization
-    end
-    deactivate Superset
-```
+- [ingester — Log Ingestion Flow](ingester/README.md#processing-sequence)
+- [agent — AI-Assisted Threat Hunting Flow](agent/README.md#processing-sequence)
+- [dashboard — Dashboard Visualization Flow](dashboard/README.md#processing-sequence)
 
 ---
 

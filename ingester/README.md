@@ -468,6 +468,36 @@ cargo clippy -- -D warnings
 
 ---
 
+## Processing Sequence
+
+### Log Ingestion Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FS as Local Filesystem<br/>(CloudTrail .json.gz)
+    participant Ingester as ingester<br/>(Rust)
+    participant DuckDB
+
+    User->>Ingester: docker compose run ingester ingest --path /data/logs
+    activate Ingester
+    Ingester->>FS: Walk directory & list .json / .json.gz files
+    loop For each file
+        Ingester->>FS: Read file
+        alt .json.gz
+            Ingester->>Ingester: Decompress (flate2)
+        end
+        Ingester->>Ingester: Parse JSON (serde_json)
+        Ingester->>Ingester: Compute checksum (duplicate check)
+        Ingester->>DuckDB: Batch INSERT into cloudtrail_events (READ_WRITE)
+        DuckDB-->>Ingester: OK
+    end
+    Ingester-->>User: Ingestion complete (stats: records, duration)
+    deactivate Ingester
+```
+
+---
+
 ## Architecture Notes
 
 ### Ingestion Pipeline

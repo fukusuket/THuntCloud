@@ -121,6 +121,43 @@ DUCKDB_HOST_PATH=/path/to/your/duckdb/directory
 
 ---
 
+## Processing Sequence
+
+### Dashboard Visualization Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Superset as dashboard<br/>(Apache Superset)
+    participant Init as superset-init<br/>(one-shot)
+    participant DuckDB
+
+    Note over Init,DuckDB: First startup only
+    Init->>Superset: Register DuckDB connection (READ_ONLY)
+    Init->>Superset: Import pre-built CloudTrail dashboards & charts
+    Init->>Superset: Register dataset (cloudtrail_events)
+
+    User->>Superset: Open http://localhost:8088
+    activate Superset
+    Superset-->>User: Show CloudTrail dashboard
+
+    loop For each chart panel
+        Superset->>DuckDB: Execute chart SQL (READ_ONLY)
+        DuckDB-->>Superset: Result rows
+        Superset-->>User: Render chart / table
+    end
+
+    opt Ad-hoc SQL (SQL Lab)
+        User->>Superset: Enter custom SQL in SQL Lab
+        Superset->>DuckDB: Execute SQL (READ_ONLY)
+        DuckDB-->>Superset: Result rows
+        Superset-->>User: Display results / visualization
+    end
+    deactivate Superset
+```
+
+---
+
 ## Initialization Flow
 
 On first startup, the `superset-init` container executes the following steps in order (all idempotent):
