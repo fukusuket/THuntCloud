@@ -149,6 +149,30 @@ ingester ingest --path /logs/ \
 | `.json.gz`    | Decompressed on the fly via `flate2`  |
 | Anything else | Silently skipped                      |
 
+### `enrich` subcommand
+
+Back-fills GeoIP columns for rows already in the database where `geo_country_code IS NULL`.
+Use this when logs were ingested without `--geoip-*` flags.
+
+```
+ingester enrich [OPTIONS]
+
+Options:
+  -d, --db             <DB_PATH>        Path to the DuckDB database file
+                                        [default: /data/db/threat_hunting.db]
+      --geoip-city     <PATH>           GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
+      --geoip-country  <PATH>           GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
+      --geoip-asn      <PATH>           GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
+  -h, --help                            Print help
+```
+
+```bash
+# Back-fill City + ASN data on an existing database
+ingester enrich \
+  --geoip-city /data/geoip/GeoLite2-City.mmdb \
+  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
+```
+
 ---
 
 ## Output Format

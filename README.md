@@ -198,28 +198,6 @@ docker compose --profile resync run --rm superset-resync  # Re-sync dashboard co
 
 ---
 
-## ingester CLI Reference
-
-```
-ingester ingest --path <dir>
-                [--db             <path>]    # DuckDB file (default: /data/db/threat_hunting.db)
-                [--no-progress]              # Disable progress bar output
-                [--include        <globs>]   # comma-separated include patterns, e.g. "*CloudTrail*"
-                [--exclude        <globs>]   # comma-separated exclude patterns, e.g. "*vpcflowlogs*"
-                [--from           <YYYYMMDD>]# ingest files on or after this date
-                [--to             <YYYYMMDD>]# ingest files on or before this date
-                [--workers        <N>]       # parallel threads (default: CPU count)
-                [--geoip-city     <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
-                [--geoip-country  <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
-                [--geoip-asn      <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
-
-ingester enrich
-                [--db             <path>]    # DuckDB file (default: /data/db/threat_hunting.db)
-                [--geoip-city     <path>]    # GeoLite2-City.mmdb    (or GEOIP_CITY_PATH env)
-                [--geoip-country  <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH env)
-                [--geoip-asn      <path>]    # GeoLite2-ASN.mmdb     (or GEOIP_ASN_PATH env)
-```
----
 
 ## Module Overview
 
