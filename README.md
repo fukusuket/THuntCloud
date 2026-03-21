@@ -9,8 +9,6 @@
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
 
-## Overview
-
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
 - **AI-assisted querying** — natural language → SQL via OpenAI API (`gpt-5.4`)
@@ -37,17 +35,13 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 │  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
 │  │   ingester   │   │    agent     │  │  dashboard  │   │
 │  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
-│  │              │   │              │  │             │   │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
+│  │ READ_WRITE   │   │  READ_ONLY   │  │  READ_ONLY  │   │
 │  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
 │         └──────────────────┴─────────────────┘          │
 │                            │                            │
 │                    ┌───────▼──────┐                     │
 │                    │   DuckDB     │                     │
 │                    │ (Bind Mount) │                     │
-│                    │  (SSD)       │                     │
 │                    └──────────────┘                     │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -56,81 +50,61 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ## Prerequisites
 
-
 | Requirement | Details |
 |-------------|---------|
 | **Docker** | Docker Desktop or Docker Engine + Compose v2 |
 | **Resources** | 16 GB RAM minimum, SSD recommended |
 | **CloudTrail logs** | `.json` or `.json.gz` files exported from AWS |
-| *(Optional)* **OpenAI API key** | `gpt-5.4` access — required for AI query generation |
-| *(Optional)* **MaxMind GeoLite2** | [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) for GeoIP enrichment |
+| *(Optional)* **OpenAI API key** | Required for AI query generation |
+| *(Optional)* **MaxMind GeoLite2** | `.mmdb` files for GeoIP enrichment |
 
 ---
 
 ## Quick Start
 
-
-### 1. Clone
-
 ```bash
+# 1. Clone
 git clone https://github.com/fukusuket/THuntCloud.git
-cd THuntCloud
-```
+cd THuntCloud/docker
 
-### 2. Place CloudTrail logs
+# 2. Place CloudTrail logs
+cp /path/to/cloudtrail/logs/*.json.gz logs/
 
-```bash
-cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
-```
-
-### 3. Build and ingest logs
-
-```bash
-cd docker
+# 3. Ingest logs
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+# 4. Start all services
+docker compose up -d --build
 ```
+
+Open http://localhost:8501 (Agent) or http://localhost:8088 (Dashboard, `admin`/`admin`).
 
 #### With GeoIP enrichment (optional)
 
-Download [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) and place them in `docker/data/geoip/`, then run:
+Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
 
 ```bash
 docker compose --profile ingest run --rm ingester ingest \
   --path /data/logs \
-  --geoip-city    /data/geoip/GeoLite2-City.mmdb \
-  --geoip-asn     /data/geoip/GeoLite2-ASN.mmdb
+  --geoip-city /data/geoip/GeoLite2-City.mmdb \
+  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
 ```
-
-### 4. Start all services
-
-```bash
-docker compose up -d --build
-```
-
-### 5. Open the UIs
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Agent (AI hunting) | http://localhost:8501 | — |
-| Dashboard (Superset) | http://localhost:8088 | `admin` / `admin` |
 
 ---
 
-## Docker Operations
+## Common Commands
 
 All commands are run from the `docker/` directory.
 
 ```bash
 docker compose down && docker compose up -d --build      # Rebuild & restart
 docker compose logs -f                                   # View logs
-docker compose --profile resync run --rm superset-resync # Fix blank dashboard (re-syncs column metadata)
+docker compose --profile resync run --rm superset-resync # Fix blank dashboard
 ```
 
 ---
 
 ## Modules
-
-Each module has its own README with detailed usage and development notes.
 
 | Module | Language | Role | README |
 |--------|----------|------|--------|
@@ -147,9 +121,7 @@ See [NOTICE](NOTICE) for third-party license attributions.
 
 ## Acknowledgements
 
-- **[Yamato Security](https://github.com/Yamato-Security)** — for providing the [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data) repository
-- **[flaws.cloud](http://flaws.cloud)** — the intentionally vulnerable AWS environment whose CloudTrail logs serve as an excellent threat hunting practice dataset.
-- **[Apache Superset](https://superset.apache.org/)** — the open-source BI platform powering the built-in dashboard.
-- **[DuckDB](https://duckdb.org/)** — the embedded analytical database at the core of THuntCloud's data engine.
-- **[siem-on-amazon-opensearch-service](https://github.com/aws-samples/siem-on-amazon-opensearch-service)** — AWS sample project for SIEM on Amazon OpenSearch Service, referenced for log parsing and normalization patterns.
-- **[cloud-trail-lake-query-samples](https://github.com/aws-samples/cloud-trail-lake-query-samples)** — AWS sample queries for CloudTrail Lake, referenced for threat hunting query patterns.
+- [Yamato Security](https://github.com/Yamato-Security) — [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data)
+- [flaws.cloud](http://flaws.cloud) — intentionally vulnerable AWS CloudTrail dataset
+- [Apache Superset](https://superset.apache.org/) — BI platform
+- [DuckDB](https://duckdb.org/) — embedded analytical database
