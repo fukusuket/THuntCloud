@@ -81,11 +81,11 @@ cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 
 ```bash
 cd docker
-docker compose --profile ingest build ingester
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 ```
 
-> For faster Docker builds using a pre-built binary, see [ingester/README.md — Build](ingester/README.md#build).
+> The image is built automatically on first run (downloads a pre-built binary by default — no Rust toolchain required).
+> To compile from source or pin a specific release, see [ingester/README.md — Build](ingester/README.md#build).
 
 #### With GeoIP enrichment (optional)
 
