@@ -257,7 +257,6 @@ fn ingest_core(
             match result {
                 Err(e) => {
                     stats.errors += 1;
-                    eprintln!("Error processing {}: {e:#}", file_path.display());
                 }
                 Ok((sha256, records)) => {
                     if ingested_map.get(&path_key).map(String::as_str) == Some(sha256.as_str()) {
