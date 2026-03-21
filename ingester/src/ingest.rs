@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -31,6 +33,15 @@ use crate::progress::ProgressReporter;
 /// For memory-constrained environments set `RAYON_NUM_THREADS=1` or use
 /// `--workers 1` to disable parallelism.
 const PARSE_CHUNK_SIZE: usize = 64;
+
+/// Number of pre-parsed chunks the parser thread may buffer ahead of the
+/// main thread's insertion loop.
+///
+/// The bounded `sync_channel` capacity caps peak in-flight memory to
+/// `PARSE_CHUNK_SIZE × avg_uncompressed_file_size × (1 + PIPELINE_BUFFER_DEPTH)`.
+/// A value of 2 allows the parser to stay up to 2 chunks ahead of insertion
+/// without wasting memory.
+const PIPELINE_BUFFER_DEPTH: usize = 2;
 
 /// Result of parsing a single file: the file's path paired with either a
 /// `(sha256_hex, events)` tuple or an error.
@@ -190,18 +201,27 @@ pub fn ingest_with_geoip(
 /// # Pipeline
 ///
 /// ```text
-/// Phase 0  Single DB query → HashMap<file_path, sha256> (replaces N per-file queries)
+/// Phase 0  Single DB query → HashMap<file_path, sha256>
 ///
-/// For each PARSE_CHUNK_SIZE-sized chunk of candidate files:
-///   Parallel  read bytes → SHA-256 → decompress → parse   (rayon)
-///   Serial    dedup check → INSERT events → mark_ingested  (DuckDB is not Send)
+/// Parser thread (OS thread)            Main thread (sole DuckDB writer)
+/// ─────────────────────────            ────────────────────────────────
+/// chunk[0..64]  → par_iter ──→ tx ──→ rx → dedup → INSERT → mark
+/// chunk[64..128]→ par_iter ──→ tx        (parser blocked if buffer full)
+///                                    → rx → dedup → INSERT → mark
+/// ...
 /// ```
 ///
-/// # Memory
+/// Parse and insertion **overlap**: while the main thread inserts chunk N,
+/// the parser thread is already reading and hashing files for chunk N+1.
+/// The bounded channel (`PIPELINE_BUFFER_DEPTH`) caps peak memory to
+/// `PARSE_CHUNK_SIZE × avg_file_size × (1 + PIPELINE_BUFFER_DEPTH)`.
 ///
-/// Peak memory per chunk ≈ `PARSE_CHUNK_SIZE × avg_uncompressed_file_size`.
-/// Files are dropped after each chunk, so total memory does not scale with
-/// the number of files — only with `PARSE_CHUNK_SIZE`.
+/// # Error handling
+///
+/// - Parse errors per file increment `stats.errors`; processing continues.
+/// - A DuckDB insertion error causes the insertion loop to break, `rx` is
+///   dropped (signalling the parser thread to exit), the parser thread is
+///   joined, and then the error is propagated via `?`.
 fn ingest_core(
     path: &Path,
     conn: &Connection,
@@ -237,20 +257,35 @@ fn ingest_core(
     // pairs) and eliminates the dominant per-file DB round-trip latency.
     let mut ingested_map: HashMap<String, String> = fetch_ingested_files_map(conn)?;
 
-    // ── Process files in fixed-size chunks ─────────────────────────────────
-    // Within each chunk, rayon reads and parses files in parallel (CPU/IO
-    // bound). Insertion into DuckDB is then done serially because Connection
-    // is not Send. Chunking caps peak memory to PARSE_CHUNK_SIZE × file_size.
-    for chunk in files.chunks(PARSE_CHUNK_SIZE) {
-        // Parallel phase: read file bytes once → compute SHA-256 → decompress
-        // → parse JSON.  parse_file_content() does all of this in a single
-        // pass, eliminating the previous double-read (SHA-256 pass + content
-        // pass).
-        let parse_results: Vec<ParseOutcome> = chunk
-            .par_iter()
-            .map(|p| (p.clone(), parse_file_content(p)))
-            .collect();
+    // ── Pipelined parse/insert ─────────────────────────────────────────────
+    // A bounded sync_channel provides backpressure: the parser thread blocks
+    // when PIPELINE_BUFFER_DEPTH chunks are awaiting insertion, preventing
+    // unbounded memory growth.
+    let (tx, rx) = mpsc::sync_channel::<Vec<ParseOutcome>>(PIPELINE_BUFFER_DEPTH);
 
+    // Parser thread: owns `files`, chunks it, runs par_iter() per chunk, and
+    // sends Vec<ParseOutcome> through the channel.  It never touches DuckDB
+    // (Connection is !Send), so the !Send constraint is satisfied.
+    let parser_handle = thread::spawn(move || {
+        for chunk in files.chunks(PARSE_CHUNK_SIZE) {
+            // Parallel phase: read bytes → SHA-256 → decompress → parse JSON.
+            let results: Vec<ParseOutcome> = chunk
+                .par_iter()
+                .map(|p| (p.clone(), parse_file_content(p)))
+                .collect();
+            if tx.send(results).is_err() {
+                // Receiver dropped (main thread error-exited) — stop silently.
+                break;
+            }
+        }
+        // tx dropped here → rx.recv() returns Err → insertion loop exits.
+    });
+
+    // Main thread: receive parsed chunks and insert into DuckDB serially.
+    // A labelled loop allows an insertion error to break both the inner
+    // (per-file) and outer (per-chunk) loops cleanly before cleanup.
+    let mut insert_result: Result<()> = Ok(());
+    'recv: while let Ok(parse_results) = rx.recv() {
         // Serial phase: dedup check (O(1) HashMap lookup) → INSERT → mark.
         for (file_path, result) in parse_results {
             let path_key = file_path.to_string_lossy().to_string();
@@ -263,19 +298,39 @@ fn ingest_core(
                         // Already ingested with the same checksum — skip.
                         stats.files_processed += 1;
                     } else {
-                        let inserted = insert_events_with_geo(conn, &records, geoip)
-                            .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))?;
-                        stats.files_processed += 1;
-                        stats.records_inserted += inserted;
-                        // Keep the in-memory map current so within-run
-                        // duplicates are caught without extra DB queries.
-                        ingested_map.insert(path_key, sha256);
+                        match insert_events_with_geo(conn, &records, geoip)
+                            .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))
+                        {
+                            Ok(inserted) => {
+                                stats.files_processed += 1;
+                                stats.records_inserted += inserted;
+                                // Keep the in-memory map current so within-run
+                                // duplicates are caught without extra DB queries.
+                                ingested_map.insert(path_key, sha256);
+                            }
+                            Err(e) => {
+                                insert_result = Err(e);
+                                break 'recv;
+                            }
+                        }
                     }
                 }
             }
             reporter.inc(stats.records_inserted);
         }
     }
+
+    // Drop rx before joining to unblock a parser thread that may be blocked
+    // on tx.send() with a full buffer (e.g. when the insert loop error-exited).
+    // Without this explicit drop, join() would deadlock forever.
+    drop(rx);
+
+    // Propagate any parser thread panic (logic bugs, not parse errors).
+    parser_handle
+        .join()
+        .expect("parser thread must not panic");
+
+    insert_result?; // propagate DB insertion error after thread is joined
 
     reporter.finish();
     stats.elapsed_secs = start.elapsed().as_secs_f64();
@@ -991,5 +1046,152 @@ mod tests {
             cc.is_none(),
             "geo_country_code should be NULL without enricher"
         );
+    }
+
+    // ── Pipeline regression tests ─────────────────────────────────────────
+    //
+    // These tests document the behavioral contract of the pipelined
+    // parse/insert implementation introduced in ingest_core.  They call
+    // the same public API as the pre-pipeline tests so they also act as
+    // regression guards that must keep passing across any future refactor.
+
+    // Test P-01: Pipelined ingest of a single file produces the same result
+    // as the non-pipelined path (1 file processed, 1 record inserted, 0 errors).
+    #[test]
+    fn test_pipeline_single_file_correctness() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        let stats =
+            ingest_with_conn(tmp.path(), &conn).expect("pipeline single-file ingest must succeed");
+
+        assert_eq!(stats.files_processed, 1, "one file must be processed");
+        assert_eq!(stats.records_inserted, 1, "one record must be inserted");
+        assert_eq!(stats.errors, 0, "no errors expected");
+        assert_eq!(row_count(&conn), 1, "one row in DB");
+    }
+
+    // Test P-02: Pipelined ingest of more than one chunk (> PARSE_CHUNK_SIZE files)
+    // produces exact aggregate stats with no lost records across chunk boundaries.
+    #[test]
+    fn test_pipeline_multi_chunk_correctness() {
+        // 130 files spans two full chunks (64 + 64) plus a partial third chunk (2).
+        const FILE_COUNT: usize = 130;
+        let dir = TempDir::new().unwrap();
+
+        for i in 0..FILE_COUNT {
+            std::fs::write(
+                dir.path().join(format!("event_{i:03}.json")),
+                SINGLE_EVENT_JSON,
+            )
+            .unwrap();
+        }
+
+        let conn = setup_db();
+        let stats = ingest_with_conn(dir.path(), &conn)
+            .expect("pipeline multi-chunk ingest must succeed");
+
+        assert_eq!(
+            stats.files_processed, FILE_COUNT,
+            "all {FILE_COUNT} files must be processed"
+        );
+        assert_eq!(
+            stats.records_inserted, FILE_COUNT,
+            "{FILE_COUNT} records must be inserted (1 per file)"
+        );
+        assert_eq!(stats.errors, 0, "no errors expected");
+        assert_eq!(
+            row_count(&conn),
+            FILE_COUNT as i64,
+            "DB must contain exactly {FILE_COUNT} rows"
+        );
+    }
+
+    // Test P-03: Pipelined ingest of an empty directory returns zeroed stats
+    // with a non-negative elapsed time.
+    #[test]
+    fn test_pipeline_empty_directory_returns_zero_stats() {
+        let dir = TempDir::new().unwrap();
+        let conn = setup_db();
+
+        let stats = ingest_with_conn(dir.path(), &conn)
+            .expect("pipeline ingest of empty directory must succeed");
+
+        assert_eq!(stats.files_processed, 0, "no files processed in empty dir");
+        assert_eq!(stats.records_inserted, 0, "no records inserted");
+        assert_eq!(stats.errors, 0, "no errors");
+        assert!(
+            stats.elapsed_secs >= 0.0,
+            "elapsed_secs must be non-negative"
+        );
+        assert_eq!(row_count(&conn), 0, "DB must remain empty");
+    }
+
+    // Test P-04: A second pipelined run on the same files inserts nothing
+    // (dedup via in-memory HashMap still works through the channel pipeline).
+    #[test]
+    fn test_pipeline_second_run_dedup_works() {
+        let dir = TempDir::new().unwrap();
+
+        for i in 0..10 {
+            std::fs::write(
+                dir.path().join(format!("event_{i}.json")),
+                SINGLE_EVENT_JSON,
+            )
+            .unwrap();
+        }
+
+        let conn = setup_db();
+
+        let stats1 =
+            ingest_with_conn(dir.path(), &conn).expect("first pipeline run must succeed");
+        assert_eq!(stats1.records_inserted, 10, "first run inserts 10 records");
+
+        let stats2 =
+            ingest_with_conn(dir.path(), &conn).expect("second pipeline run must succeed");
+        assert_eq!(
+            stats2.records_inserted, 0,
+            "second run must insert nothing (all already ingested)"
+        );
+        assert_eq!(
+            stats2.files_processed, 10,
+            "all 10 files still counted as processed"
+        );
+        assert_eq!(
+            row_count(&conn),
+            10,
+            "DB must contain exactly 10 rows after both runs"
+        );
+    }
+
+    // Test P-05: A malformed JSON file in a directory is counted as an error
+    // and does not prevent valid files from being inserted.
+    #[test]
+    fn test_pipeline_parse_error_counted_and_other_files_inserted() {
+        let dir = TempDir::new().unwrap();
+
+        // Two valid files + one intentionally malformed JSON file.
+        std::fs::write(dir.path().join("valid1.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(
+            dir.path().join("malformed.json"),
+            r#"{ not: valid json }"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("valid2.json"), THREE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let stats = ingest_with_conn(dir.path(), &conn)
+            .expect("ingest must succeed even when one file is malformed");
+
+        assert_eq!(stats.errors, 1, "malformed file must be counted as an error");
+        assert_eq!(
+            stats.files_processed, 2,
+            "two valid files must be processed"
+        );
+        assert_eq!(
+            stats.records_inserted, 4,
+            "1 record from valid1 + 3 records from valid2"
+        );
+        assert_eq!(row_count(&conn), 4, "four rows must be in DB");
     }
 }
