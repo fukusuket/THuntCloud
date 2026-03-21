@@ -53,14 +53,6 @@ THuntCloud enables fast, AI-powered threat hunting against AWS CloudTrail logs d
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Processing Sequence
-
-For detailed processing flow diagrams, see each module's documentation:
-
-- [ingester — Log Ingestion Flow](ingester/README.md#processing-sequence)
-- [agent — AI-Assisted Threat Hunting Flow](agent/README.md#processing-sequence)
-- [dashboard — Dashboard Visualization Flow](dashboard/README.md#processing-sequence)
-
 ---
 
 ## Quick Start
@@ -69,7 +61,7 @@ For detailed processing flow diagrams, see each module's documentation:
 
 - Docker Desktop (or Docker Engine + Docker Compose v2)
 - 16 GB RAM minimum, SSD recommended
-- *(Optional)* OpenAI API key (`gpt-5.4` access) — agent module requires this
+- *(Optional)* OpenAI API key (`gpt-5.4` access) — required for AI query generation
 - *(Optional)* [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) `.mmdb` files for GeoIP enrichment
 
 ### 1. Clone
@@ -82,7 +74,6 @@ cd THuntCloud
 ### 2. Place CloudTrail logs
 
 ```bash
-# Your own logs
 cp /path/to/cloudtrail/logs/*.json.gz docker/logs/
 ```
 
@@ -98,51 +89,13 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 
 #### With GeoIP enrichment (optional)
 
-Download [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) and place them in `docker/data/geoip/`.
-
-```
-docker/
-└── data/
-    └── geoip/                        ← place .mmdb files here
-        ├── GeoLite2-City.mmdb
-        ├── GeoLite2-Country.mmdb
-        └── GeoLite2-ASN.mmdb
-```
-
-These files are bind-mounted read-only into the container at `/data/geoip/`.  
-Three database types are supported:
-
-| Flag | Database | Provides |
-|------|----------|----------|
-| `--geoip-city` | GeoLite2-City.mmdb | Country + city + lat/lon |
-| `--geoip-country` | GeoLite2-Country.mmdb | Country only (lighter alternative to City) |
-| `--geoip-asn` | GeoLite2-ASN.mmdb | ASN number + organization name |
-
-**Full enrichment (City + ASN):**
+Download [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) and place them in `docker/data/geoip/`, then run:
 
 ```bash
 docker compose --profile ingest run --rm ingester ingest \
   --path /data/logs \
-  --geoip-city /data/geoip/GeoLite2-City.mmdb \
-  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
-```
-
-
-```bash
-docker compose --profile ingest run --rm ingester ingest --path /data/logs
-```
-
-#### Back-fill GeoIP on an existing database
-
-If logs were already ingested without GeoIP, use the `enrich` subcommand to back-fill the geo columns without re-ingesting.  
-Place `.mmdb` files in `docker/data/geoip/` first, then:
-
-```bash
-# Full enrichment (City + ASN)
-docker compose --profile ingest run --rm ingester enrich \
-  --geoip-city /data/geoip/GeoLite2-City.mmdb \
-  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
-
+  --geoip-city    /data/geoip/GeoLite2-City.mmdb \
+  --geoip-asn     /data/geoip/GeoLite2-ASN.mmdb
 ```
 
 ### 4. Start all services
@@ -167,33 +120,11 @@ All commands are run from the `docker/` directory.
 ```bash
 docker compose down && docker compose up -d              # Restart (keep data)
 docker compose down && docker compose up -d --build      # Rebuild & restart
-docker compose up -d superset                            # Dashboard only
-docker compose up -d agent                               # Agent only
 docker compose logs -f                                   # View logs
-docker compose down -v                                   # Full reset (delete data)
 docker compose --profile resync run --rm superset-resync # Fix blank dashboard (re-syncs column metadata)
 ```
 
-### Re-ingest Logs
-
-```bash
-docker compose down
-rm -f data/db/threat_hunting.db data/db/threat_hunting.db.wal
-docker compose --profile ingest run --rm ingester ingest --path /data/logs
-docker compose up -d --build
-docker compose --profile resync run --rm superset-resync  # Re-sync dashboard column metadata
-```
-
 ---
-
-
-## Module Overview
-
-| Module | Language / Framework | Role |
-|--------|---------------------|------|
-| `ingester` | Rust 1.85+ | Parse and load CloudTrail logs into DuckDB; optional GeoIP enrichment (READ_WRITE) |
-| `agent` | Python 3.12+ / Streamlit | AI-Agent UI for interactive threat hunting (READ_ONLY) |
-| `dashboard` | Apache Superset | BI visualization of log data (READ_ONLY) |
 
 ## License
 
