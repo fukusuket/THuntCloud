@@ -274,14 +274,20 @@ fn ingest_core(
         // Serial phase: dedup check (O(1) HashMap lookup) → INSERT → mark.
         for (file_path, result) in parse_results {
             let path_key = file_path.to_string_lossy().to_string();
-            match result {
+            // Capture any insertion error separately so that reporter.inc()
+            // is always called — even for the file that triggers a DB error.
+            // Previously, `break 'recv` fired before reporter.inc(), leaving
+            // the last file uncounted and the bar short of 100%.
+            let insert_error: Option<anyhow::Error> = match result {
                 Err(_e) => {
                     stats.errors += 1;
+                    None
                 }
                 Ok((sha256, records)) => {
                     if ingested_map.get(&path_key).map(String::as_str) == Some(sha256.as_str()) {
                         // Already ingested with the same checksum — skip.
                         stats.files_processed += 1;
+                        None
                     } else {
                         match insert_events_with_geo(conn, &records, geoip)
                             .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))
@@ -292,16 +298,20 @@ fn ingest_core(
                                 // Keep the in-memory map current so within-run
                                 // duplicates are caught without extra DB queries.
                                 ingested_map.insert(path_key, sha256);
+                                None
                             }
-                            Err(e) => {
-                                insert_result = Err(e);
-                                break 'recv;
-                            }
+                            Err(e) => Some(e),
                         }
                     }
                 }
-            }
+            };
+            // Always advance the bar — regardless of whether the file
+            // succeeded, was a dedup-skip, or triggered a DB error.
             reporter.inc(stats.records_inserted);
+            if let Some(e) = insert_error {
+                insert_result = Err(e);
+                break 'recv;
+            }
         }
     }
 

@@ -39,7 +39,15 @@ impl ProgressReporter {
     }
 
     /// Mark the bar as finished (success path).
+    ///
+    /// Explicitly advances the position to `len` before calling
+    /// `finish_with_message` so that the bar visually reaches 100% even when
+    /// the final batch of increments was processed so quickly that the
+    /// rate-limited renderer did not yet draw the updated position.
     pub fn finish(&self) {
+        if let Some(len) = self.bar.length() {
+            self.bar.set_position(len);
+        }
         self.bar.finish_with_message("done");
     }
 
@@ -58,6 +66,14 @@ impl ProgressReporter {
     #[cfg(test)]
     pub fn is_finished(&self) -> bool {
         self.bar.is_finished()
+    }
+
+    /// Returns the current position of the bar.
+    ///
+    /// Exposed for testing only.
+    #[cfg(test)]
+    pub fn position(&self) -> u64 {
+        self.bar.position()
     }
 }
 
@@ -97,6 +113,24 @@ mod tests {
         assert!(
             !reporter.is_finished(),
             "bar must not be finished after inc()"
+        );
+    }
+
+    // Test PR-04: finish() sets the bar position to its full length.
+    #[test]
+    fn test_finish_sets_position_to_length() {
+        let reporter = ProgressReporter::new(10);
+        reporter.inc(0);
+        reporter.inc(0);
+        reporter.inc(0);
+        // Bar is at position 3, length is 10.
+        assert_eq!(reporter.position(), 3, "position should be 3 before finish");
+        reporter.finish();
+        // After finish(), the bar must be at its full length (10).
+        assert_eq!(
+            reporter.position(),
+            reporter.bar.length().unwrap_or(0),
+            "finish() must advance bar to its full length"
         );
     }
 }
