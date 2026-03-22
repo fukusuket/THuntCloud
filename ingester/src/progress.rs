@@ -71,7 +71,10 @@ mod tests {
         let reporter = ProgressReporter::hidden();
         assert!(!reporter.is_finished(), "bar should not be finished yet");
         reporter.finish();
-        assert!(reporter.is_finished(), "bar should be finished after finish()");
+        assert!(
+            reporter.is_finished(),
+            "bar should be finished after finish()"
+        );
     }
 
     // Test PR-02: abandon() also finalizes the bar (is_finished returns true).
@@ -80,7 +83,10 @@ mod tests {
         let reporter = ProgressReporter::hidden();
         assert!(!reporter.is_finished(), "bar should not be finished yet");
         reporter.abandon("error");
-        assert!(reporter.is_finished(), "bar should be finished after abandon()");
+        assert!(
+            reporter.is_finished(),
+            "bar should be finished after abandon()"
+        );
     }
 
     // Test PR-03: inc() does not mark the bar as finished.
@@ -88,6 +94,9 @@ mod tests {
     fn test_inc_does_not_finalize_bar() {
         let reporter = ProgressReporter::new(10);
         reporter.inc(1);
-        assert!(!reporter.is_finished(), "bar must not be finished after inc()");
+        assert!(
+            !reporter.is_finished(),
+            "bar must not be finished after inc()"
+        );
     }
 }
