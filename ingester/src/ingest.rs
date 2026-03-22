@@ -1,7 +1,7 @@
 //! Ingestion orchestration: walk a path → decompress → parse → insert into DuckDB.
 //!
 //! This is the top-level entry point for the ingestion pipeline.
-//! It ties together [`crate::decompressor`], [`crate::parser`], and [`crate::db`].
+//! It ties together [`crate::parser`] and [`crate::db`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -63,25 +63,10 @@ pub struct IngestStats {
     pub elapsed_secs: f64,
 }
 
-/// Ingest all CloudTrail log files found at `path` into the DuckDB database
-/// at `db_path`.
-///
-/// `path` may be a single file or a directory. Directories are walked
-/// recursively. Files whose extension is neither `.json` nor `.json.gz` are
-/// silently skipped. Ingesting the same file a second time is a no-op (files
-/// are identified by their SHA-256 checksum stored in `ingested_files`).
-///
-/// Returns [`IngestStats`] describing what happened.
-pub fn ingest_path(path: &Path, db_path: &Path) -> Result<IngestStats> {
-    let conn = Connection::open(db_path)
-        .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
-    ingest_with_conn(path, &conn)
-}
-
 /// Internal implementation that accepts an existing [`Connection`].
 ///
-/// Separated from [`ingest_path`] so that tests can pass an in-memory
-/// connection without touching the filesystem for the database file.
+/// Separated so that tests can pass an in-memory connection without touching
+/// the filesystem for the database file.
 /// The progress bar is always hidden; use [`ingest_with_progress`] when
 /// a visible bar is desired.
 pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {

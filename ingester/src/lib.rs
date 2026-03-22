@@ -4,7 +4,6 @@
 
 pub mod date_filter;
 pub mod db;
-pub mod decompressor;
 pub mod enrich;
 pub mod geoip;
 pub mod ingest;
