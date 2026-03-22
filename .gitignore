@@ -58,3 +58,4 @@ docker/data/db/*
 # ── Docker ───────────────────────────────────────────
 docker/logs/*
 !docker/logs/.gitkeep
+*.gz
