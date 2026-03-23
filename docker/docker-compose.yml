@@ -31,15 +31,14 @@ services:
       context: ../ingester
       dockerfile: Dockerfile
       # Build target:
-      #   runtime          (default) — compile from source (Rust + DuckDB C++ bundled)
-      #                                Ensures all features (e.g. --geoip-city) are available.
-      #                                First build takes ~10–30 min depending on hardware.
-      #   prebuilt-runtime           — download a pre-built binary from GitHub Releases
-      #                                (fast, but may lag behind source for new features).
-      #                                Set INGESTER_BUILD_TARGET=prebuilt-runtime to opt in.
-      target: ${INGESTER_BUILD_TARGET:-runtime}
+      #   prebuilt-runtime (default) — download a pre-built binary from GitHub Releases
+      #                                (recommended: fast startup, includes all features)
+      #   runtime                    — compile from source (Rust + DuckDB C++ bundled)
+      #                                Set INGESTER_BUILD_TARGET=runtime to opt in.
+      #                                First build takes ~10–30 min; subsequent builds use cache.
+      target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
-        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.4}
+        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.5}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
