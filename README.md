@@ -129,3 +129,6 @@ See [NOTICE](NOTICE) for third-party license attributions.
 - [flaws.cloud](http://flaws.cloud) — intentionally vulnerable AWS CloudTrail dataset
 - [Apache Superset](https://superset.apache.org/) — BI platform
 - [DuckDB](https://duckdb.org/) — embedded analytical database
+- [SIEM on Amazon OpenSearch Service](https://github.com/aws-samples/siem-on-amazon-opensearch-service) — SIEM-like CloudTrail analytics reference implementation
+- [AWS CloudTrail Lake query samples](https://github.com/aws-samples/cloud-trail-lake-query-samples) — CloudTrail Lake query examples
+- [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) — GeoIP databases
