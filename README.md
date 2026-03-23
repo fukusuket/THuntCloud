@@ -94,6 +94,17 @@ docker compose --profile ingest run --rm ingester ingest \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
 ```
 
+> **Note:** The default build target compiles the ingester from source (Rust + DuckDB C++ bundled).
+> The **first build may take 10–30 minutes** depending on your hardware and network speed
+> (WSL2 users: ensure Docker Desktop has ≥8 GB RAM allocated).
+> Subsequent builds use the Docker layer cache and are much faster.
+>
+> If you do not need GeoIP enrichment and prefer a fast start, you can use the pre-built binary instead:
+> ```bash
+> INGESTER_BUILD_TARGET=prebuilt-runtime docker compose --profile ingest run --rm ingester ingest \
+>   --path /data/logs
+> ```
+
 ---
 
 ## Common Commands
