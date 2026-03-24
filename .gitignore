@@ -39,6 +39,7 @@ htmlcov/
 # ── DuckDB ──────────────────────────────────────────
 *.db
 *.db.wal
+*.mmdb
 docker/data/*
 !docker/data/db/
 docker/data/db/*
@@ -59,4 +60,3 @@ docker/data/db/*
 docker/logs/*
 !docker/logs/.gitkeep
 *.gz
-*.mmdb
