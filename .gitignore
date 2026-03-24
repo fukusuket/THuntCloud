@@ -59,3 +59,4 @@ docker/data/db/*
 docker/logs/*
 !docker/logs/.gitkeep
 *.gz
+*.mmdb
