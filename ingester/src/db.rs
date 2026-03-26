@@ -102,30 +102,30 @@ pub fn insert_events_with_geo(
         // All JSON fields are pre-computed strings on CloudTrailEvent —
         // no serde_json serialisation occurs in this hot path.
         let params: Vec<&dyn ToSql> = vec![
-            &event.event_time,                 // event_time               TIMESTAMP
-            &event.event_name,                 // event_name               VARCHAR
-            &event.event_source,               // event_source             VARCHAR
-            &event.aws_region,                 // aws_region               VARCHAR
-            &event.source_ip_address,          // source_ip_address        VARCHAR (Option)
-            &event.user_agent,                 // user_agent               VARCHAR (Option)
-            &event.user_identity_type,         // user_identity_type       VARCHAR (Option)
-            &event.user_identity_arn,          // user_identity_arn        VARCHAR (Option)
-            &event.user_identity_account_id,   // user_identity_account_id VARCHAR (Option)
-            &event.request_parameters,         // request_parameters       VARCHAR (Option<String>)
-            &event.response_elements,          // response_elements        VARCHAR (Option<String>)
-            &event.error_code,                 // error_code               VARCHAR (Option)
-            &event.error_message,              // error_message            VARCHAR (Option)
-            &event.read_only,                  // read_only                BOOLEAN (Option)
-            &event.event_type,                 // event_type               VARCHAR (Option)
-            &event.recipient_account_id,       // recipient_account_id     VARCHAR (Option)
-            &event.raw_json,                   // raw_event                VARCHAR (original JSON)
-            &geo.country_code,                 // geo_country_code         VARCHAR (Option)
-            &geo.country_name,                 // geo_country_name         VARCHAR (Option)
-            &geo.city,                         // geo_city                 VARCHAR (Option)
-            &geo.latitude,                     // geo_latitude             DOUBLE  (Option)
-            &geo.longitude,                    // geo_longitude            DOUBLE  (Option)
-            &geo.asn,                          // geo_asn                  VARCHAR (Option)
-            &geo.org,                          // geo_org                  VARCHAR (Option)
+            &event.event_time,               // event_time               TIMESTAMP
+            &event.event_name,               // event_name               VARCHAR
+            &event.event_source,             // event_source             VARCHAR
+            &event.aws_region,               // aws_region               VARCHAR
+            &event.source_ip_address,        // source_ip_address        VARCHAR (Option)
+            &event.user_agent,               // user_agent               VARCHAR (Option)
+            &event.user_identity_type,       // user_identity_type       VARCHAR (Option)
+            &event.user_identity_arn,        // user_identity_arn        VARCHAR (Option)
+            &event.user_identity_account_id, // user_identity_account_id VARCHAR (Option)
+            &event.request_parameters,       // request_parameters       VARCHAR (Option<String>)
+            &event.response_elements,        // response_elements        VARCHAR (Option<String>)
+            &event.error_code,               // error_code               VARCHAR (Option)
+            &event.error_message,            // error_message            VARCHAR (Option)
+            &event.read_only,                // read_only                BOOLEAN (Option)
+            &event.event_type,               // event_type               VARCHAR (Option)
+            &event.recipient_account_id,     // recipient_account_id     VARCHAR (Option)
+            &event.raw_json,                 // raw_event                VARCHAR (original JSON)
+            &geo.country_code,               // geo_country_code         VARCHAR (Option)
+            &geo.country_name,               // geo_country_name         VARCHAR (Option)
+            &geo.city,                       // geo_city                 VARCHAR (Option)
+            &geo.latitude,                   // geo_latitude             DOUBLE  (Option)
+            &geo.longitude,                  // geo_longitude            DOUBLE  (Option)
+            &geo.asn,                        // geo_asn                  VARCHAR (Option)
+            &geo.org,                        // geo_org                  VARCHAR (Option)
         ];
 
         appender
@@ -199,14 +199,13 @@ pub fn append_events_with_geo(
 ///
 /// `ingested_at` is supplied as a formatted RFC 3339 timestamp string so the
 /// appender can fill the TIMESTAMP column without relying on SQL DEFAULT.
-pub fn batch_mark_ingested(
-    conn: &Connection,
-    files: &[(String, String)],
-) -> Result<()> {
+pub fn batch_mark_ingested(conn: &Connection, files: &[(String, String)]) -> Result<()> {
     if files.is_empty() {
         return Ok(());
     }
-    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.6f").to_string();
+    let now = chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S%.6f")
+        .to_string();
     let mut appender = conn
         .appender("ingested_files")
         .context("Failed to create appender for ingested_files")?;
@@ -292,9 +291,7 @@ mod tests {
             source_ip_address: Some("198.51.100.1".to_string()),
             user_agent: Some("aws-cli/2.0".to_string()),
             user_identity_type: Some("IAMUser".to_string()),
-            user_identity_arn: Some(
-                "arn:aws:iam::123456789012:user/testuser".to_string(),
-            ),
+            user_identity_arn: Some("arn:aws:iam::123456789012:user/testuser".to_string()),
             user_identity_account_id: Some("123456789012".to_string()),
             request_parameters: Some(r#"{"key":"value"}"#.to_owned()),
             response_elements: Some(r#"{"result":"ok"}"#.to_owned()),

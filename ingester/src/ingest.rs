@@ -16,7 +16,9 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::date_filter::DateFilter;
-use crate::db::{batch_mark_ingested, ensure_table, fetch_ingested_files_map, insert_events_with_geo};
+use crate::db::{
+    batch_mark_ingested, ensure_table, fetch_ingested_files_map, insert_events_with_geo,
+};
 use crate::geoip::GeoipEnricher;
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::path_filter::PathFilter;
@@ -366,7 +368,6 @@ fn is_cloudtrail_file(path: &Path) -> bool {
         _ => false,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
