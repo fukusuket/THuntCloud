@@ -164,7 +164,9 @@ mod tests {
             aws_region: "us-east-1".to_string(),
             source_ip_address: Some(ip.to_string()),
             user_agent: None,
-            user_identity: None,
+            user_identity_type: None,
+            user_identity_arn: None,
+            user_identity_account_id: None,
             request_parameters: None,
             response_elements: None,
             error_code: None,
@@ -172,6 +174,7 @@ mod tests {
             read_only: None,
             event_type: None,
             recipient_account_id: None,
+            raw_json: "{}".to_owned(),
         }
     }
 

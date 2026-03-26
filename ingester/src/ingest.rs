@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::date_filter::DateFilter;
-use crate::db::{ensure_table, fetch_ingested_files_map, insert_events_with_geo};
+use crate::db::{batch_mark_ingested, ensure_table, fetch_ingested_files_map, insert_events_with_geo};
 use crate::geoip::GeoipEnricher;
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::path_filter::PathFilter;
@@ -28,11 +28,11 @@ use crate::progress::ProgressReporter;
 /// - Larger values → higher throughput (more parallelism) but more peak memory.
 /// - Smaller values → lower peak memory but less parallelism.
 ///
-/// At the default of 64, worst-case peak memory per chunk is approximately
-/// 64 × 1 MB (uncompressed CloudTrail file) = 64 MB — well within typical limits.
-/// For memory-constrained environments set `RAYON_NUM_THREADS=1` or use
-/// `--workers 1` to disable parallelism.
-const PARSE_CHUNK_SIZE: usize = 64;
+/// At 256, worst-case peak memory per chunk is approximately
+/// 256 × 1 MB (uncompressed CloudTrail file) = 256 MB — acceptable on
+/// modern hardware. For memory-constrained environments set
+/// `RAYON_NUM_THREADS=1` or use `--workers 1` to disable parallelism.
+const PARSE_CHUNK_SIZE: usize = 256;
 
 /// Number of pre-parsed chunks the parser thread may buffer ahead of the
 /// main thread's insertion loop.
@@ -83,11 +83,14 @@ pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)>
     let sha256 = hex::encode(Sha256::digest(&bytes));
 
     let content = if path.extension().and_then(|e| e.to_str()) == Some("gz") {
-        use flate2::bufread::GzDecoder;
-        use std::io::{BufReader, Read};
-        let mut decoder = GzDecoder::new(BufReader::new(bytes.as_slice()));
-        let mut s = String::new();
-        decoder
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        // Pre-allocate ~5× the compressed size to minimise reallocation.
+        // Typical CloudTrail gz compression ratio is 4–8×.
+        // BufReader is not needed here because the source is already an
+        // in-memory slice, not a system call per byte.
+        let mut s = String::with_capacity(bytes.len() * 5);
+        GzDecoder::new(bytes.as_slice())
             .read_to_string(&mut s)
             .with_context(|| format!("Failed to decompress {}", path.display()))?;
         s
@@ -190,16 +193,20 @@ pub fn ingest_with_geoip(
 ///
 /// Parser thread (OS thread)            Main thread (sole DuckDB writer)
 /// ─────────────────────────            ────────────────────────────────
-/// chunk[0..64]  → par_iter ──→ tx ──→ rx → dedup → INSERT → mark
-/// chunk[64..128]→ par_iter ──→ tx        (parser blocked if buffer full)
-///                                    → rx → dedup → INSERT → mark
+/// chunk[0..256]  → par_iter ──→ tx ──→ rx → dedup → INSERT(events) → batch-mark
+/// chunk[256..512]→ par_iter ──→ tx        (parser blocked if buffer full)
+///                                    → rx → dedup → INSERT(events) → batch-mark
 /// ...
 /// ```
 ///
 /// Parse and insertion **overlap**: while the main thread inserts chunk N,
 /// the parser thread is already reading and hashing files for chunk N+1.
 /// The bounded channel (`PIPELINE_BUFFER_DEPTH`) caps peak memory to
-/// `PARSE_CHUNK_SIZE × avg_file_size × (1 + PIPELINE_BUFFER_DEPTH)`.
+/// `PARSE_CHUNK_SIZE × avg_uncompressed_file_size × (1 + PIPELINE_BUFFER_DEPTH)`.
+///
+/// Each chunk's `ingested_files` marks are written in a single
+/// [`batch_mark_ingested`] call (one Appender flush) instead of one SQL
+/// `INSERT` per file, reducing per-file SQL overhead from O(N) to O(N/chunk).
 ///
 /// # Error handling
 ///
@@ -271,13 +278,15 @@ fn ingest_core(
     // (per-file) and outer (per-chunk) loops cleanly before cleanup.
     let mut insert_result: Result<()> = Ok(());
     'recv: while let Ok(parse_results) = rx.recv() {
-        // Serial phase: dedup check (O(1) HashMap lookup) → INSERT → mark.
+        // Accumulate (file_path, sha256) pairs for chunk-level batch marking.
+        // Replacing N individual `INSERT OR REPLACE` SQL statements (one per
+        // file) with a single Appender flush at the end of the chunk.
+        let mut chunk_new_files: Vec<(String, String)> = Vec::new();
+
         for (file_path, result) in parse_results {
             let path_key = file_path.to_string_lossy().to_string();
             // Capture any insertion error separately so that reporter.inc()
             // is always called — even for the file that triggers a DB error.
-            // Previously, `break 'recv` fired before reporter.inc(), leaving
-            // the last file uncounted and the bar short of 100%.
             let insert_error: Option<anyhow::Error> = match result {
                 Err(_e) => {
                     stats.errors += 1;
@@ -289,15 +298,15 @@ fn ingest_core(
                         stats.files_processed += 1;
                         None
                     } else {
-                        match insert_events_with_geo(conn, &records, geoip)
-                            .and_then(|n| mark_ingested(&file_path, &sha256, conn).map(|_| n))
-                        {
+                        match insert_events_with_geo(conn, &records, geoip) {
                             Ok(inserted) => {
                                 stats.files_processed += 1;
                                 stats.records_inserted += inserted;
                                 // Keep the in-memory map current so within-run
                                 // duplicates are caught without extra DB queries.
-                                ingested_map.insert(path_key, sha256);
+                                ingested_map.insert(path_key.clone(), sha256.clone());
+                                // Queue for chunk-level batch marking.
+                                chunk_new_files.push((path_key, sha256));
                                 None
                             }
                             Err(e) => Some(e),
@@ -312,6 +321,13 @@ fn ingest_core(
                 insert_result = Err(e);
                 break 'recv;
             }
+        }
+
+        // Batch-mark all new files in this chunk with a single Appender flush
+        // instead of N individual `INSERT OR REPLACE` SQL statements.
+        if let Err(e) = batch_mark_ingested(conn, &chunk_new_files) {
+            insert_result = Err(e);
+            break 'recv;
         }
     }
 
@@ -351,16 +367,6 @@ fn is_cloudtrail_file(path: &Path) -> bool {
     }
 }
 
-/// Record that `path` with checksum `sha256` has been ingested.
-fn mark_ingested(path: &Path, sha256: &str, conn: &Connection) -> Result<()> {
-    let path_str = path.to_string_lossy();
-    conn.execute(
-        "INSERT OR REPLACE INTO ingested_files (file_path, sha256) VALUES (?, ?)",
-        duckdb::params![path_str.as_ref(), sha256],
-    )
-    .with_context(|| format!("Failed to record ingested file {}", path.display()))?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
