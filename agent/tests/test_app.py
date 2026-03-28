@@ -731,7 +731,9 @@ def test_handle_user_query_uses_execute_with_retry(tmp_duckdb):
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
         patch("handlers.generate_sql", return_value=sql),
-        patch("handlers.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch(
+            "handlers.execute_with_retry", return_value=(result_df, sql)
+        ) as mock_retry,
         patch("handlers.generate_analysis", return_value="Summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
@@ -878,7 +880,9 @@ def test_handle_user_query_uses_session_row_limit(tmp_duckdb):
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
         patch("handlers.generate_sql", return_value=sql),
-        patch("handlers.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch(
+            "handlers.execute_with_retry", return_value=(result_df, sql)
+        ) as mock_retry,
         patch("handlers.generate_analysis", return_value="Summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)

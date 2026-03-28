@@ -246,4 +246,3 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             st.session_state.conversation_context = (
                 st.session_state.conversation_context[-MAX_CONTEXT_TURNS:]
             )
-

@@ -346,7 +346,6 @@ def render_sidebar() -> None:
                 st.rerun()
 
 
-
 def render_chat() -> None:
     """Render the main chat area.
 

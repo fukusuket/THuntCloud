@@ -20,4 +20,3 @@ def get_duckdb_path() -> str:
         DEFAULT_DUCKDB_PATH.
     """
     return os.environ.get("DUCKDB_PATH") or DEFAULT_DUCKDB_PATH
-
