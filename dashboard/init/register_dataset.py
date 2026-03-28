@@ -70,6 +70,7 @@ def main() -> None:
             if FORCE_RESYNC:
                 print(f"    Dataset '{TABLE_NAME}' already registered — forcing metadata re-sync...")
                 _sync_metadata(existing)
+                _register_core_columns(existing)
                 _register_metrics(existing)
                 _register_geo_columns(existing)
             else:
@@ -94,6 +95,10 @@ def main() -> None:
         # This may fail if the DB file is empty or not yet populated by the ingester.
         # In that case run: docker compose --profile resync run --rm superset-resync
         _sync_metadata(dataset)
+        # Explicitly register all 17 core columns as a fallback so that
+        # ImportDashboardsCommand never raises "Columns missing in dataset" even
+        # when fetch_metadata() failed because DuckDB was empty at init time.
+        _register_core_columns(dataset)
 
         print(f"    Dataset '{TABLE_NAME}' registered successfully.")
         print(f"    Linked to database: '{DB_NAME}' (id={database.id})")
@@ -162,6 +167,70 @@ def _register_metrics(dataset: "SqlaTable") -> None:
         print(f"    Registered {added} custom metrics.")
     else:
         print("    Custom metrics already registered — skipping.")
+
+
+# All 17 core columns of the cloudtrail_events table.
+# These are registered explicitly as a fallback so that Superset dataset metadata
+# is always populated even when fetch_metadata() fails (e.g. DuckDB is empty at
+# init time).  Without this fallback, ImportDashboardsCommand raises
+# "Columns missing in dataset: ['user_identity_arn', 'source_ip_address', ...]"
+# because no columns exist in the DB.
+# Tuple: (col_name, col_type, verbose_name, groupby, filterable, is_dttm)
+CORE_COLUMNS = [
+    ("event_time",               "TIMESTAMP", "Event Time",          True,  True,  True),
+    ("event_name",               "VARCHAR",   "Event Name",          True,  True,  False),
+    ("event_source",             "VARCHAR",   "Event Source",        True,  True,  False),
+    ("aws_region",               "VARCHAR",   "AWS Region",          True,  True,  False),
+    ("source_ip_address",        "VARCHAR",   "Source IP Address",   True,  True,  False),
+    ("user_agent",               "VARCHAR",   "User Agent",          False, True,  False),
+    ("user_identity_type",       "VARCHAR",   "Identity Type",       True,  True,  False),
+    ("user_identity_arn",        "VARCHAR",   "Identity ARN",        True,  True,  False),
+    ("user_identity_account_id", "VARCHAR",   "Account ID",          True,  True,  False),
+    ("request_parameters",       "VARCHAR",   "Request Parameters",  False, False, False),
+    ("response_elements",        "VARCHAR",   "Response Elements",   False, False, False),
+    ("error_code",               "VARCHAR",   "Error Code",          True,  True,  False),
+    ("error_message",            "VARCHAR",   "Error Message",       False, True,  False),
+    ("read_only",                "BOOLEAN",   "Read Only",           True,  True,  False),
+    ("event_type",               "VARCHAR",   "Event Type",          True,  True,  False),
+    ("recipient_account_id",     "VARCHAR",   "Recipient Account ID",True,  True,  False),
+    ("raw_event",                "VARCHAR",   "Raw Event",           False, False, False),
+]
+
+
+def _register_core_columns(dataset: "SqlaTable") -> None:
+    """Explicitly register the 17 core cloudtrail_events columns in the Superset dataset.
+
+    This acts as a fallback for when fetch_metadata() could not discover columns
+    (e.g. DuckDB file was empty at container init time).  Without this, Superset's
+    ImportDashboardsCommand raises "Columns missing in dataset" for every column
+    referenced in chart groupby params.
+    """
+    from superset.connectors.sqla.models import TableColumn  # noqa: PLC0415
+    from superset.extensions import db  # noqa: PLC0415
+
+    existing_names = {col.column_name for col in dataset.columns}
+    added = 0
+    for col_name, col_type, verbose_name, groupby, filterable, is_dttm in CORE_COLUMNS:
+        if col_name in existing_names:
+            continue
+        col = TableColumn(
+            column_name=col_name,
+            type=col_type,
+            verbose_name=verbose_name,
+            groupby=groupby,
+            filterable=filterable,
+            is_dttm=is_dttm,
+            is_active=True,
+            table_id=dataset.id,
+        )
+        db.session.add(col)
+        added += 1
+
+    if added:
+        db.session.commit()
+        print(f"    Registered {added} core column(s) in dataset.")
+    else:
+        print("    Core columns already registered — skipping.")
 
 
 # GeoIP enrichment columns to register explicitly in the Superset dataset.

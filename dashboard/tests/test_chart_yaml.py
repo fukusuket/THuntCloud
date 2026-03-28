@@ -5,12 +5,19 @@ the structure required by the Superset v1 dashboard import format.
 """
 import os
 import re
+import sys
 
 import pytest
 import yaml
 
 CHARTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "charts"
+)
+DATASET_YAML_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "datasets", "cloudtrail_events.yaml"
+)
+REGISTER_DATASET_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "init"
 )
 DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
 REQUIRED_CHART_FIELDS = {"uuid", "version", "dataset_uuid", "slice_name", "viz_type", "params"}
@@ -210,3 +217,48 @@ def test_dsh29_route53_dns_changes_exists() -> None:
     """DSH-29: route53_dns_changes.yaml must exist."""
     assert _find_chart_by_filename("route53_dns_changes") is not None
 
+
+def test_all_groupby_columns_exist_in_dataset() -> None:
+    """All groupby columns used in charts must exist in the dataset YAML.
+
+    Prevents 'Columns missing in dataset' errors during Superset dashboard
+    import caused by charts referencing columns absent from the dataset YAML.
+    """
+    with open(DATASET_YAML_PATH, encoding="utf-8") as fh:
+        dataset_yaml = yaml.safe_load(fh)
+    # Dataset YAML uses 'column_name' as the key (not 'name').
+    dataset_columns = {c["column_name"] for c in dataset_yaml["columns"]}
+
+    offenders = []
+    for fname, chart in load_all_charts():
+        params = chart.get("params", {})
+        groupby = params.get("groupby", [])
+        for col in groupby:
+            # Skip adhoc column definitions (dicts); only validate plain column name strings.
+            if not isinstance(col, str):
+                continue
+            if col not in dataset_columns:
+                offenders.append((fname, col))
+
+    assert not offenders, (
+        "The following charts reference groupby columns not found in the dataset YAML: "
+        f"{offenders}"
+    )
+
+
+def test_register_dataset_has_core_columns() -> None:
+    """register_dataset.py must define CORE_COLUMNS covering user_identity_arn and source_ip_address.
+
+    When fetch_metadata() fails (e.g. DuckDB is empty at init time), Superset will
+    not have any columns in the dataset metadata.  ImportDashboardsCommand then raises
+    'Columns missing in dataset' for every column referenced in chart params.
+    CORE_COLUMNS provides an explicit fallback so all 17 core columns are always
+    registered regardless of whether DuckDB is populated.
+    """
+    sys.path.insert(0, REGISTER_DATASET_PATH)  # type: ignore
+    from register_dataset import CORE_COLUMNS  # noqa: PLC0415
+
+    # CORE_COLUMNS is a list of tuples: (col_name, col_type, verbose_name, groupby, filterable, is_dttm)
+    core_col_names = {c[0] for c in CORE_COLUMNS}
+    assert "user_identity_arn" in core_col_names, "CORE_COLUMNS is missing user_identity_arn"
+    assert "source_ip_address" in core_col_names, "CORE_COLUMNS is missing source_ip_address"
