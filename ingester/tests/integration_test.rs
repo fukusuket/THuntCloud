@@ -6,7 +6,7 @@
 
 use duckdb::Connection;
 use ingester::db::ensure_table;
-use ingester::ingest::ingest_with_conn;
+use ingester::ingest::{ingest, IngestOptions};
 use std::path::PathBuf;
 
 /// Returns the absolute path to `ingester/tests/testdata/`.
@@ -37,7 +37,7 @@ fn test_ingest_full_testdata_pipeline() {
     let conn = setup_db();
     let dir = testdata_dir();
 
-    let stats = ingest_with_conn(&dir, &conn).expect("full pipeline should succeed");
+    let stats = ingest(&dir, &conn, IngestOptions::default()).expect("full pipeline should succeed");
 
     // malformed.json produces one error.
     assert_eq!(
@@ -68,8 +68,8 @@ fn test_ingest_testdata_idempotent() {
     let conn = setup_db();
     let dir = testdata_dir();
 
-    let stats1 = ingest_with_conn(&dir, &conn).expect("first run should succeed");
-    let stats2 = ingest_with_conn(&dir, &conn).expect("second run should succeed");
+    let stats1 = ingest(&dir, &conn, IngestOptions::default()).expect("first run should succeed");
+    let stats2 = ingest(&dir, &conn, IngestOptions::default()).expect("second run should succeed");
 
     // Second run: all previously ingested files are skipped.
     assert_eq!(

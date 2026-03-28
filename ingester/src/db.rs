@@ -208,7 +208,7 @@ pub fn fetch_ingested_files_map(conn: &Connection) -> Result<HashMap<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{full_event, make_enricher, minimal_event, setup_db, temp_db};
+    use crate::test_util::{full_event, make_enricher, minimal_event, temp_db};
 
     // Test #9: `ensure_table()` creates the `cloudtrail_events` table in a temp DuckDB.
     #[test]
