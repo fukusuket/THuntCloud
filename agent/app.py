@@ -14,7 +14,7 @@ import yaml
 
 from config import get_duckdb_path
 from handlers import _analyze_current_results, _handle_direct_sql, _handle_user_query
-from llm import MAX_CONTEXT_TURNS, generate_analysis
+from llm import generate_analysis
 from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
