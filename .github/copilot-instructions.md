@@ -28,12 +28,11 @@ Every feature must be implemented using the Red-Green-Refactor cycle:
 
 ## Reference Documentation
 
-- [.github/AGENTS.md](.github/AGENTS.md) — Full Copilot agent instructions
-- [doc/PRD.md](doc/PRD.md) — Product Requirements Document (source of truth for scope and priorities)
-- [doc/TDD_GUIDE.md](doc/TDD_GUIDE.md) — TDD methodology and examples
-- [doc/TESTING.md](doc/TESTING.md) — Testing strategy per module
-- [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) — System architecture
-- [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) — Development setup guide
-- [ingester/AGENTS.md](ingester/AGENTS.md) — Rust ingester module instructions
-- [agent/AGENTS.md](agent/AGENTS.md) — Python agent module instructions
-
+- [AGENTS.md](../AGENTS.md) — Full agent instructions (architecture, conventions, schema, CLI reference)
+- [ingester/AGENTS.md](../ingester/AGENTS.md) — Rust ingester module TDD context
+- [agent/AGENTS.md](../agent/AGENTS.md) — Python agent module TDD context
+- [doc/PRD.md](../doc/PRD.md) — Product Requirements Document (source of truth for scope and priorities)
+- [doc/TDD_GUIDE.md](../doc/TDD_GUIDE.md) — TDD methodology and examples
+- [doc/TESTING.md](../doc/TESTING.md) — Testing strategy per module
+- [doc/ARCHITECTURE.md](../doc/ARCHITECTURE.md) — System architecture
+- [doc/DEVELOPMENT.md](../doc/DEVELOPMENT.md) — Development setup guide
