@@ -2,8 +2,23 @@
 
 AWS CloudTrail log ingestion module for THuntCloud.
 
-Reads CloudTrail log files (`.json` / `.json.gz`) from the local filesystem, parses them,
-and inserts records into DuckDB. This is the **only** component that opens DuckDB in `READ_WRITE` mode.
+Reads CloudTrail log files (`.json` / `.json.gz`) from the local filesystem,
+parses them, optionally enriches each event with GeoIP data, and inserts all
+records into DuckDB via high-throughput batch appends.
+This is the **only** component that opens DuckDB in `READ_WRITE` mode.
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [Processing Pipeline](#processing-pipeline)
+  - [Sequence Diagram — ingest](#sequence-diagram--ingest)
+  - [Sequence Diagram — enrich](#sequence-diagram--enrich)
+- [Database Schema](#database-schema)
+- [Module Structure](#module-structure)
+- [Development](#development)
 
 ---
 
@@ -24,7 +39,7 @@ ingester ingest --path /logs/ \
   --geoip-city    /data/geoip/GeoLite2-City.mmdb \
   --geoip-asn     /data/geoip/GeoLite2-ASN.mmdb
 
-# Back-fill GeoIP data on an existing database
+# Back-fill GeoIP data on an existing database (no re-ingest needed)
 ingester enrich \
   --geoip-city /data/geoip/GeoLite2-City.mmdb \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
@@ -34,26 +49,134 @@ ingester enrich \
 
 ## CLI Reference
 
+### `ingest`
+
 ```
 ingester ingest --path <PATH>
-               [--db <PATH>]           DuckDB file (default: /data/db/threat_hunting.db)
-               [--from <YYYYMMDD>]     Include files on or after this date
-               [--to   <YYYYMMDD>]     Include files on or before this date
-               [--include <GLOBS>]     Comma-separated glob patterns to include
-               [--exclude <GLOBS>]     Comma-separated glob patterns to exclude
-               [--workers <N>]         Parallel parse threads (default: CPU count)
-               [--no-progress]         Disable progress bar
-               [--geoip-city <PATH>]   GeoLite2-City.mmdb
-               [--geoip-country <PATH>] GeoLite2-Country.mmdb
-               [--geoip-asn  <PATH>]   GeoLite2-ASN.mmdb
+               [--db <PATH>]              DuckDB file (default: /data/db/threat_hunting.db)
+               [--from <YYYYMMDD>]        Include files on or after this date
+               [--to   <YYYYMMDD>]        Include files on or before this date
+               [--include <GLOBS>]        Comma-separated glob patterns to include
+               [--exclude <GLOBS>]        Comma-separated glob patterns to exclude
+               [--workers <N>]            Parallel parse threads (default: CPU count)
+               [--no-progress]            Disable progress bar
+               [--geoip-city    <PATH>]   GeoLite2-City.mmdb
+               [--geoip-country <PATH>]   GeoLite2-Country.mmdb (lighter alternative)
+               [--geoip-asn     <PATH>]   GeoLite2-ASN.mmdb
+```
 
+### `enrich`
+
+```
 ingester enrich
                [--db <PATH>]
-               [--geoip-city / --geoip-country / --geoip-asn <PATH>]
+               [--geoip-city    <PATH>]
+               [--geoip-country <PATH>]
+               [--geoip-asn     <PATH>]
 ```
+
+**DB path resolution order:** `--db` CLI arg → `DUCKDB_PATH` env var → `/data/db/threat_hunting.db`
 
 `--include`/`--exclude` glob patterns use `*` that crosses `/` boundaries.
 Files without a recognisable `yyyy/mm/dd` date segment in their path are always included.
+
+---
+
+## Processing Pipeline
+
+### Sequence Diagram — `ingest`
+
+```mermaid
+sequenceDiagram
+    participant CLI   as main.rs (CLI)
+    participant IG    as ingest.rs
+    participant PF    as path_filter.rs
+    participant DF    as date_filter.rs
+    participant WD    as WalkDir
+    participant Ray   as rayon (thread pool)
+    participant P     as parser.rs
+    participant GEO   as geoip.rs
+    participant DB    as db.rs (DuckDB Appender)
+
+    CLI->>IG: ingest_with_filters(path, filters, geoip, conn)
+    IG->>DB: ensure_table(conn)
+    DB-->>IG: tables ready
+
+    IG->>DB: fetch_ingested_files_map(conn)
+    DB-->>IG: HashMap<path, sha256> (already-ingested)
+
+    IG->>WD: walk directory tree
+    WD-->>IG: list of all file paths
+
+    loop For each file path
+        IG->>PF: PathFilter::matches(path)
+        PF-->>IG: include/exclude decision
+        IG->>DF: DateFilter::matches(path)
+        DF-->>IG: date range decision
+    end
+
+    Note over IG,Ray: Filtered file list split into chunks of 256
+
+    loop Per chunk (parallel)
+        IG->>Ray: parse_file_content(path) × N
+        Ray->>P: parse_cloudtrail_log(bytes)
+        P-->>Ray: Vec<CloudTrailEvent> + SHA-256
+        Ray-->>IG: ParseOutcome per file
+    end
+
+    loop Per parsed chunk (sequential — DB write)
+        IG->>GEO: lookup(source_ip_address) per event
+        GEO-->>IG: GeoInfo (country, city, ASN, …)
+        IG->>DB: insert_events_with_geo(events, geoip)
+        DB-->>IG: rows inserted
+        IG->>DB: batch_mark_ingested(file_paths)
+    end
+
+    IG-->>CLI: IngestStats {files, records, errors, elapsed}
+    CLI->>CLI: print summary
+```
+
+**Key design points:**
+
+| Aspect | Detail |
+|--------|--------|
+| Parallelism | File parsing runs in a `rayon` thread pool (chunk size 256). DB writes are serial (single writer). |
+| Deduplication | SHA-256 of raw bytes is checked against `ingested_files` before inserting. Duplicate files are silently skipped. |
+| Memory cap | `sync_channel` with depth 2 keeps at most 3 chunks (≈768 MB worst-case) in flight at once. |
+| Batch insert | `duckdb::Appender` is used instead of individual `INSERT` statements for high throughput. |
+| GeoIP | Lookup is done per-event in the insert loop. Private/reserved IPs return `None` and are stored as `NULL`. |
+
+---
+
+### Sequence Diagram — `enrich`
+
+The `enrich` command back-fills geo columns on rows that were originally
+ingested without a GeoIP database.
+
+```mermaid
+sequenceDiagram
+    participant CLI  as main.rs (CLI)
+    participant EN   as enrich.rs
+    participant GEO  as geoip.rs
+    participant DB   as DuckDB (READ_WRITE)
+
+    CLI->>EN: enrich_existing(conn, geoip)
+    EN->>DB: ensure_geo_columns (ALTER TABLE … ADD COLUMN IF NOT EXISTS)
+    DB-->>EN: columns confirmed
+
+    EN->>DB: SELECT DISTINCT source_ip_address WHERE geo_country_code IS NULL
+    DB-->>EN: list of pending IPs
+
+    loop For each unique IP
+        EN->>GEO: lookup(ip)
+        GEO-->>EN: GeoInfo
+        EN->>DB: UPDATE cloudtrail_events SET geo_* = … WHERE source_ip = ip AND geo_country_code IS NULL
+        DB-->>EN: rows affected
+    end
+
+    EN-->>CLI: EnrichStats {enriched_count, skipped_count, elapsed}
+    CLI->>CLI: print summary
+```
 
 ---
 
@@ -61,20 +184,50 @@ Files without a recognisable `yyyy/mm/dd` date segment in their path are always 
 
 ### `cloudtrail_events` (24 columns)
 
-**Core (17):** `event_time`, `event_name`, `event_source`, `aws_region`, `source_ip_address`,
-`user_agent`, `user_identity_type`, `user_identity_arn`, `user_identity_account_id`,
-`request_parameters`, `response_elements`, `error_code`, `error_message`,
-`read_only`, `event_type`, `recipient_account_id`, `raw_event`
+**Core (17):**
 
-**GeoIP (7, nullable):** `geo_country_code`, `geo_country_name`, `geo_city`,
-`geo_latitude`, `geo_longitude`, `geo_asn`, `geo_org`
+| Column | Type | Description |
+|--------|------|-------------|
+| `event_time` | TIMESTAMP | Time the API call was made |
+| `event_name` | VARCHAR | API action name (e.g. `GetCallerIdentity`) |
+| `event_source` | VARCHAR | AWS service endpoint (e.g. `sts.amazonaws.com`) |
+| `aws_region` | VARCHAR | AWS region of the API call |
+| `source_ip_address` | VARCHAR | Caller IP address |
+| `user_agent` | VARCHAR | HTTP User-Agent of the caller |
+| `user_identity_type` | VARCHAR | IAM identity type (Root, IAMUser, AssumedRole, …) |
+| `user_identity_arn` | VARCHAR | Full ARN of the principal |
+| `user_identity_account_id` | VARCHAR | AWS account ID |
+| `request_parameters` | VARCHAR | JSON blob of request parameters |
+| `response_elements` | VARCHAR | JSON blob of response elements |
+| `error_code` | VARCHAR | AWS error code (NULL on success) |
+| `error_message` | VARCHAR | AWS error message (NULL on success) |
+| `read_only` | BOOLEAN | `true` if the event is a read-only action |
+| `event_type` | VARCHAR | CloudTrail event type (`AwsApiCall`, `AwsConsoleSignIn`, …) |
+| `recipient_account_id` | VARCHAR | Account that received the event |
+| `raw_event` | VARCHAR | Full raw JSON of the CloudTrail record |
+
+**GeoIP (7, nullable):**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `geo_country_code` | VARCHAR | ISO 3166-1 alpha-2 country code |
+| `geo_country_name` | VARCHAR | Country name |
+| `geo_city` | VARCHAR | City name |
+| `geo_latitude` | DOUBLE | Latitude |
+| `geo_longitude` | DOUBLE | Longitude |
+| `geo_asn` | VARCHAR | Autonomous System Number |
+| `geo_org` | VARCHAR | AS organization name |
 
 JSON blobs (`request_parameters`, `response_elements`, `raw_event`) are stored as `VARCHAR`.
 Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 
 ### `ingested_files`
 
-`file_path` (PK), `sha256`, `ingested_at` — tracks ingested files for SHA-256-based deduplication.
+| Column | Type | Description |
+|--------|------|-------------|
+| `file_path` | VARCHAR (PK) | Absolute path of the ingested file |
+| `sha256` | VARCHAR | SHA-256 hex digest of the raw file bytes |
+| `ingested_at` | TIMESTAMP | Timestamp when the file was first ingested |
 
 ---
 
@@ -84,28 +237,28 @@ Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 ingester/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs           # CLI entry point (clap)
+│   ├── main.rs           # CLI entry point (clap) — subcommands: ingest, enrich
 │   ├── lib.rs            # Public API re-exports
-│   ├── parser.rs         # CloudTrail JSON parsing (serde)
-│   ├── decompressor.rs   # Transparent gz decompression (flate2)
-│   ├── db.rs             # DuckDB schema + batch insert (Appender) + geo backfill
-│   ├── ingest.rs         # Pipeline orchestration (rayon parallel → insert)
-│   ├── enrich.rs         # Geo back-fill for existing rows
+│   ├── parser.rs         # CloudTrail JSON parsing (serde_json)
+│   ├── db.rs             # DuckDB schema management + batch insert (Appender) + geo ensure
+│   ├── ingest.rs         # Pipeline orchestration (walk → filter → parallel parse → insert)
+│   ├── enrich.rs         # Geo back-fill for existing rows (UPDATE per unique IP)
 │   ├── geoip.rs          # MaxMind GeoLite2 lookup + private-IP classification
-│   ├── date_filter.rs    # --from / --to filter
+│   ├── date_filter.rs    # --from / --to filter (extracts yyyy/mm/dd from path)
 │   ├── path_filter.rs    # --include / --exclude glob filter
 │   └── progress.rs       # Progress bar wrapper (indicatif)
 └── tests/
-    ├── cli_test.rs
-    ├── integration_test.rs
-    └── testdata/
+    ├── cli_test.rs           # CLI integration tests
+    ├── integration_test.rs   # End-to-end ingest tests with a real DuckDB
+    └── testdata/             # Sample CloudTrail JSON / gz fixtures
 ```
 
 ---
 
 ## Development
 
-> **Note:** The `duckdb` crate compiles libduckdb from source. The first build takes 5–10 minutes.
+> **Note:** The `duckdb` crate compiles libduckdb from source on first build.
+> This can take **5–10 minutes**. Subsequent builds are fast thanks to Cargo's incremental compilation.
 
 ```bash
 cd ingester
@@ -118,3 +271,14 @@ cargo test --lib              # Unit tests only
 cargo clippy -- -D warnings   # Lint
 cargo fmt                     # Format
 ```
+
+### Environment variables (development)
+
+| Variable | Description |
+|----------|-------------|
+| `DUCKDB_PATH` | Override the default DB path for ad-hoc testing |
+| `RAYON_NUM_THREADS` | Limit the rayon thread pool size |
+| `GEOIP_CITY_PATH` | Path to GeoLite2-City.mmdb |
+| `GEOIP_COUNTRY_PATH` | Path to GeoLite2-Country.mmdb |
+| `GEOIP_ASN_PATH` | Path to GeoLite2-ASN.mmdb |
+

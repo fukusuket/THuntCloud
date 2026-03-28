@@ -5,6 +5,7 @@
 > SIEM-equivalent AWS CloudTrail threat hunting on a single ordinary laptop — no cloud infrastructure required.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml/badge.svg)](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
@@ -26,28 +27,80 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 <img src="doc/img1.png" width="800" alt="Superset Dashboard">
 
+---
+
 ## Architecture
+
+Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Docker Compose                       │
 │                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
-│  │   ingester   │   │    agent     │  │  dashboard  │   │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
-│  │              │   │              │  │             │   │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
-│         └──────────────────┴─────────────────┘          │
-│                            │                            │
-│                    ┌───────▼──────┐                     │
-│                    │   DuckDB     │                     │
-│                    │ (Bind Mount) │                     │
-│                    │  (SSD)       │                     │
-│                    └──────────────┘                     │
+│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
+│  │   ingester   │   │    agent     │  │  dashboard  │  │
+│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │  │
+│  │              │   │              │  │             │  │
+│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │  │
+│  │ gz ingest    │   │ SQL gen/exec │  │             │  │
+│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │  │
+│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘  │
+│         └──────────────────┴─────────────────┘         │
+│                            │                           │
+│                    ┌───────▼──────┐                    │
+│                    │   DuckDB     │                    │
+│                    │ (Bind Mount) │                    │
+│                    │  (SSD)       │                    │
+│                    └──────────────┘                    │
 └─────────────────────────────────────────────────────────┘
+```
+
+### End-to-End Sequence Diagram
+
+The diagram below shows the full lifecycle from log ingestion through to a
+completed AI-assisted threat hunting session.
+
+```mermaid
+sequenceDiagram
+    participant OPS  as Operator
+    participant ING  as ingester (Rust)
+    participant DB   as DuckDB (bind mount)
+    participant APP  as agent / Streamlit
+    participant OAI  as OpenAI API
+    participant SS   as dashboard / Superset
+    participant U    as Analyst (Browser)
+
+    Note over OPS,ING: Phase 1 — Ingest
+    OPS->>ING: docker compose run ingester ingest --path /data/logs
+    ING->>ING: walk & filter files (date, path glob)
+    ING->>ING: parallel parse (rayon) + SHA-256 dedup
+    ING->>DB: batch insert via DuckDB Appender (READ_WRITE)
+    ING->>DB: GeoIP enrich (optional)
+    ING-->>OPS: IngestStats printed
+
+    Note over OPS,SS: Phase 2 — Start services
+    OPS->>APP: docker compose up -d
+    OPS->>SS: docker compose up -d
+    APP->>DB: open READ_ONLY connection
+    SS->>DB: open READ_ONLY connection
+
+    Note over U,OAI: Phase 3 — AI-assisted hunting (agent)
+    U->>APP: natural language question
+    APP->>OAI: generate_sql(question, schema, history)
+    OAI-->>APP: SQL string
+    APP->>APP: apply_date_filter + apply_row_limit
+    APP->>APP: validate_query (blocklist + EXPLAIN)
+    APP->>DB: execute SQL (READ_ONLY)
+    DB-->>APP: result rows (DataFrame)
+    APP->>OAI: generate_analysis(sql, results)
+    OAI-->>APP: fact-based Markdown summary
+    APP-->>U: table + analysis + chat history
+
+    Note over U,SS: Phase 4 — BI dashboard (Superset)
+    U->>SS: open http://localhost:8088
+    SS->>DB: execute chart queries (READ_ONLY)
+    DB-->>SS: aggregated result sets
+    SS-->>U: interactive charts + filters
 ```
 
 ---
@@ -103,7 +156,7 @@ All commands are run from the `docker/` directory.
 ```bash
 docker compose down && docker compose up -d --build      # Rebuild & restart
 docker compose logs -f                                   # View logs
-docker compose --profile resync run --rm superset-resync # Fix blank dashboard
+docker compose --profile resync run --rm superset-resync # Fix blank dashboard after re-ingest
 ```
 
 ---
@@ -112,9 +165,21 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard
 
 | Module | Language | Role | README |
 |--------|----------|------|--------|
-| `ingester` | Rust | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
-| `agent` | Python / Streamlit | AI-assisted threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
+| `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
+| `agent` | Python 3.12+ / Streamlit | AI-assisted threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
+
+---
+
+## CI
+
+The CI pipeline runs on every push / pull request to `main` and `develop`.
+
+| Job | Checks |
+|-----|--------|
+| `ingester (Rust)` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --all` |
+| `agent (Python)` | `black --check`, `ruff check`, `pytest -v` |
+| `dashboard YAML validation` | All dashboard YAML files are well-formed; ZIP contains required files |
 
 ---
 
