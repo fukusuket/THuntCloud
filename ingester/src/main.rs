@@ -11,7 +11,7 @@ use duckdb::Connection;
 use ingester::date_filter::DateFilter;
 use ingester::enrich::enrich_existing;
 use ingester::geoip::{GeoipConfig, GeoipEnricher};
-use ingester::ingest::{ingest, IngestOptions};
+use ingester::ingest::{IngestOptions, ingest};
 use ingester::path_filter::PathFilter;
 
 /// Read an environment variable, returning `None` for both unset and empty values.
@@ -356,4 +356,3 @@ mod tests {
         }
     }
 }
-

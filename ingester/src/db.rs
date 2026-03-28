@@ -83,30 +83,30 @@ fn append_event_row(
     // All JSON fields are pre-computed strings on CloudTrailEvent —
     // no serde_json serialisation occurs in this hot path.
     let params: Vec<&dyn ToSql> = vec![
-        &event.event_time,               // event_time               TIMESTAMP
-        &event.event_name,               // event_name               VARCHAR
-        &event.event_source,             // event_source             VARCHAR
-        &event.aws_region,               // aws_region               VARCHAR
-        &event.source_ip_address,        // source_ip_address        VARCHAR (Option)
-        &event.user_agent,               // user_agent               VARCHAR (Option)
+        &event.event_time,                  // event_time               TIMESTAMP
+        &event.event_name,                  // event_name               VARCHAR
+        &event.event_source,                // event_source             VARCHAR
+        &event.aws_region,                  // aws_region               VARCHAR
+        &event.source_ip_address,           // source_ip_address        VARCHAR (Option)
+        &event.user_agent,                  // user_agent               VARCHAR (Option)
         &event.user_identity.identity_type, // user_identity_type       VARCHAR (Option)
-        &event.user_identity.arn,            // user_identity_arn        VARCHAR (Option)
-        &event.user_identity.account_id,     // user_identity_account_id VARCHAR (Option)
-        &event.request_parameters,       // request_parameters       VARCHAR (Option<String>)
-        &event.response_elements,        // response_elements        VARCHAR (Option<String>)
-        &event.error_code,               // error_code               VARCHAR (Option)
-        &event.error_message,            // error_message            VARCHAR (Option)
-        &event.read_only,                // read_only                BOOLEAN (Option)
-        &event.event_type,               // event_type               VARCHAR (Option)
-        &event.recipient_account_id,     // recipient_account_id     VARCHAR (Option)
-        &event.raw_json,                 // raw_event                VARCHAR (original JSON)
-        &geo.country_code,               // geo_country_code         VARCHAR (Option)
-        &geo.country_name,               // geo_country_name         VARCHAR (Option)
-        &geo.city,                       // geo_city                 VARCHAR (Option)
-        &geo.latitude,                   // geo_latitude             DOUBLE  (Option)
-        &geo.longitude,                  // geo_longitude            DOUBLE  (Option)
-        &geo.asn,                        // geo_asn                  VARCHAR (Option)
-        &geo.org,                        // geo_org                  VARCHAR (Option)
+        &event.user_identity.arn,           // user_identity_arn        VARCHAR (Option)
+        &event.user_identity.account_id,    // user_identity_account_id VARCHAR (Option)
+        &event.request_parameters,          // request_parameters       VARCHAR (Option<String>)
+        &event.response_elements,           // response_elements        VARCHAR (Option<String>)
+        &event.error_code,                  // error_code               VARCHAR (Option)
+        &event.error_message,               // error_message            VARCHAR (Option)
+        &event.read_only,                   // read_only                BOOLEAN (Option)
+        &event.event_type,                  // event_type               VARCHAR (Option)
+        &event.recipient_account_id,        // recipient_account_id     VARCHAR (Option)
+        &event.raw_json,                    // raw_event                VARCHAR (original JSON)
+        &geo.country_code,                  // geo_country_code         VARCHAR (Option)
+        &geo.country_name,                  // geo_country_name         VARCHAR (Option)
+        &geo.city,                          // geo_city                 VARCHAR (Option)
+        &geo.latitude,                      // geo_latitude             DOUBLE  (Option)
+        &geo.longitude,                     // geo_longitude            DOUBLE  (Option)
+        &geo.asn,                           // geo_asn                  VARCHAR (Option)
+        &geo.org,                           // geo_org                  VARCHAR (Option)
     ];
     appender
         .append_row(params.as_slice())

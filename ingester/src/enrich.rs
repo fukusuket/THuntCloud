@@ -133,9 +133,7 @@ fn count_null_source_ips(conn: &Connection) -> Result<usize> {
 mod tests {
     use super::*;
     use crate::db::{ensure_table, insert_events_with_geo};
-    use crate::test_util::{
-        event_with_ip, event_with_null_ip, make_enricher, setup_db, temp_db,
-    };
+    use crate::test_util::{event_with_ip, event_with_null_ip, make_enricher, setup_db, temp_db};
     use duckdb::Connection;
 
     // Test E-01: enrich_existing adds geo columns to an existing table.

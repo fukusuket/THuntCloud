@@ -51,8 +51,7 @@ pub fn setup_db() -> Connection {
 
 /// Return the path to the bundled `GeoLite2-City-Test.mmdb` fixture.
 pub fn test_city_db_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/geoip/GeoLite2-City-Test.mmdb")
 }
 
 /// Return the path to the bundled `GeoLite2-Country-Test.mmdb` fixture.
@@ -63,8 +62,7 @@ pub fn test_country_db_path() -> PathBuf {
 
 /// Return the path to the bundled `GeoLite2-ASN-Test.mmdb` fixture.
 pub fn test_asn_db_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/testdata/geoip/GeoLite2-ASN-Test.mmdb")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/geoip/GeoLite2-ASN-Test.mmdb")
 }
 
 /// Open a [`GeoipEnricher`] backed by the City test mmdb.
@@ -143,4 +141,3 @@ pub fn event_with_ip(ip: &str) -> CloudTrailEvent {
 pub fn event_with_null_ip() -> CloudTrailEvent {
     minimal_event()
 }
-
