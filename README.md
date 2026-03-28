@@ -125,7 +125,10 @@ See [NOTICE](NOTICE) for third-party license attributions.
 
 ## Acknowledgements
 
+This project exists thanks to these wonderful projects and datasets :)
+
 - [Yamato Security](https://github.com/Yamato-Security) — [suzaku-sample-data](https://github.com/Yamato-Security/suzaku-sample-data)
+- [Suzaku](https://github.com/Yamato-Security/suzaku) — Suzaku, a CloudTrail log analysis tool created by Yamato Security
 - [flaws.cloud](http://flaws.cloud) — intentionally vulnerable AWS CloudTrail dataset
 - [Apache Superset](https://superset.apache.org/) — BI platform
 - [DuckDB](https://duckdb.org/) — embedded analytical database
