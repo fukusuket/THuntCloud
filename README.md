@@ -41,7 +41,7 @@ Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/
 │  │   ingester   │   │    agent     │  │  dashboard  │   │
 │  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
 │  │              │   │              │  │             │   │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
+│  │ CloudTrail   │   │  AI-Agent    │  │  Visualize  │   │
 │  │ gz ingest    │   │ SQL gen/exec │  │             │   │
 │  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
 │  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
