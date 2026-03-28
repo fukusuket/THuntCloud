@@ -37,21 +37,21 @@ Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/
 ┌─────────────────────────────────────────────────────────┐
 │                    Docker Compose                       │
 │                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
-│  │   ingester   │   │    agent     │  │  dashboard  │  │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │  │
-│  │              │   │              │  │             │  │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │  │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │  │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │  │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘  │
-│         └──────────────────┴─────────────────┘         │
-│                            │                           │
-│                    ┌───────▼──────┐                    │
-│                    │   DuckDB     │                    │
-│                    │ (Bind Mount) │                    │
-│                    │  (SSD)       │                    │
-│                    └──────────────┘                    │
+│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
+│  │   ingester   │   │    agent     │  │  dashboard  │   │
+│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
+│  │              │   │              │  │             │   │
+│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
+│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
+│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
+│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
+│         └──────────────────┴─────────────────┘          │
+│                            │                            │
+│                    ┌───────▼──────┐                     │
+│                    │   DuckDB     │                     │
+│                    │ (Bind Mount) │                     │
+│                    │  (SSD)       │                     │
+│                    └──────────────┘                     │
 └─────────────────────────────────────────────────────────┘
 ```
 

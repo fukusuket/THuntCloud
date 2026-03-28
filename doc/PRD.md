@@ -76,15 +76,15 @@ This product is a locally-executed threat hunting tool targeting AWS logs, prima
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Docker Compose                        │
+│                    Docker Compose                       │
 │                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
-│  │   ingester   │   │    agent     │  │  dashboard  │  │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │  │
-│  │              │   │              │  │             │  │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │  │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │  │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘  │
+│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
+│  │   ingester   │   │    agent     │  │  dashboard  │   │
+│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
+│  │              │   │              │  │             │   │
+│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │   │
+│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
+│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
 │         │                  │                  │         │
 │         └──────────────────┴──────────────────┘         │
 │                            │                            │
