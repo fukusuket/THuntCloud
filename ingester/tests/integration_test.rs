@@ -6,7 +6,7 @@
 
 use duckdb::Connection;
 use ingester::db::ensure_table;
-use ingester::ingest::{ingest, IngestOptions};
+use ingester::ingest::{IngestOptions, ingest};
 use std::path::PathBuf;
 
 /// Returns the absolute path to `ingester/tests/testdata/`.
@@ -37,7 +37,8 @@ fn test_ingest_full_testdata_pipeline() {
     let conn = setup_db();
     let dir = testdata_dir();
 
-    let stats = ingest(&dir, &conn, IngestOptions::default()).expect("full pipeline should succeed");
+    let stats =
+        ingest(&dir, &conn, IngestOptions::default()).expect("full pipeline should succeed");
 
     // malformed.json produces one error.
     assert_eq!(
