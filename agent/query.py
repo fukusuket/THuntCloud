@@ -17,7 +17,7 @@ from llm import fix_sql_with_llm
 logger = logging.getLogger(__name__)
 
 QUERY_TIMEOUT_SECONDS: int = 30
-DEFAULT_ROW_LIMIT: int = 1000
+DEFAULT_ROW_LIMIT: int = 100
 
 # Forbidden SQL keywords that must never be executed (case-insensitive, word boundary).
 _FORBIDDEN_PATTERN = re.compile(

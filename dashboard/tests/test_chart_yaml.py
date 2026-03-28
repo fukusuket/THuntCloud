@@ -5,7 +5,6 @@ the structure required by the Superset v1 dashboard import format.
 """
 import os
 import re
-import sys
 
 import pytest
 import yaml
@@ -13,13 +12,6 @@ import yaml
 CHARTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "charts"
 )
-DATASET_YAML_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "datasets", "cloudtrail_events.yaml"
-)
-REGISTER_DATASET_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "init"
-)
-DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
 REQUIRED_CHART_FIELDS = {"uuid", "version", "dataset_uuid", "slice_name", "viz_type", "params"}
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 

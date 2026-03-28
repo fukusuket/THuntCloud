@@ -20,6 +20,11 @@ from query import (
 )
 
 
+def test_default_row_limit_is_100():
+    """DEFAULT_ROW_LIMIT must be 100 to balance LLM context capacity and UI visibility."""
+    assert DEFAULT_ROW_LIMIT == 100
+
+
 def test_connect_duckdb_readonly(tmp_duckdb):
     """Opens DuckDB in read-only mode successfully."""
     conn = connect_duckdb(tmp_duckdb)
