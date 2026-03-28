@@ -2,14 +2,46 @@
 
 import openai
 import pandas as pd
+from unittest.mock import MagicMock, patch
 
 from llm import (
     MAX_CONTEXT_TURNS,
+    _clear_client_cache,
+    _create_client,
     build_system_prompt,
     fix_sql_with_llm,
     generate_analysis,
     generate_sql,
 )
+
+
+# ---------------------------------------------------------------------------
+# Client caching
+# ---------------------------------------------------------------------------
+
+
+def test_create_client_reuses_same_instance():
+    """_create_client returns the identical object for the same api_key (cache hit)."""
+    _clear_client_cache()
+    with patch("llm.OpenAI") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        client_a = _create_client("sk-cache-test")
+        client_b = _create_client("sk-cache-test")
+
+    assert client_a is client_b, "Expected the same cached instance"
+    assert mock_cls.call_count == 1, "OpenAI constructor must be called only once"
+
+
+def test_create_client_creates_new_instance_for_different_key():
+    """_create_client creates a separate instance per unique api_key."""
+    _clear_client_cache()
+    with patch("llm.OpenAI") as mock_cls:
+        mock_cls.side_effect = [MagicMock(), MagicMock()]
+        client_a = _create_client("sk-key-1")
+        client_b = _create_client("sk-key-2")
+
+    assert client_a is not client_b
+    assert mock_cls.call_count == 2
 
 
 def test_build_system_prompt_includes_schema():

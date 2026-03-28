@@ -11,7 +11,7 @@ use duckdb::Connection;
 use ingester::date_filter::DateFilter;
 use ingester::enrich::enrich_existing;
 use ingester::geoip::{GeoipConfig, GeoipEnricher};
-use ingester::ingest::{ingest_with_filters, ingest_with_geoip};
+use ingester::ingest::{ingest, IngestOptions};
 use ingester::path_filter::PathFilter;
 
 /// Read an environment variable, returning `None` for both unset and empty values.
@@ -23,6 +23,33 @@ fn env_var_non_empty(key: &str) -> Option<PathBuf> {
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
+}
+
+/// Resolve the DuckDB database path.
+///
+/// Resolution order: CLI argument → `DUCKDB_PATH` env var → default path.
+fn resolve_db_path(cli_arg: Option<PathBuf>) -> PathBuf {
+    cli_arg.unwrap_or_else(|| {
+        std::env::var("DUCKDB_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/data/db/threat_hunting.db"))
+    })
+}
+
+/// Resolve GeoIP database paths.
+///
+/// For each argument, uses the CLI value when provided; otherwise falls back
+/// to the corresponding environment variable via [`env_var_non_empty`].
+fn resolve_geoip_paths(
+    city: Option<PathBuf>,
+    country: Option<PathBuf>,
+    asn: Option<PathBuf>,
+) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    (
+        city.or_else(|| env_var_non_empty("GEOIP_CITY_PATH")),
+        country.or_else(|| env_var_non_empty("GEOIP_COUNTRY_PATH")),
+        asn.or_else(|| env_var_non_empty("GEOIP_ASN_PATH")),
+    )
 }
 
 /// THuntCloud ingester — ingest AWS CloudTrail logs into DuckDB.
@@ -159,18 +186,12 @@ fn run() -> Result<()> {
             let path_filter = PathFilter::from_strs(include.as_deref(), exclude.as_deref())
                 .context("Invalid --include / --exclude argument")?;
 
-            let db_path = db.unwrap_or_else(|| {
-                std::env::var("DUCKDB_PATH")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("/data/db/threat_hunting.db"))
-            });
+            let db_path = resolve_db_path(db);
             let conn = Connection::open(&db_path)
                 .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
 
-            // Resolve GeoIP paths: CLI arg > env var (non-empty) > None.
-            let city_path = geoip_city.or_else(|| env_var_non_empty("GEOIP_CITY_PATH"));
-            let country_path = geoip_country.or_else(|| env_var_non_empty("GEOIP_COUNTRY_PATH"));
-            let asn_path = geoip_asn.or_else(|| env_var_non_empty("GEOIP_ASN_PATH"));
+            let (city_path, country_path, asn_path) =
+                resolve_geoip_paths(geoip_city, geoip_country, geoip_asn);
 
             let stats = if city_path.is_some() || country_path.is_some() {
                 let enricher = GeoipEnricher::open(&GeoipConfig {
@@ -179,16 +200,27 @@ fn run() -> Result<()> {
                     asn_db_path: asn_path,
                 })
                 .context("Failed to open GeoIP database")?;
-                ingest_with_geoip(
+                ingest(
                     &path,
                     &conn,
-                    !no_progress,
-                    &date_filter,
-                    &path_filter,
-                    &enricher,
+                    IngestOptions {
+                        show_progress: !no_progress,
+                        date_filter,
+                        path_filter,
+                        geoip: Some(&enricher),
+                    },
                 )?
             } else {
-                ingest_with_filters(&path, &conn, !no_progress, &date_filter, &path_filter)?
+                ingest(
+                    &path,
+                    &conn,
+                    IngestOptions {
+                        show_progress: !no_progress,
+                        date_filter,
+                        path_filter,
+                        geoip: None,
+                    },
+                )?
             };
 
             println!(
@@ -204,18 +236,12 @@ fn run() -> Result<()> {
             geoip_country,
             geoip_asn,
         } => {
-            let db_path = db.unwrap_or_else(|| {
-                std::env::var("DUCKDB_PATH")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("/data/db/threat_hunting.db"))
-            });
+            let db_path = resolve_db_path(db);
             let conn = Connection::open(&db_path)
                 .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
 
-            // Resolve GeoIP paths: CLI arg > env var (non-empty) > None.
-            let city_path = geoip_city.or_else(|| env_var_non_empty("GEOIP_CITY_PATH"));
-            let country_path = geoip_country.or_else(|| env_var_non_empty("GEOIP_COUNTRY_PATH"));
-            let asn_path = geoip_asn.or_else(|| env_var_non_empty("GEOIP_ASN_PATH"));
+            let (city_path, country_path, asn_path) =
+                resolve_geoip_paths(geoip_city, geoip_country, geoip_asn);
 
             if city_path.is_none() && country_path.is_none() {
                 anyhow::bail!(
@@ -251,3 +277,83 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Test M-01: resolve_db_path returns the CLI argument when provided.
+    #[test]
+    fn test_resolve_db_path_returns_cli_arg() {
+        let path = PathBuf::from("/custom/path.db");
+        assert_eq!(resolve_db_path(Some(path.clone())), path);
+    }
+
+    // Test M-02: resolve_db_path returns the default path when None is passed
+    // and DUCKDB_PATH is not set.
+    #[test]
+    fn test_resolve_db_path_returns_default_when_none() {
+        // Temporarily unset DUCKDB_PATH for this test.
+        // Note: env var mutation is not thread-safe in Rust; this test is
+        // acceptable because it runs in isolation and restores state.
+        let saved = std::env::var("DUCKDB_PATH").ok();
+        // SAFETY: single-threaded test; env mutation is safe here.
+        unsafe { std::env::remove_var("DUCKDB_PATH") };
+
+        let result = resolve_db_path(None);
+        assert_eq!(result, PathBuf::from("/data/db/threat_hunting.db"));
+
+        // Restore env var.
+        if let Some(v) = saved {
+            // SAFETY: restoring env var in single-threaded test.
+            unsafe { std::env::set_var("DUCKDB_PATH", v) };
+        }
+    }
+
+    // Test M-03: resolve_geoip_paths returns CLI args when all are provided.
+    #[test]
+    fn test_resolve_geoip_paths_returns_cli_args() {
+        let city = Some(PathBuf::from("/city.mmdb"));
+        let country = Some(PathBuf::from("/country.mmdb"));
+        let asn = Some(PathBuf::from("/asn.mmdb"));
+
+        let (c, co, a) = resolve_geoip_paths(city.clone(), country.clone(), asn.clone());
+        assert_eq!(c, city);
+        assert_eq!(co, country);
+        assert_eq!(a, asn);
+    }
+
+    // Test M-04: resolve_geoip_paths returns None for all when args are None
+    // and env vars are not set.
+    #[test]
+    fn test_resolve_geoip_paths_returns_none_without_env() {
+        let saved_city = std::env::var("GEOIP_CITY_PATH").ok();
+        let saved_country = std::env::var("GEOIP_COUNTRY_PATH").ok();
+        let saved_asn = std::env::var("GEOIP_ASN_PATH").ok();
+        // SAFETY: single-threaded test; env mutation is safe here.
+        unsafe {
+            std::env::remove_var("GEOIP_CITY_PATH");
+            std::env::remove_var("GEOIP_COUNTRY_PATH");
+            std::env::remove_var("GEOIP_ASN_PATH");
+        }
+
+        let (city, country, asn) = resolve_geoip_paths(None, None, None);
+        assert!(city.is_none());
+        assert!(country.is_none());
+        assert!(asn.is_none());
+
+        // SAFETY: restoring env vars in single-threaded test.
+        unsafe {
+            if let Some(v) = saved_city {
+                std::env::set_var("GEOIP_CITY_PATH", v);
+            }
+            if let Some(v) = saved_country {
+                std::env::set_var("GEOIP_COUNTRY_PATH", v);
+            }
+            if let Some(v) = saved_asn {
+                std::env::set_var("GEOIP_ASN_PATH", v);
+            }
+        }
+    }
+}
+

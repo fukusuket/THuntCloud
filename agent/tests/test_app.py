@@ -583,9 +583,9 @@ def test_handle_user_query_passes_context_to_generate_sql(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=sql) as mock_gen_sql,
-        patch("app.execute_with_retry", return_value=(result_df, sql)),
-        patch("app.generate_analysis", return_value="Test summary"),
+        patch("handlers.generate_sql", return_value=sql) as mock_gen_sql,
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)),
+        patch("handlers.generate_analysis", return_value="Test summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -631,9 +631,9 @@ def test_conversation_context_appended_after_successful_query(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=sql),
-        patch("app.execute_with_retry", return_value=(result_df, sql)),
-        patch("app.generate_analysis", return_value="Test summary"),
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)),
+        patch("handlers.generate_analysis", return_value="Test summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -683,9 +683,9 @@ def test_conversation_context_max_size_enforced(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=sql),
-        patch("app.execute_with_retry", return_value=(result_df, sql)),
-        patch("app.generate_analysis", return_value="New summary"),
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)),
+        patch("handlers.generate_analysis", return_value="New summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -730,9 +730,9 @@ def test_handle_user_query_uses_execute_with_retry(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=sql),
-        patch("app.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
-        patch("app.generate_analysis", return_value="Summary"),
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch("handlers.generate_analysis", return_value="Summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -773,9 +773,9 @@ def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=original_sql),
-        patch("app.execute_with_retry", return_value=(result_df, corrected_sql)),
-        patch("app.generate_analysis", return_value="Summary"),
+        patch("handlers.generate_sql", return_value=original_sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, corrected_sql)),
+        patch("handlers.generate_analysis", return_value="Summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -837,7 +837,7 @@ def test_handle_direct_sql_uses_session_row_limit(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.execute_query", return_value=pd.DataFrame()) as mock_exec,
+        patch("handlers.execute_query", return_value=pd.DataFrame()) as mock_exec,
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -877,9 +877,9 @@ def test_handle_user_query_uses_session_row_limit(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.generate_sql", return_value=sql),
-        patch("app.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
-        patch("app.generate_analysis", return_value="Summary"),
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)) as mock_retry,
+        patch("handlers.generate_analysis", return_value="Summary"),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
@@ -921,7 +921,7 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     with (
         patch("streamlit.session_state", mock_state),
         patch("streamlit.spinner") as mock_spinner,
-        patch("app.execute_query", return_value=result_df),
+        patch("handlers.execute_query", return_value=result_df),
     ):
         mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
         mock_spinner.return_value.__exit__ = MagicMock(return_value=False)

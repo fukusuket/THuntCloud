@@ -92,6 +92,7 @@ services:
     build:
       context: ../dashboard
       dockerfile: Dockerfile
+    image: thuntcloud-dashboard:latest
     container_name: threat-hunting-dashboard
     ports:
       - "8088:8088"
@@ -110,9 +111,7 @@ services:
 
   # ── Superset initializer (run-once) ───────
   superset-init:
-    build:
-      context: ../dashboard
-      dockerfile: Dockerfile
+    image: thuntcloud-dashboard:latest
     container_name: threat-hunting-superset-init
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
@@ -137,9 +136,7 @@ services:
   # Run this when the dashboard shows no data after a fresh ingest:
   #   docker compose --profile resync run --rm superset-resync
   superset-resync:
-    build:
-      context: ../dashboard
-      dockerfile: Dockerfile
+    image: thuntcloud-dashboard:latest
     container_name: threat-hunting-superset-resync
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro

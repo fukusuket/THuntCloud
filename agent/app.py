@@ -14,13 +14,15 @@ import pandas as pd
 import streamlit as st
 import yaml
 
+from config import get_duckdb_path
+from handlers import _analyze_current_results, _handle_direct_sql, _handle_user_query
 from llm import MAX_CONTEXT_TURNS, generate_analysis, generate_sql
 from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
     apply_date_filter,
     apply_row_limit,
-    connect_duckdb,
+    duckdb_connection,
     execute_query,
     execute_with_retry,
 )
@@ -145,8 +147,12 @@ def _export_session(
 
 
 def _get_duckdb_path() -> str:
-    """Resolve the DuckDB path from environment variable."""
-    return os.environ.get("DUCKDB_PATH", "/data/db/threat_hunting.db")
+    """Resolve the DuckDB path from environment variable.
+
+    Delegates to :func:`config.get_duckdb_path` which reads ``DUCKDB_PATH``
+    and falls back to the Docker-standard default path.
+    """
+    return get_duckdb_path()
 
 
 def render_sidebar() -> None:
@@ -339,218 +345,6 @@ def render_sidebar() -> None:
                 st.session_state.conversation_context = []
                 st.rerun()
 
-
-def _handle_direct_sql(sql: str, db_path: str) -> None:
-    """Execute a pre-built SQL query directly without requiring an API key.
-
-    Runs the SQL against the DuckDB database in read-only mode, stores results
-    in session state, and appends a message to the chat history.  An optional
-    AI summary is generated when an API key is present.
-
-    Args:
-        sql:     Validated DuckDB SQL from a built-in preset entry.
-        db_path: Path to the DuckDB database file.
-    """
-    # Apply date range filter (wraps sql in a date-scoped CTE when active).
-    sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
-    # Pre-compute the effective SQL (with row_limit applied) so that last_sql
-    # and the chat message always reflect what was actually executed.
-    effective_sql = apply_row_limit(sql, st.session_state.row_limit)
-
-    results = pd.DataFrame()
-    error_message: str | None = None
-
-    with st.spinner("⚡ Running direct SQL…"):
-        try:
-            conn = connect_duckdb(db_path)
-            results = execute_query(conn, sql, row_limit=st.session_state.row_limit)
-            conn.close()
-        except QueryValidationError as exc:
-            error_message = f"🚫 SQL validation error: {exc}"
-        except TimeoutError:
-            error_message = "⏱ Query timed out (30 s limit exceeded)."
-        except Exception as exc:  # noqa: BLE001
-            error_message = f"❌ Query execution error: {exc}"
-
-    st.session_state.last_sql = effective_sql
-    st.session_state.last_results = results if error_message is None else None
-    st.session_state.last_summary = ""
-
-    # Build assistant message
-    if error_message:
-        assistant_content = error_message
-    else:
-        row_limit = st.session_state.row_limit
-        truncated = len(results) >= row_limit
-        row_info = f"{len(results)} row(s)" + (
-            f" _(truncated to {row_limit:,})_" if truncated else ""
-        )
-        assistant_content = f"**Direct SQL query executed.** **Results:** {row_info}"
-
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_content}
-    )
-
-    if error_message is None:
-        st.session_state.query_history.append(
-            ReportEntry(sql=effective_sql, results=results, analysis="")
-        )
-
-
-def _analyze_current_results() -> None:
-    """Analyze the current query results using AI and append the analysis to chat.
-
-    Calls generate_analysis() with last_sql and last_results already stored in
-    session state.  Requires an API key; appends a warning message when none is
-    set.  Does nothing when last_results is None or empty.
-    """
-    api_key = st.session_state.api_key
-    model = st.session_state.model
-    sql = st.session_state.last_sql
-    results = st.session_state.last_results
-
-    if not api_key:
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": "⚠️ Please enter your OpenAI API key in the sidebar first.",
-            }
-        )
-        return
-
-    if results is None or (hasattr(results, "empty") and results.empty):
-        return
-
-    with st.spinner("🤖 Analyzing results…"):
-        summary = generate_analysis(sql, results, api_key=api_key, model=model)
-
-    st.session_state.last_summary = summary
-
-    # Persist analysis into the last query_history entry so the history view
-    # can display it without requiring a separate state variable.
-    if st.session_state.query_history and summary:
-        st.session_state.query_history[-1].analysis = summary
-
-
-def _handle_user_query(user_input: str, db_path: str) -> None:
-    """Process a user query: generate SQL, execute, summarise, and update state.
-
-    Implements the AGT-01 → AGT-02 → AGT-03 → AGT-04 → AGT-05 pipeline.
-    The summary step (AGT-05) produces only fact-based bullet points;
-    speculative threat assessments are excluded by the LLM prompt.
-
-    Conversation context from previous turns is forwarded to generate_sql()
-    so that follow-up questions such as "drill down on that" work naturally.
-
-    If the generated SQL fails validation, execute_with_retry() asks the LLM
-    to correct it (up to 2 attempts) before surfacing the error to the user.
-
-    Args:
-        user_input: The natural language question from the user.
-        db_path:    Path to the DuckDB database file.
-    """
-    api_key = st.session_state.api_key
-    model = st.session_state.model
-
-    if not api_key:
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": "⚠️ Please enter your OpenAI API key in the sidebar first.",
-            }
-        )
-        return
-
-    # Step 1: Generate SQL (AGT-02), injecting prior conversation context.
-    # Take a snapshot so that the context passed to the LLM is not mutated
-    # by the append at the end of this function.
-    context = list(st.session_state.conversation_context)
-    with st.spinner("🤖 Generating SQL…"):
-        sql = generate_sql(user_input, api_key=api_key, model=model, context=context)
-
-    # Apply date range filter to the AI-generated SQL (wraps in CTE when active).
-    sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
-
-    original_sql = sql  # preserve to detect LLM corrections later
-    final_sql = sql
-    st.session_state.last_sql = sql
-
-    # Step 2: Execute query with automatic SQL correction on validation failure (AGT-03/04).
-    results = pd.DataFrame()
-    error_message: str | None = None
-    effective_sql = sql  # updated to effective SQL (row_limit applied) on success
-    try:
-        conn = connect_duckdb(db_path)
-        results, final_sql = execute_with_retry(
-            conn,
-            sql,
-            api_key=api_key,
-            model=model,
-            row_limit=st.session_state.row_limit,
-        )
-        conn.close()
-        if final_sql != original_sql:
-            sql = final_sql
-        # Store the effective SQL (with row_limit applied) so the SQL editor
-        # shows exactly what was executed, not the pre-limit original.
-        effective_sql = apply_row_limit(sql, st.session_state.row_limit)
-        st.session_state.last_sql = effective_sql
-    except QueryValidationError as exc:
-        error_message = f"🚫 SQL validation error: {exc}"
-    except TimeoutError:
-        error_message = "⏱ Query timed out (30 s limit exceeded)."
-    except Exception as exc:  # noqa: BLE001
-        error_message = f"❌ Query execution error: {exc}"
-
-    st.session_state.last_results = results if error_message is None else None
-
-    # Step 3: Generate fact-based summary (AGT-05)
-    summary = ""
-    if error_message is None:
-        with st.spinner("📋 Summarising results…"):
-            summary = generate_analysis(
-                effective_sql, results, api_key=api_key, model=model
-            )
-    st.session_state.last_summary = summary
-
-    # Step 4: Append to chat history and query history.
-    if error_message:
-        assistant_content = error_message
-    else:
-        row_limit = st.session_state.row_limit
-        truncated = len(results) >= row_limit
-        row_summary = f"{len(results)} row(s)" + (
-            f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
-            if truncated
-            else ""
-        )
-        retry_notice = (
-            "\n\n⚠️ _SQL was auto-corrected by the AI assistant._"
-            if final_sql != original_sql
-            else ""
-        )
-        assistant_content = (
-            f"**Results:** {row_summary}\n\n" f"**Summary:**\n{summary}" + retry_notice
-        )
-
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_content}
-    )
-
-    if error_message is None:
-        st.session_state.query_history.append(
-            ReportEntry(sql=effective_sql, results=results, analysis=summary)
-        )
-        # Update conversation context for follow-up queries.
-        summary_text = summary if summary else "(no summary)"
-        st.session_state.conversation_context.append(
-            {"user_query": user_input, "sql": effective_sql, "summary": summary_text}
-        )
-        # Keep only the most recent MAX_CONTEXT_TURNS entries.
-        if len(st.session_state.conversation_context) > MAX_CONTEXT_TURNS:
-            st.session_state.conversation_context = (
-                st.session_state.conversation_context[-MAX_CONTEXT_TURNS:]
-            )
 
 
 def render_chat() -> None:

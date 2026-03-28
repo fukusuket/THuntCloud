@@ -63,6 +63,7 @@ pub struct GeoipConfig {
 /// # Thread safety
 /// `GeoipEnricher` is safe to use from a single thread. For parallel use,
 /// wrap in `Arc`.
+#[derive(Debug)]
 pub struct GeoipEnricher {
     city_reader: Option<maxminddb::Reader<Vec<u8>>>,
     country_reader: Option<maxminddb::Reader<Vec<u8>>>,

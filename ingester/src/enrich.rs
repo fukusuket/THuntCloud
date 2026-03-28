@@ -133,56 +133,10 @@ fn count_null_source_ips(conn: &Connection) -> Result<usize> {
 mod tests {
     use super::*;
     use crate::db::{ensure_table, insert_events_with_geo};
-    use crate::geoip::{GeoipConfig, GeoipEnricher};
-    use crate::parser::CloudTrailEvent;
+    use crate::test_util::{
+        event_with_ip, event_with_null_ip, make_enricher, setup_db, temp_db,
+    };
     use duckdb::Connection;
-    use std::path::PathBuf;
-
-    fn temp_db() -> Connection {
-        Connection::open_in_memory().unwrap()
-    }
-
-    fn test_city_db_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb")
-    }
-
-    fn make_enricher() -> GeoipEnricher {
-        GeoipEnricher::open(&GeoipConfig {
-            city_db_path: Some(test_city_db_path()),
-            country_db_path: None,
-            asn_db_path: None,
-        })
-        .expect("should open test mmdb")
-    }
-
-    fn event_with_ip(ip: &str) -> CloudTrailEvent {
-        CloudTrailEvent {
-            event_time: "2024-01-15T10:30:00Z".to_string(),
-            event_name: "DescribeInstances".to_string(),
-            event_source: "ec2.amazonaws.com".to_string(),
-            aws_region: "us-east-1".to_string(),
-            source_ip_address: Some(ip.to_string()),
-            user_agent: None,
-            user_identity_type: None,
-            user_identity_arn: None,
-            user_identity_account_id: None,
-            request_parameters: None,
-            response_elements: None,
-            error_code: None,
-            error_message: None,
-            read_only: None,
-            event_type: None,
-            recipient_account_id: None,
-            raw_json: "{}".to_owned(),
-        }
-    }
-
-    fn event_with_null_ip() -> CloudTrailEvent {
-        let mut e = event_with_ip("dummy");
-        e.source_ip_address = None;
-        e
-    }
 
     // Test E-01: enrich_existing adds geo columns to an existing table.
     #[test]

@@ -65,13 +65,67 @@ pub struct IngestStats {
     pub elapsed_secs: f64,
 }
 
+/// Options controlling the ingestion pipeline.
+///
+/// All fields have sensible defaults — use struct-update syntax to set only
+/// what you need:
+///
+/// ```rust,ignore
+/// let stats = ingest(&path, &conn, IngestOptions {
+///     show_progress: true,
+///     ..Default::default()
+/// })?;
+/// ```
+#[derive(Debug, Default)]
+pub struct IngestOptions<'a> {
+    /// Show a progress bar during ingestion.  Defaults to `false`.
+    pub show_progress: bool,
+    /// Date-range filter applied to CloudTrail log file paths.
+    /// Defaults to no filter (all dates accepted).
+    pub date_filter: DateFilter,
+    /// Glob-pattern filter applied to CloudTrail log file paths.
+    /// Defaults to no filter (all files accepted).
+    pub path_filter: PathFilter,
+    /// Optional GeoIP enricher for source-IP geo-enrichment.
+    /// When `None`, geo columns are stored as `NULL`.
+    pub geoip: Option<&'a GeoipEnricher>,
+}
+
+/// Ingest CloudTrail log files from `path` into `conn` using the given `options`.
+///
+/// This is the **primary entry point** for the ingestion pipeline.
+/// All legacy `ingest_with_*` functions are thin deprecated wrappers over this
+/// function and are retained only for backwards compatibility.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let stats = ingest(&log_dir, &conn, IngestOptions::default())?;
+/// ```
+pub fn ingest(path: &Path, conn: &Connection, options: IngestOptions<'_>) -> Result<IngestStats> {
+    ingest_core(
+        path,
+        conn,
+        options.show_progress,
+        &options.date_filter,
+        &options.path_filter,
+        options.geoip,
+    )
+}
+
 /// Internal implementation that accepts an existing [`Connection`].
 ///
 /// Separated so that tests can pass an in-memory connection without touching
 /// the filesystem for the database file.
 /// The progress bar is always hidden; use [`ingest_with_progress`] when
 /// a visible bar is desired.
+///
+/// # Deprecation
+///
+/// Prefer [`ingest`] with [`IngestOptions`] for new code.
+#[deprecated(since = "0.2.0", note = "Use `ingest()` with `IngestOptions` instead")]
 pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
+    #[allow(deprecated)]
     ingest_with_progress(path, conn, false)
 }
 
@@ -111,6 +165,11 @@ pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)>
 ///
 /// No date or path filter is applied; all CloudTrail files under `path` are
 /// candidates. Use [`ingest_with_filters`] to restrict ingestion.
+///
+/// # Deprecation
+///
+/// Prefer [`ingest`] with [`IngestOptions`] for new code.
+#[deprecated(since = "0.2.0", note = "Use `ingest()` with `IngestOptions` instead")]
 pub fn ingest_with_progress(
     path: &Path,
     conn: &Connection,
@@ -130,6 +189,11 @@ pub fn ingest_with_progress(
 ///
 /// No path-pattern filter is applied. Use [`ingest_with_filters`] when both
 /// date and path filtering are needed.
+///
+/// # Deprecation
+///
+/// Prefer [`ingest`] with [`IngestOptions`] for new code.
+#[deprecated(since = "0.2.0", note = "Use `ingest()` with `IngestOptions` instead")]
 pub fn ingest_with_date_filter(
     path: &Path,
     conn: &Connection,
@@ -154,6 +218,11 @@ pub fn ingest_with_date_filter(
 /// from multiple AWS services (CloudTrail, Config, VPC Flow Logs, …).
 ///
 /// Both filters must pass for a file to be ingested.
+///
+/// # Deprecation
+///
+/// Prefer [`ingest`] with [`IngestOptions`] for new code.
+#[deprecated(since = "0.2.0", note = "Use `ingest()` with `IngestOptions` instead")]
 pub fn ingest_with_filters(
     path: &Path,
     conn: &Connection,
@@ -168,6 +237,11 @@ pub fn ingest_with_filters(
 ///
 /// Identical to [`ingest_with_filters`] except that each event's
 /// `source_ip_address` is enriched via `geoip` and stored in the 7 geo columns.
+///
+/// # Deprecation
+///
+/// Prefer [`ingest`] with [`IngestOptions`] for new code.
+#[deprecated(since = "0.2.0", note = "Use `ingest()` with `IngestOptions` instead")]
 pub fn ingest_with_geoip(
     path: &Path,
     conn: &Connection,
@@ -453,6 +527,7 @@ mod tests {
 
     // Test #14: Ingest one `.json` file into a temp DuckDB; verify row count.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_single_json_file() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -467,6 +542,7 @@ mod tests {
 
     // Test #15: Ingest one `.json.gz` file; verify row count.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_single_gz_file() {
         let tmp = write_gz_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -481,6 +557,7 @@ mod tests {
 
     // Test #16: Ingest a directory with multiple files; verify total row count.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_directory() {
         let dir = TempDir::new().unwrap();
 
@@ -499,6 +576,7 @@ mod tests {
 
     // Test #17: Non-JSON files in the directory are silently skipped.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_skips_non_json_files() {
         let dir = TempDir::new().unwrap();
 
@@ -517,6 +595,7 @@ mod tests {
 
     // Test #18: Ingesting the same file twice does not duplicate records.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_duplicate_prevention() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -539,6 +618,7 @@ mod tests {
 
     // Test #19: The ingest function returns IngestStats with meaningful values.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_returns_stats() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -557,6 +637,7 @@ mod tests {
     // Test #22: ingest_with_progress uses a visible reporter when show_progress=true.
     // The ProgressReporter::new() path is exercised (no panic, correct stats).
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_progress_show_true() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -572,6 +653,7 @@ mod tests {
 
     // Test #23: ingest_with_progress uses a hidden reporter when show_progress=false.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_progress_show_false() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -587,6 +669,7 @@ mod tests {
     // Test #24: Parallel ingestion of 10 files produces correct aggregate stats.
     // This is the primary correctness guard for the parallel implementation.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_parallel_correctness_10_files() {
         let dir = TempDir::new().unwrap();
 
@@ -640,6 +723,7 @@ mod tests {
     // Test #37: Ingest 100 files spanning multiple chunks (PARSE_CHUNK_SIZE=64) correctly.
     // Verifies that chunking does not lose records and aggregate stats are exact.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_chunked_100_files() {
         let dir = TempDir::new().unwrap();
 
@@ -664,6 +748,7 @@ mod tests {
     // Test #38: Batch dedup (in-memory HashMap) prevents re-insertion on a second run.
     // This is the correctness guard for the fetch_ingested_files_map optimisation.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_batch_dedup_prevents_double_insert() {
         let dir = TempDir::new().unwrap();
 
@@ -710,6 +795,7 @@ mod tests {
 
     // Test #27: ingest_with_date_filter processes only files within the date range.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_date_filter_only_processes_files_in_range() {
         use crate::date_filter::DateFilter;
         use chrono::NaiveDate;
@@ -747,6 +833,7 @@ mod tests {
 
     // Test #28: ingest_with_date_filter with no filter processes all files.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_default_filter_processes_all_files() {
         let root = TempDir::new().unwrap();
 
@@ -769,6 +856,7 @@ mod tests {
 
     // Test #29: from-only filter excludes files before `from`.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_from_only_filter_excludes_before_from() {
         use crate::date_filter::DateFilter;
         use chrono::NaiveDate;
@@ -797,6 +885,7 @@ mod tests {
 
     // Test #30: to-only filter excludes files after `to`.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_to_only_filter_excludes_after_to() {
         use crate::date_filter::DateFilter;
         use chrono::NaiveDate;
@@ -825,6 +914,7 @@ mod tests {
 
     // Test #31: files without a date in their path are always included by the filter.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_date_filter_includes_undated_files() {
         use crate::date_filter::DateFilter;
         use chrono::NaiveDate;
@@ -853,6 +943,7 @@ mod tests {
 
     // Test #32: multiple date directories, only the range boundary files match.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_date_filter_boundary_dates_inclusive() {
         use crate::date_filter::DateFilter;
         use chrono::NaiveDate;
@@ -905,6 +996,7 @@ mod tests {
 
     // Test #33: include pattern filters to matching service only.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_filters_include_pattern() {
         use crate::path_filter::PathFilter;
 
@@ -925,6 +1017,7 @@ mod tests {
 
     // Test #34: exclude pattern removes matching service.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_filters_exclude_pattern() {
         use crate::path_filter::PathFilter;
 
@@ -945,6 +1038,7 @@ mod tests {
 
     // Test #35: no path filter + date filter still works correctly.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_filters_default_path_filter_passes_all() {
         use crate::path_filter::PathFilter;
         use chrono::NaiveDate;
@@ -968,6 +1062,7 @@ mod tests {
 
     // Test #36: include multiple services with comma-separated pattern.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_filters_include_multiple_services() {
         use crate::path_filter::PathFilter;
 
@@ -991,6 +1086,7 @@ mod tests {
 
     // Test I-01: ingest_with_geoip populates geo columns for known IPs.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_with_geoip_populates_geo_columns() {
         use crate::geoip::{GeoipConfig, GeoipEnricher};
         use std::path::PathBuf;
@@ -1036,6 +1132,7 @@ mod tests {
 
     // Test I-02: ingest without GeoIP leaves geo columns NULL.
     #[test]
+    #[allow(deprecated)]
     fn test_ingest_without_geoip_geo_columns_are_null() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -1056,16 +1153,10 @@ mod tests {
         );
     }
 
-    // ── Pipeline regression tests ─────────────────────────────────────────
-    //
-    // These tests document the behavioral contract of the pipelined
-    // parse/insert implementation introduced in ingest_core.  They call
-    // the same public API as the pre-pipeline tests so they also act as
-    // regression guards that must keep passing across any future refactor.
-
     // Test P-01: Pipelined ingest of a single file produces the same result
     // as the non-pipelined path (1 file processed, 1 record inserted, 0 errors).
     #[test]
+    #[allow(deprecated)]
     fn test_pipeline_single_file_correctness() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
         let conn = setup_db();
@@ -1082,6 +1173,7 @@ mod tests {
     // Test P-02: Pipelined ingest of more than one chunk (> PARSE_CHUNK_SIZE files)
     // produces exact aggregate stats with no lost records across chunk boundaries.
     #[test]
+    #[allow(deprecated)]
     fn test_pipeline_multi_chunk_correctness() {
         // 130 files spans two full chunks (64 + 64) plus a partial third chunk (2).
         const FILE_COUNT: usize = 130;
@@ -1118,6 +1210,7 @@ mod tests {
     // Test P-03: Pipelined ingest of an empty directory returns zeroed stats
     // with a non-negative elapsed time.
     #[test]
+    #[allow(deprecated)]
     fn test_pipeline_empty_directory_returns_zero_stats() {
         let dir = TempDir::new().unwrap();
         let conn = setup_db();
@@ -1138,6 +1231,7 @@ mod tests {
     // Test P-04: A second pipelined run on the same files inserts nothing
     // (dedup via in-memory HashMap still works through the channel pipeline).
     #[test]
+    #[allow(deprecated)]
     fn test_pipeline_second_run_dedup_works() {
         let dir = TempDir::new().unwrap();
 
@@ -1170,14 +1264,9 @@ mod tests {
         );
     }
 
-    // Test P-06: When a DuckDB insertion error occurs, ingest_with_progress returns
-    // an error and does not panic (progress bar is properly abandoned on the error path).
-    //
-    // This test exercises the code path where `reporter.abandon()` must be called
-    // before `insert_result?` propagates the error.  Before the fix, `reporter.finish()`
-    // was placed AFTER `insert_result?`, so it was never reached on error, leaving the
-    // progress bar in an incomplete visual state.
+    // Test P-06: When a DuckDB insertion error occurs, ingest_with_progress returns an error
     #[test]
+    #[allow(deprecated)]
     fn test_progress_bar_abandoned_on_db_insertion_error() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
 
@@ -1209,6 +1298,7 @@ mod tests {
     // Test P-05: A malformed JSON file in a directory is counted as an error
     // and does not prevent valid files from being inserted.
     #[test]
+    #[allow(deprecated)]
     fn test_pipeline_parse_error_counted_and_other_files_inserted() {
         let dir = TempDir::new().unwrap();
 
@@ -1234,5 +1324,85 @@ mod tests {
             "1 record from valid1 + 3 records from valid2"
         );
         assert_eq!(row_count(&conn), 4, "four rows must be in DB");
+    }
+
+    // ── IngestOptions / ingest() ──────────────────────────────────────────────
+
+    // Test IO-01: ingest() with default IngestOptions processes a JSON file.
+    #[test]
+    fn test_ingest_with_options_default_processes_json_file() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        let stats = ingest(
+            tmp.path(),
+            &conn,
+            IngestOptions {
+                show_progress: false,
+                ..Default::default()
+            },
+        )
+        .expect("ingest() with default options should succeed");
+
+        assert_eq!(stats.files_processed, 1);
+        assert_eq!(stats.records_inserted, 1);
+        assert_eq!(stats.errors, 0);
+    }
+
+    // Test IO-02: ingest() with default IngestOptions processes a directory.
+    #[test]
+    fn test_ingest_with_options_processes_directory() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("a.json"), SINGLE_EVENT_JSON).unwrap();
+        std::fs::write(dir.path().join("b.json"), THREE_EVENT_JSON).unwrap();
+
+        let conn = setup_db();
+        let stats = ingest(dir.path(), &conn, IngestOptions::default())
+            .expect("ingest() with default options should succeed on directory");
+
+        assert_eq!(stats.files_processed, 2);
+        assert_eq!(stats.records_inserted, 4);
+        assert_eq!(stats.errors, 0);
+    }
+
+    // Test IO-03: ingest() with show_progress = true does not error.
+    #[test]
+    fn test_ingest_with_options_show_progress_does_not_error() {
+        let tmp = write_json_file(SINGLE_EVENT_JSON);
+        let conn = setup_db();
+
+        // show_progress = true would normally display a bar; in tests the
+        // output is suppressed by indicatif when not connected to a tty.
+        let stats = ingest(
+            tmp.path(),
+            &conn,
+            IngestOptions {
+                show_progress: true,
+                ..Default::default()
+            },
+        )
+        .expect("ingest() with show_progress=true should not error");
+
+        assert_eq!(stats.records_inserted, 1);
+    }
+
+    // Test IO-04: ingest() result matches ingest_with_conn() result (parity).
+    #[test]
+    fn test_ingest_options_result_matches_ingest_with_conn() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("events.json"), THREE_EVENT_JSON).unwrap();
+
+        let conn_old = setup_db();
+        #[allow(deprecated)]
+        let stats_old =
+            ingest_with_conn(dir.path(), &conn_old).expect("ingest_with_conn should succeed");
+
+        let conn_new = setup_db();
+        let stats_new = ingest(dir.path(), &conn_new, IngestOptions::default())
+            .expect("ingest() should succeed");
+
+        assert_eq!(stats_old.files_processed, stats_new.files_processed);
+        assert_eq!(stats_old.records_inserted, stats_new.records_inserted);
+        assert_eq!(stats_old.errors, stats_new.errors);
     }
 }

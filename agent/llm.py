@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 # Maximum number of prior conversation turns to inject into the SQL generation prompt.
 MAX_CONTEXT_TURNS: int = 5
 
+# Module-level OpenAI client cache keyed by api_key.
+# Avoids creating a new httpx connection pool on every LLM call within a
+# single Streamlit request (generate_sql → fix_sql_with_llm → generate_analysis).
+_client_cache: dict[str, OpenAI] = {}
+
+
+def _clear_client_cache() -> None:
+    """Clear the module-level OpenAI client cache.
+
+    Intended for use in tests only.  Calling this between tests prevents a
+    cached mock client from leaking into subsequent test cases.
+    """
+    _client_cache.clear()
+
 
 def build_system_prompt() -> str:
     """Build the system prompt including the CloudTrail schema description.
@@ -46,19 +60,24 @@ def _strip_markdown_fences(text: str) -> str:
 
 
 def _create_client(api_key: str) -> OpenAI:
-    """Instantiate an OpenAI client with the given API key.
+    """Return a cached OpenAI client for *api_key*, creating one if necessary.
+
+    Caching avoids opening a new httpx connection pool on every LLM call.
+    The cache is keyed solely on *api_key*; the CA bundle (if any) is baked
+    in at first-creation time and stable for the lifetime of the process.
 
     When running behind a corporate proxy that performs TLS inspection,
     set the ``SSL_CERT_FILE`` or ``REQUESTS_CA_BUNDLE`` environment
     variable to point to a CA bundle that includes the proxy's root CA.
-    This function forwards that bundle to the underlying *httpx* client
-    so that certificate verification succeeds.
     """
-    ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
-    if ca_bundle:
-        http_client = httpx.Client(verify=ca_bundle)
-        return OpenAI(api_key=api_key, http_client=http_client)
-    return OpenAI(api_key=api_key)
+    if api_key not in _client_cache:
+        ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
+        if ca_bundle:
+            http_client = httpx.Client(verify=ca_bundle)
+            _client_cache[api_key] = OpenAI(api_key=api_key, http_client=http_client)
+        else:
+            _client_cache[api_key] = OpenAI(api_key=api_key)
+    return _client_cache[api_key]
 
 
 def _build_context_messages(context: list[dict], max_turns: int) -> list[dict]:

@@ -7,7 +7,9 @@ EXPLAIN validation, result limiting, and timeout protection.
 import concurrent.futures
 import logging
 import re
+from contextlib import contextmanager
 from datetime import date
+from typing import Generator
 
 import duckdb
 import pandas as pd
@@ -119,15 +121,20 @@ def apply_row_limit(sql: str, limit: int) -> str:
         SQL string guaranteed to return at most *limit* rows.
     """
     stripped = sql.rstrip().rstrip(";").rstrip()
-    if re.search(r"\bLIMIT\b", stripped, re.IGNORECASE):
-        # Replace the trailing LIMIT N (with optional OFFSET M) in-place so
-        # that CTEs and subqueries are not re-wrapped inside a subquery.
-        return re.sub(
-            r"\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$",
-            f"LIMIT {limit}",
-            stripped,
-            flags=re.IGNORECASE,
-        )
+    # Try to replace a trailing top-level LIMIT clause (with optional OFFSET).
+    # The substitution only succeeds when LIMIT appears at the very end of the
+    # statement (i.e. as a top-level clause, not inside a subquery or CTE).
+    new_sql = re.sub(
+        r"\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$",
+        f"LIMIT {limit}",
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    if new_sql != stripped:
+        # Replacement succeeded — LIMIT was a top-level clause.
+        return new_sql
+    # No top-level LIMIT found (or LIMIT only exists inside a subquery/CTE).
+    # Wrap the whole statement so the cap is always applied.
     return f"SELECT * FROM ({stripped}) AS _limited LIMIT {limit}"
 
 
@@ -141,6 +148,31 @@ def connect_duckdb(path: str) -> duckdb.DuckDBPyConnection:
         A DuckDB connection opened in read-only mode.
     """
     return duckdb.connect(path, read_only=True)
+
+
+@contextmanager
+def duckdb_connection(path: str) -> Generator[duckdb.DuckDBPyConnection, None, None]:
+    """Context manager for a read-only DuckDB connection.
+
+    Ensures the connection is always closed, even when an exception occurs
+    inside the ``with`` block — preventing connection leaks.
+
+    Args:
+        path: Filesystem path to the DuckDB database file.
+
+    Yields:
+        An open read-only DuckDB connection.
+
+    Example::
+
+        with duckdb_connection(db_path) as conn:
+            results = execute_query(conn, sql, row_limit=100)
+    """
+    conn = connect_duckdb(path)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def validate_query(conn: duckdb.DuckDBPyConnection, sql: str) -> None:

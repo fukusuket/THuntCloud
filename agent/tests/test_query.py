@@ -153,6 +153,60 @@ def test_apply_row_limit_strips_trailing_semicolon():
     assert result.count(";") == 0
 
 
+# ---------------------------------------------------------------------------
+# Edge-case tests — patterns the LLM commonly generates (Test #RL-EC1~3)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_row_limit_wraps_when_limit_only_in_subquery():
+    """apply_row_limit wraps the statement when LIMIT exists only inside a subquery.
+
+    Test #RL-EC1: the inner LIMIT must be preserved and an outer LIMIT added.
+    Without this guard, the inner LIMIT would fool the regex into thinking a
+    top-level cap is already present, leaving the outer query uncapped.
+    """
+    sql = (
+        "SELECT * FROM "
+        "(SELECT event_name FROM cloudtrail_events LIMIT 50) sub"
+    )
+    result = apply_row_limit(sql, 100)
+    # The outer LIMIT cap must be present.
+    assert "LIMIT 100" in result.upper()
+    # The inner LIMIT 50 must still be there (subquery not modified).
+    assert "LIMIT 50" in result
+
+
+def test_apply_row_limit_replaces_limit_offset():
+    """apply_row_limit replaces LIMIT N OFFSET M with LIMIT cap (OFFSET dropped).
+
+    Test #RL-EC2: OFFSET is discarded because the row-limit cap is a hard
+    safety ceiling, not a pagination directive.
+    """
+    sql = "SELECT * FROM cloudtrail_events ORDER BY event_time LIMIT 5 OFFSET 10"
+    result = apply_row_limit(sql, 100)
+    assert result.upper().endswith("LIMIT 100")
+    # LIMIT 5 and OFFSET must no longer appear at the top level.
+    assert "LIMIT 5" not in result
+    assert "OFFSET" not in result.upper()
+
+
+def test_apply_row_limit_replaces_cte_trailing_limit():
+    """apply_row_limit replaces the trailing LIMIT of a CTE query in-place.
+
+    Test #RL-EC3: the WITH clause must not be wrapped in an outer subquery —
+    DuckDB does not allow CTEs inside a derived-table FROM clause.
+    """
+    sql = (
+        "WITH cte AS (SELECT * FROM cloudtrail_events) "
+        "SELECT * FROM cte LIMIT 10"
+    )
+    result = apply_row_limit(sql, 200)
+    # Must replace in-place, not wrap.
+    assert result.upper().endswith("LIMIT 200")
+    assert "WITH" in result.upper()
+    assert "LIMIT 10" not in result
+
+
 def test_execute_query_truncates_to_custom_row_limit(tmp_duckdb):
     """execute_query returns at most row_limit rows (custom limit < total rows)."""
     conn = connect_duckdb(tmp_duckdb)

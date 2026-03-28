@@ -4,6 +4,20 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
+@pytest.fixture(autouse=True)
+def clear_llm_client_cache():
+    """Clear the OpenAI client cache before and after every test.
+
+    Prevents a cached mock (or real) client from leaking between test cases
+    when tests call functions that invoke ``_create_client``.
+    """
+    import llm
+
+    llm._clear_client_cache()
+    yield
+    llm._clear_client_cache()
+
+
 class MockSessionState(dict):
     """Dict subclass that supports attribute-style access.
 
@@ -74,14 +88,14 @@ def tmp_duckdb(tmp_path):
             user_identity_type       VARCHAR,
             user_identity_arn        VARCHAR,
             user_identity_account_id VARCHAR,
-            request_parameters       JSON,
-            response_elements        JSON,
+            request_parameters       VARCHAR,
+            response_elements        VARCHAR,
             error_code               VARCHAR,
             error_message            VARCHAR,
             read_only                BOOLEAN,
             event_type               VARCHAR,
             recipient_account_id     VARCHAR,
-            raw_event                JSON,
+            raw_event                VARCHAR,
             geo_country_code         VARCHAR,
             geo_country_name         VARCHAR,
             geo_city                 VARCHAR,

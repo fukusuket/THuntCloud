@@ -69,6 +69,50 @@ pub fn ensure_geo_columns(conn: &Connection) -> Result<()> {
     .context("Failed to add geo columns to cloudtrail_events")
 }
 
+/// Append a single [`CloudTrailEvent`] row (with pre-resolved [`GeoInfo`]) to an open
+/// [`Appender`].
+///
+/// This is the single source of truth for the 24-column row layout.
+/// Both [`insert_events_with_geo`] and any future bulk-append callers must use
+/// this helper so that schema changes only need to be made in one place.
+fn append_event_row(
+    appender: &mut Appender<'_>,
+    event: &CloudTrailEvent,
+    geo: &GeoInfo,
+) -> Result<()> {
+    // All JSON fields are pre-computed strings on CloudTrailEvent —
+    // no serde_json serialisation occurs in this hot path.
+    let params: Vec<&dyn ToSql> = vec![
+        &event.event_time,               // event_time               TIMESTAMP
+        &event.event_name,               // event_name               VARCHAR
+        &event.event_source,             // event_source             VARCHAR
+        &event.aws_region,               // aws_region               VARCHAR
+        &event.source_ip_address,        // source_ip_address        VARCHAR (Option)
+        &event.user_agent,               // user_agent               VARCHAR (Option)
+        &event.user_identity.identity_type, // user_identity_type       VARCHAR (Option)
+        &event.user_identity.arn,            // user_identity_arn        VARCHAR (Option)
+        &event.user_identity.account_id,     // user_identity_account_id VARCHAR (Option)
+        &event.request_parameters,       // request_parameters       VARCHAR (Option<String>)
+        &event.response_elements,        // response_elements        VARCHAR (Option<String>)
+        &event.error_code,               // error_code               VARCHAR (Option)
+        &event.error_message,            // error_message            VARCHAR (Option)
+        &event.read_only,                // read_only                BOOLEAN (Option)
+        &event.event_type,               // event_type               VARCHAR (Option)
+        &event.recipient_account_id,     // recipient_account_id     VARCHAR (Option)
+        &event.raw_json,                 // raw_event                VARCHAR (original JSON)
+        &geo.country_code,               // geo_country_code         VARCHAR (Option)
+        &geo.country_name,               // geo_country_name         VARCHAR (Option)
+        &geo.city,                       // geo_city                 VARCHAR (Option)
+        &geo.latitude,                   // geo_latitude             DOUBLE  (Option)
+        &geo.longitude,                  // geo_longitude            DOUBLE  (Option)
+        &geo.asn,                        // geo_asn                  VARCHAR (Option)
+        &geo.org,                        // geo_org                  VARCHAR (Option)
+    ];
+    appender
+        .append_row(params.as_slice())
+        .context("Failed to append event row")
+}
+
 /// Insert a slice of [`CloudTrailEvent`]s with optional GeoIP enrichment.
 ///
 /// Uses [`duckdb::Appender`] for high-throughput batch inserts.
@@ -98,97 +142,11 @@ pub fn insert_events_with_geo(
             (Some(enricher), Some(ip)) => enricher.lookup(ip),
             _ => GeoInfo::all_none(),
         };
-
-        // All JSON fields are pre-computed strings on CloudTrailEvent —
-        // no serde_json serialisation occurs in this hot path.
-        let params: Vec<&dyn ToSql> = vec![
-            &event.event_time,               // event_time               TIMESTAMP
-            &event.event_name,               // event_name               VARCHAR
-            &event.event_source,             // event_source             VARCHAR
-            &event.aws_region,               // aws_region               VARCHAR
-            &event.source_ip_address,        // source_ip_address        VARCHAR (Option)
-            &event.user_agent,               // user_agent               VARCHAR (Option)
-            &event.user_identity_type,       // user_identity_type       VARCHAR (Option)
-            &event.user_identity_arn,        // user_identity_arn        VARCHAR (Option)
-            &event.user_identity_account_id, // user_identity_account_id VARCHAR (Option)
-            &event.request_parameters,       // request_parameters       VARCHAR (Option<String>)
-            &event.response_elements,        // response_elements        VARCHAR (Option<String>)
-            &event.error_code,               // error_code               VARCHAR (Option)
-            &event.error_message,            // error_message            VARCHAR (Option)
-            &event.read_only,                // read_only                BOOLEAN (Option)
-            &event.event_type,               // event_type               VARCHAR (Option)
-            &event.recipient_account_id,     // recipient_account_id     VARCHAR (Option)
-            &event.raw_json,                 // raw_event                VARCHAR (original JSON)
-            &geo.country_code,               // geo_country_code         VARCHAR (Option)
-            &geo.country_name,               // geo_country_name         VARCHAR (Option)
-            &geo.city,                       // geo_city                 VARCHAR (Option)
-            &geo.latitude,                   // geo_latitude             DOUBLE  (Option)
-            &geo.longitude,                  // geo_longitude            DOUBLE  (Option)
-            &geo.asn,                        // geo_asn                  VARCHAR (Option)
-            &geo.org,                        // geo_org                  VARCHAR (Option)
-        ];
-
-        appender
-            .append_row(params.as_slice())
-            .context("Failed to append event row")?;
+        append_event_row(&mut appender, event, &geo)?;
     }
 
     appender.flush().context("Failed to flush appender")?;
     Ok(events.len())
-}
-
-/// Append events to an already-open [`Appender`] without flushing.
-///
-/// Unlike [`insert_events_with_geo`], this function does **not** create or
-/// flush the appender, enabling callers to share one appender across many
-/// files in a chunk and flush once at the end — reducing per-file Appender
-/// create/flush overhead from N to 1 per chunk.
-///
-/// The caller is responsible for calling `appender.flush()` after all events
-/// for the chunk have been appended.
-pub fn append_events_with_geo(
-    appender: &mut Appender<'_>,
-    events: &[CloudTrailEvent],
-    geoip: Option<&GeoipEnricher>,
-) -> Result<()> {
-    for event in events {
-        let geo: GeoInfo = match (geoip, &event.source_ip_address) {
-            (Some(enricher), Some(ip)) => enricher.lookup(ip),
-            _ => GeoInfo::all_none(),
-        };
-
-        let params: Vec<&dyn ToSql> = vec![
-            &event.event_time,
-            &event.event_name,
-            &event.event_source,
-            &event.aws_region,
-            &event.source_ip_address,
-            &event.user_agent,
-            &event.user_identity_type,
-            &event.user_identity_arn,
-            &event.user_identity_account_id,
-            &event.request_parameters,
-            &event.response_elements,
-            &event.error_code,
-            &event.error_message,
-            &event.read_only,
-            &event.event_type,
-            &event.recipient_account_id,
-            &event.raw_json,
-            &geo.country_code,
-            &geo.country_name,
-            &geo.city,
-            &geo.latitude,
-            &geo.longitude,
-            &geo.asn,
-            &geo.org,
-        ];
-
-        appender
-            .append_row(params.as_slice())
-            .context("Failed to append event row")?;
-    }
-    Ok(())
 }
 
 /// Record a batch of ingested files in a single Appender flush.
@@ -250,60 +208,7 @@ pub fn fetch_ingested_files_map(conn: &Connection) -> Result<HashMap<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::CloudTrailEvent;
-
-    /// Open an in-memory DuckDB connection for testing.
-    fn temp_db() -> Connection {
-        Connection::open_in_memory().unwrap()
-    }
-
-    /// Build a minimal [`CloudTrailEvent`] with all required fields set and
-    /// all optional fields set to `None`.
-    fn minimal_event() -> CloudTrailEvent {
-        CloudTrailEvent {
-            event_time: "2024-01-15T10:30:00Z".to_string(),
-            event_name: "DescribeInstances".to_string(),
-            event_source: "ec2.amazonaws.com".to_string(),
-            aws_region: "us-east-1".to_string(),
-            source_ip_address: None,
-            user_agent: None,
-            user_identity_type: None,
-            user_identity_arn: None,
-            user_identity_account_id: None,
-            request_parameters: None,
-            response_elements: None,
-            error_code: None,
-            error_message: None,
-            read_only: None,
-            event_type: None,
-            recipient_account_id: None,
-            raw_json: "{}".to_owned(),
-        }
-    }
-
-    /// Build a fully-populated [`CloudTrailEvent`] with all optional fields set.
-    fn full_event() -> CloudTrailEvent {
-        CloudTrailEvent {
-            event_time: "2024-01-15T10:30:00Z".to_string(),
-            event_name: "DescribeInstances".to_string(),
-            event_source: "ec2.amazonaws.com".to_string(),
-            aws_region: "us-east-1".to_string(),
-            source_ip_address: Some("198.51.100.1".to_string()),
-            user_agent: Some("aws-cli/2.0".to_string()),
-            user_identity_type: Some("IAMUser".to_string()),
-            user_identity_arn: Some("arn:aws:iam::123456789012:user/testuser".to_string()),
-            user_identity_account_id: Some("123456789012".to_string()),
-            request_parameters: Some(r#"{"key":"value"}"#.to_owned()),
-            response_elements: Some(r#"{"result":"ok"}"#.to_owned()),
-            error_code: None,
-            error_message: None,
-            read_only: Some(true),
-            event_type: Some("AwsApiCall".to_string()),
-            recipient_account_id: Some("123456789012".to_string()),
-            raw_json: r#"{"eventTime":"2024-01-15T10:30:00Z","eventName":"DescribeInstances"}"#
-                .to_owned(),
-        }
-    }
+    use crate::test_util::{full_event, make_enricher, minimal_event, setup_db, temp_db};
 
     // Test #9: `ensure_table()` creates the `cloudtrail_events` table in a temp DuckDB.
     #[test]
@@ -441,18 +346,7 @@ mod tests {
     // Test D-03: insert_events_with_geo stores geo data when GeoInfo is provided.
     #[test]
     fn test_insert_events_with_geo_populates_columns() {
-        use crate::geoip::GeoipConfig;
-        use crate::geoip::GeoipEnricher;
-        use std::path::PathBuf;
-
-        let city_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb");
-        let config = GeoipConfig {
-            city_db_path: Some(city_db),
-            country_db_path: None,
-            asn_db_path: None,
-        };
-        let enricher = GeoipEnricher::open(&config).expect("should open test mmdb");
+        let enricher = make_enricher();
 
         let conn = temp_db();
         ensure_table(&conn).unwrap();
@@ -508,18 +402,7 @@ mod tests {
     // Test D-05: Private IPs are stored with the "PRIVATE" marker.
     #[test]
     fn test_insert_events_private_ip_stores_marker() {
-        use crate::geoip::GeoipConfig;
-        use crate::geoip::GeoipEnricher;
-        use std::path::PathBuf;
-
-        let city_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/geoip/GeoLite2-City-Test.mmdb");
-        let config = GeoipConfig {
-            city_db_path: Some(city_db),
-            country_db_path: None,
-            asn_db_path: None,
-        };
-        let enricher = GeoipEnricher::open(&config).expect("should open test mmdb");
+        let enricher = make_enricher();
 
         let conn = temp_db();
         ensure_table(&conn).unwrap();

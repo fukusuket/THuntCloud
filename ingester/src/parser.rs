@@ -90,6 +90,20 @@ struct CloudTrailLogRaw {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+/// Pre-extracted fields from the `userIdentity` sub-object of a CloudTrail event.
+///
+/// Grouping these three columns into their own struct improves readability and
+/// makes it clear they share a common origin.
+#[derive(Debug, Clone, Default)]
+pub struct UserIdentity {
+    /// Value of `userIdentity.type`.
+    pub identity_type: Option<String>,
+    /// Value of `userIdentity.arn`.
+    pub arn: Option<String>,
+    /// Value of `userIdentity.accountId`.
+    pub account_id: Option<String>,
+}
+
 /// A single CloudTrail event record.
 ///
 /// ### Performance notes
@@ -100,8 +114,8 @@ struct CloudTrailLogRaw {
 /// - `request_parameters` / `response_elements`: raw JSON strings captured
 ///   during parsing.  Written directly to the DB — eliminates
 ///   `serde_json::Value::to_string()` at insert time.
-/// - `user_identity_type` / `_arn` / `_account_id`: pre-extracted during
-///   parsing — eliminates `serde_json::Value` tree traversal at insert time.
+/// - `user_identity`: pre-extracted during parsing — eliminates
+///   `serde_json::Value` tree traversal at insert time.
 #[derive(Debug, Clone)]
 pub struct CloudTrailEvent {
     pub event_time: String,
@@ -110,12 +124,8 @@ pub struct CloudTrailEvent {
     pub aws_region: String,
     pub source_ip_address: Option<String>,
     pub user_agent: Option<String>,
-    /// Pre-extracted from `userIdentity.type`.
-    pub user_identity_type: Option<String>,
-    /// Pre-extracted from `userIdentity.arn`.
-    pub user_identity_arn: Option<String>,
-    /// Pre-extracted from `userIdentity.accountId`.
-    pub user_identity_account_id: Option<String>,
+    /// Pre-extracted from the `userIdentity` sub-object.
+    pub user_identity: UserIdentity,
     /// Raw JSON string of the original `requestParameters` object.
     pub request_parameters: Option<String>,
     /// Raw JSON string of the original `responseElements` object.
@@ -171,9 +181,11 @@ pub fn parse_cloudtrail_log(json: &str) -> Result<CloudTrailLog> {
             aws_region: ev.aws_region.unwrap_or_default(),
             source_ip_address: ev.source_ip_address,
             user_agent: ev.user_agent,
-            user_identity_type: ui_type,
-            user_identity_arn: ui_arn,
-            user_identity_account_id: ui_account_id,
+            user_identity: UserIdentity {
+                identity_type: ui_type,
+                arn: ui_arn,
+                account_id: ui_account_id,
+            },
             // `RawValue::get()` yields a &str pointing into the record's raw
             // bytes; `.to_owned()` copies them into an owned String — much
             // cheaper than serialising a `serde_json::Value` tree.
@@ -267,9 +279,9 @@ mod tests {
         assert!(event.source_ip_address.is_none());
         assert!(event.user_agent.is_none());
         // userIdentity sub-fields are pre-extracted; all should be None here.
-        assert!(event.user_identity_type.is_none());
-        assert!(event.user_identity_arn.is_none());
-        assert!(event.user_identity_account_id.is_none());
+        assert!(event.user_identity.identity_type.is_none());
+        assert!(event.user_identity.arn.is_none());
+        assert!(event.user_identity.account_id.is_none());
         assert!(event.request_parameters.is_none());
         assert!(event.response_elements.is_none());
         assert!(event.error_code.is_none());
