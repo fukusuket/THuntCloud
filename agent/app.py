@@ -6,25 +6,21 @@ AWS CloudTrail logs stored in DuckDB.
 
 import json
 import logging
-import os
 from datetime import date
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 import yaml
 
 from config import get_duckdb_path
 from handlers import _analyze_current_results, _handle_direct_sql, _handle_user_query
-from llm import MAX_CONTEXT_TURNS, generate_analysis, generate_sql
+from llm import generate_analysis
 from query import (
     DEFAULT_ROW_LIMIT,
     QueryValidationError,
-    apply_date_filter,
     apply_row_limit,
-    duckdb_connection,
+    connect_duckdb,
     execute_query,
-    execute_with_retry,
 )
 from report import ReportEntry, generate_report
 
