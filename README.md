@@ -172,18 +172,6 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard a
 
 ---
 
-## CI
-
-The CI pipeline runs on every push / pull request to `main` and `develop`.
-
-| Job | Checks |
-|-----|--------|
-| `ingester (Rust)` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --all` |
-| `agent (Python)` | `black --check`, `ruff check`, `pytest -v` |
-| `dashboard YAML validation` | All dashboard YAML files are well-formed; ZIP contains required files |
-
----
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
