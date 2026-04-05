@@ -21,11 +21,11 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ### AI Agent (Streamlit UI)
 
-<img src="doc/img2.png" width="800" alt="AI Agent UI">
+<img src="doc/img1.png" width="800" alt="AI Agent UI">
 
 ### Dashboard (Apache Superset)
 
-<img src="doc/img1.png" width="800" alt="Superset Dashboard">
+<img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
 ---
 
