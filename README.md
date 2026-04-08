@@ -20,9 +20,9 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ## Screenshots
 
-### AI Agent (Streamlit UI)
+### AI Chat (Streamlit UI) and Built-in Queries
 
-<img src="doc/img1.png" width="800" alt="AI Agent UI">
+<img src="doc/img1.png" width="800" alt="AI Chat UI">
 
 ### Dashboard (Apache Superset)
 
@@ -42,7 +42,7 @@ Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/
 │  │   ingester   │   │    agent     │  │  dashboard  │   │
 │  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
 │  │              │   │              │  │             │   │
-│  │ CloudTrail   │   │  AI-Agent    │  │  Visualize  │   │
+│  │ CloudTrail   │   │   AI Chat    │  │  Visualize  │   │
 │  │ gz ingest    │   │ SQL gen/exec │  │             │   │
 │  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
 │  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
@@ -66,7 +66,7 @@ sequenceDiagram
     participant OPS  as Operator
     participant ING  as ingester (Rust)
     participant DB   as DuckDB (bind mount)
-    participant APP  as agent / Streamlit
+    participant APP  as chat / Streamlit
     participant OAI  as OpenAI API
     participant SS   as dashboard / Superset
     participant U    as Analyst (Browser)
@@ -85,7 +85,7 @@ sequenceDiagram
     APP->>DB: open READ_ONLY connection
     SS->>DB: open READ_ONLY connection
 
-    Note over U,OAI: Phase 3 — AI-assisted hunting (agent)
+    Note over U,OAI: Phase 3 — AI-assisted hunting (chat)
     U->>APP: natural language question
     APP->>OAI: generate_sql(question, schema, history)
     OAI-->>APP: SQL string
@@ -135,7 +135,7 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
-Open http://localhost:8501 (Agent) or http://localhost:8088 (Dashboard, `admin`/`admin`).
+Open http://localhost:8501 (AI Chat) or http://localhost:8088 (Dashboard, `admin`/`admin`).
 
 #### With GeoIP enrichment (optional)
 
@@ -167,7 +167,7 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard a
 | Module | Language | Role | README |
 |--------|----------|------|--------|
 | `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
-| `agent` | Python 3.12+ / Streamlit | AI-assisted threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
+| `agent` | Python 3.12+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
 
 ---
