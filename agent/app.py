@@ -13,15 +13,14 @@ import streamlit as st
 import yaml
 
 from config import get_duckdb_path
-from handlers import _analyze_current_results, _handle_direct_sql, _handle_user_query
-from llm import MAX_CONTEXT_TURNS, generate_analysis  # noqa: F401
-from query import (
-    DEFAULT_ROW_LIMIT,
-    QueryValidationError,
-    apply_row_limit,
-    connect_duckdb,
-    execute_query,
+from handlers import (
+    _analyze_current_results,
+    _handle_direct_sql,
+    _handle_edit_rerun_sql,
+    _handle_user_query,
 )
+from llm import MAX_CONTEXT_TURNS  # noqa: F401
+from query import DEFAULT_ROW_LIMIT
 from report import ReportEntry, generate_report
 
 logger = logging.getLogger(__name__)
@@ -383,69 +382,8 @@ def render_chat() -> None:
                 label_visibility="collapsed",
             )
             if st.button("▶ Run Edited SQL"):
-                api_key = st.session_state.api_key
-                if not api_key:
-                    st.warning("Enter your API key in the sidebar first.")
-                else:
-                    try:
-                        conn = connect_duckdb(db_path)
-                        results = execute_query(
-                            conn,
-                            edited_sql,
-                            row_limit=st.session_state.row_limit,
-                        )
-                        conn.close()
-                        # Store the effective SQL (row_limit applied) in last_sql.
-                        effective_edited_sql = apply_row_limit(
-                            edited_sql, st.session_state.row_limit
-                        )
-                        st.session_state.last_sql = effective_edited_sql
-                        st.session_state.last_results = results
-
-                        row_count = len(results)
-                        row_limit = st.session_state.row_limit
-                        truncated = row_count >= row_limit
-
-                        with st.spinner("📋 Summarising results…"):
-                            summary = generate_analysis(
-                                effective_edited_sql,
-                                results,
-                                api_key=api_key,
-                                model=st.session_state.model,
-                            )
-                        st.session_state.last_summary = summary
-                        st.session_state.messages.append(
-                            {
-                                "role": "assistant",
-                                "content": (
-                                    f"**Re-run SQL executed.** "
-                                    f"**Results:** {row_count} row(s)"
-                                    + (
-                                        f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
-                                        if truncated
-                                        else ""
-                                    )
-                                    + f"\n\n**Summary:**\n{summary}"
-                                ),
-                            }
-                        )
-                        # Summary is in the message above; clear so it does not
-                        # also appear in the dedicated analysis section.
-                        st.session_state.last_summary = ""
-                        st.session_state.query_history.append(
-                            ReportEntry(
-                                sql=effective_edited_sql,
-                                results=results,
-                                analysis=summary,
-                            )
-                        )
-                        st.rerun()
-                    except (
-                        QueryValidationError,
-                        TimeoutError,
-                        Exception,
-                    ) as exc:  # noqa: BLE001
-                        st.error(f"Error: {exc}")
+                _handle_edit_rerun_sql(edited_sql, db_path)
+                st.rerun()
 
     # ---- Query results history (all entries accumulated, AGT-04) ----
     # Every executed query is appended here; nothing is overwritten.

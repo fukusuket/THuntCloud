@@ -90,6 +90,78 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
         )
 
 
+def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
+    """Execute a manually edited SQL query, with optional AI analysis.
+
+    Runs the edited SQL against the DuckDB database in read-only mode without
+    requiring an API key.  When an API key is present an AI summary is generated;
+    otherwise the query executes and returns results immediately.
+
+    The DuckDB connection is opened inside a ``duckdb_connection`` context
+    manager so it is always closed, even when an exception occurs.
+
+    Args:
+        sql:     The edited SQL query string from the SQL editor text area.
+        db_path: Path to the DuckDB database file.
+    """
+    api_key = st.session_state.api_key
+    model = st.session_state.model
+    row_limit = st.session_state.row_limit
+    effective_sql = apply_row_limit(sql, row_limit)
+
+    results = pd.DataFrame()
+    error_message: str | None = None
+
+    with st.spinner("▶ Running SQL…"):
+        try:
+            with duckdb_connection(db_path) as conn:
+                results = execute_query(conn, sql, row_limit=row_limit)
+        except QueryValidationError as exc:
+            error_message = f"🚫 SQL validation error: {exc}"
+        except TimeoutError:
+            error_message = "⏱ Query timed out (30 s limit exceeded)."
+        except Exception as exc:  # noqa: BLE001
+            error_message = f"❌ Query execution error: {exc}"
+
+    st.session_state.last_sql = effective_sql
+    st.session_state.last_results = results if error_message is None else None
+
+    if error_message:
+        st.session_state.last_summary = ""
+        st.session_state.messages.append(
+            {"role": "assistant", "content": error_message}
+        )
+        return
+
+    row_count = len(results)
+    truncated = row_count >= row_limit
+    row_info = f"{row_count} row(s)" + (
+        f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
+        if truncated
+        else ""
+    )
+
+    summary = ""
+    if api_key:
+        with st.spinner("📋 Summarising results…"):
+            summary = generate_analysis(
+                effective_sql, results, api_key=api_key, model=model
+            )
+
+    # Clear last_summary — the summary is embedded in the assistant message below.
+    st.session_state.last_summary = ""
+
+    assistant_content = f"**Re-run SQL executed.** **Results:** {row_info}" + (
+        f"\n\n**Summary:**\n{summary}" if summary else ""
+    )
+    st.session_state.messages.append(
+        {"role": "assistant", "content": assistant_content}
+    )
+    st.session_state.query_history.append(
+        ReportEntry(sql=effective_sql, results=results, analysis=summary)
+    )
+
+
 def _analyze_current_results() -> None:
     """Analyze the current query results using AI and append the analysis to chat.
 

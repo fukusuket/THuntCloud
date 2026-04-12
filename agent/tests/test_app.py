@@ -896,6 +896,149 @@ def test_handle_user_query_uses_session_row_limit(tmp_duckdb):
     assert mock_retry.call_args.kwargs.get("row_limit") == 200
 
 
+# ---------------------------------------------------------------------------
+# Tests #RERUN — Edit & Re-run SQL without API key
+# ---------------------------------------------------------------------------
+
+
+def test_handle_edit_rerun_sql_no_api_key_executes_sql(tmp_duckdb):
+    """Edit & Re-run SQL must execute successfully even when no API key is configured.
+
+    Test #RERUN-1: generate_analysis must NOT be called, results and query_history
+    must be populated, and one assistant message must be appended.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = (
+        "SELECT event_time, event_name, aws_region "
+        "FROM cloudtrail_events ORDER BY event_time DESC LIMIT 10"
+    )
+
+    mock_state = MockSessionState(
+        api_key="",  # no API key
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql=sql,
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("handlers.generate_analysis") as mock_gen_analysis,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_edit_rerun_sql
+
+        _handle_edit_rerun_sql(sql, tmp_duckdb)
+
+    # generate_analysis must NOT be called when no API key is present
+    mock_gen_analysis.assert_not_called()
+    # Results must be populated
+    assert mock_state["last_results"] is not None
+    assert len(mock_state["last_results"]) == 3  # 3 rows in conftest fixture
+    # One assistant message must be appended
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0]["role"] == "assistant"
+    # Query history must be updated
+    assert len(mock_state["query_history"]) == 1
+    # Summary must be empty (no analysis without API key)
+    assert mock_state["query_history"][0].analysis == ""
+
+
+def test_handle_edit_rerun_sql_with_api_key_calls_generate_analysis(tmp_duckdb):
+    """Edit & Re-run SQL must call generate_analysis when an API key is present.
+
+    Test #RERUN-2: analysis must be stored in the assistant message and query_history.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql=sql,
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("handlers.generate_analysis", return_value="AI summary here") as mock_gen,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_edit_rerun_sql
+
+        _handle_edit_rerun_sql(sql, tmp_duckdb)
+
+    # generate_analysis must be called with API key present
+    mock_gen.assert_called_once()
+    # Summary must appear in the assistant message
+    assert "AI summary here" in mock_state["messages"][0]["content"]
+    # Summary must be stored in query_history
+    assert mock_state["query_history"][0].analysis == "AI summary here"
+
+
+def test_handle_edit_rerun_sql_error_appends_error_message(tmp_duckdb):
+    """Edit & Re-run SQL must append an error message on query failure.
+
+    Test #RERUN-3: verifies graceful error handling — no results in query_history.
+    """
+    from tests.conftest import MockSessionState
+
+    bad_sql = "SELECT * FROM nonexistent_table"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql=bad_sql,
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_edit_rerun_sql
+
+        _handle_edit_rerun_sql(bad_sql, tmp_duckdb)
+
+    # An error message must be appended
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0]["role"] == "assistant"
+    assert (
+        "error" in mock_state["messages"][0]["content"].lower()
+        or "validation" in mock_state["messages"][0]["content"].lower()
+    )
+    # No entry must be added to query_history on failure
+    assert len(mock_state["query_history"]) == 0
+
+
 def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     """Direct SQL truncation notice uses st.session_state.row_limit, not DEFAULT_ROW_LIMIT.
 
