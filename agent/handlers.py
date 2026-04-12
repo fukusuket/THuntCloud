@@ -148,12 +148,10 @@ def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
                 effective_sql, results, api_key=api_key, model=model
             )
 
-    # Clear last_summary — the summary is embedded in the assistant message below.
+    # Clear last_summary — the analysis is shown in the AI Analysis section via query_history.
     st.session_state.last_summary = ""
 
-    assistant_content = f"**Re-run SQL executed.** **Results:** {row_info}" + (
-        f"\n\n**Summary:**\n{summary}" if summary else ""
-    )
+    assistant_content = f"**Re-run SQL executed.** **Results:** {row_info}"
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_content}
     )
@@ -271,14 +269,15 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
 
     st.session_state.last_results = results if error_message is None else None
 
-    # Step 3: Generate fact-based summary (AGT-05)
+    # Step 3: Generate fact-based analysis (AGT-05) — stored in query_history only.
     summary = ""
     if error_message is None:
         with st.spinner("📋 Summarising results…"):
             summary = generate_analysis(
                 effective_sql, results, api_key=api_key, model=model
             )
-    st.session_state.last_summary = summary
+    # Clear last_summary — the analysis is displayed via query_history in the AI Analysis section.
+    st.session_state.last_summary = ""
 
     # Step 4: Append to chat history and query history.
     if error_message:
@@ -296,9 +295,7 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
             if final_sql != original_sql
             else ""
         )
-        assistant_content = (
-            f"**Results:** {row_summary}\n\n" f"**Summary:**\n{summary}" + retry_notice
-        )
+        assistant_content = f"**Results:** {row_summary}" + retry_notice
 
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_content}

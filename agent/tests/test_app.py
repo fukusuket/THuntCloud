@@ -746,6 +746,56 @@ def test_handle_user_query_uses_execute_with_retry(tmp_duckdb):
     mock_retry.assert_called_once()
 
 
+def test_handle_user_query_message_does_not_contain_summary(tmp_duckdb):
+    """_handle_user_query() must NOT include the AI analysis in the chat message.
+
+    Test #DUPL-1: the analysis is shown only in the 'AI Analysis' section of the
+    query results history, not duplicated as 'Summary:' in the assistant message.
+    The analysis must still be stored in query_history[-1].analysis.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)),
+        patch("handlers.generate_analysis", return_value="AI analysis text"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import _handle_user_query
+
+        _handle_user_query("Show me events", tmp_duckdb)
+
+    content = mock_state["messages"][0]["content"]
+    # Analysis must NOT appear in the chat message
+    assert "AI analysis text" not in content
+    assert "Summary:" not in content
+    # Analysis must still be stored in query_history for the AI Analysis section
+    assert mock_state["query_history"][0].analysis == "AI analysis text"
+    # last_summary must be cleared (analysis is shown via query_history)
+    assert mock_state["last_summary"] == ""
+
+
 def test_handle_user_query_shows_retry_notice_in_chat(tmp_duckdb):
     """When SQL is auto-corrected, the assistant message contains a retry notice.
 
@@ -989,9 +1039,10 @@ def test_handle_edit_rerun_sql_with_api_key_calls_generate_analysis(tmp_duckdb):
 
     # generate_analysis must be called with API key present
     mock_gen.assert_called_once()
-    # Summary must appear in the assistant message
-    assert "AI summary here" in mock_state["messages"][0]["content"]
-    # Summary must be stored in query_history
+    # Summary must NOT appear in the assistant chat message (shown only in AI Analysis section)
+    assert "AI summary here" not in mock_state["messages"][0]["content"]
+    assert "Summary:" not in mock_state["messages"][0]["content"]
+    # Analysis must be stored in query_history to be shown in the AI Analysis section
     assert mock_state["query_history"][0].analysis == "AI summary here"
 
 
