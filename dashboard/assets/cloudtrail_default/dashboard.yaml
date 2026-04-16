@@ -805,6 +805,56 @@ metadata:
       description: "Filter to write-only (false) or read-only (true) operations."
       chartsInScope: []
       tabsInScope: []
+    - id: NATIVE_FILTER-user-agent
+      name: "User Agent  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_agent
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Include only the selected User-Agent strings."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-user-agent-not
+      name: "User Agent  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_agent
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected User-Agent strings (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
   charts:
     - slice_name: CloudTrail Events Over Time
       viz_type: echarts_timeseries_bar
