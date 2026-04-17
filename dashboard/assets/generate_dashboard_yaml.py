@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate dashboard.yaml — 4-tab layout with 30 charts and 12 native filters.
+"""Regenerate dashboard.yaml — 5-tab layout with 37 charts and 14 native filters.
 
 Run from the project root:
     python3 dashboard/assets/generate_dashboard_yaml.py
@@ -14,20 +14,21 @@ DEST = os.path.join(
 
 CONTENT = """\
 # CloudTrail Threat Hunting — Dashboard Definition (v2)
-# 4-tab layout: Identity & Access | Threat Detection |
-# Data & Infrastructure | GeoIP Intelligence.
-# 30 charts total (18 original + 12 new DSH-19 to DSH-30).
+# 5-tab layout: Identity & Access | Threat Detection |
+# Data & Infrastructure | GeoIP Intelligence | Temporal Analysis.
+# 37 charts total (30 original + 7 new DSH-31 to DSH-38, excluding DSH-36).
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
 dashboard_title: CloudTrail Threat Hunting
 description: >
   Pre-built threat hunting dashboard for AWS CloudTrail logs stored in DuckDB.
-  4-tab layout: Identity & Access | Threat Detection | Data & Infrastructure |
-  GeoIP Intelligence.  Covers event volume trends, Read/Write ratio, top API
-  calls, IAM entity activity, error patterns, defense evasion, privilege
-  escalation timelines, secrets access anomalies, SSRF/IMDS detection, DNS
-  exfiltration, and geographic source analysis.
+  5-tab layout: Identity & Access | Threat Detection | Data & Infrastructure |
+  GeoIP Intelligence | Temporal Analysis.  Covers event volume trends, Read/Write
+  ratio, top API calls, IAM entity activity, error patterns, defense evasion,
+  privilege escalation timelines, secrets access anomalies, SSRF/IMDS detection,
+  DNS exfiltration, geographic source analysis, and first/last seen temporal
+  hunting for DFIR.
 published: true
 css: ""
 slug: cloudtrail-threat-hunting
@@ -52,6 +53,7 @@ position:
       - TAB-threat
       - TAB-data
       - TAB-geoip
+      - TAB-temporal
 
   # Tab 1 — Identity & Access
   TAB-identity:
@@ -243,6 +245,65 @@ position:
     children:
       - CHART-geo-city
       - CHART-geo-asn
+    meta:
+      background: BACKGROUND_TRANSPARENT
+
+  # Tab 5 — Temporal Analysis (DFIR)
+  TAB-temporal:
+    type: TAB
+    id: TAB-temporal
+    children:
+      - ROW-ta-1
+      - ROW-ta-2
+      - ROW-ta-3
+      - ROW-ta-4
+      - ROW-ta-6
+      - ROW-ta-7
+    meta:
+      text: "\\U0001f552 Temporal Analysis"
+      defaultText: "Tab 5"
+      tooltip: "First/Last seen tracking, temporal anomalies, and activity velocity for DFIR"
+  ROW-ta-1:
+    type: ROW
+    id: ROW-ta-1
+    children:
+      - CHART-fs-identity
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-ta-2:
+    type: ROW
+    id: ROW-ta-2
+    children:
+      - CHART-fs-source-ip
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-ta-3:
+    type: ROW
+    id: ROW-ta-3
+    children:
+      - CHART-fs-event-name
+      - CHART-fs-user-agent
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-ta-4:
+    type: ROW
+    id: ROW-ta-4
+    children:
+      - CHART-activity-heatmap
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-ta-6:
+    type: ROW
+    id: ROW-ta-6
+    children:
+      - CHART-dormant-reactivated
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-ta-7:
+    type: ROW
+    id: ROW-ta-7
+    children:
+      - CHART-velocity-spikes
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -523,6 +584,78 @@ position:
       width: 6
       height: 50
       sliceName: Top ASN Organizations by Request Volume
+
+  # Chart entries — Tab 5: Temporal Analysis
+  CHART-fs-identity:
+    type: CHART
+    id: CHART-fs-identity
+    children: []
+    meta:
+      chartId: 31
+      uuid: 31a2b3c4-d5e6-7890-abcd-ef0123456701
+      width: 12
+      height: 50
+      sliceName: First / Last Seen per IAM Identity
+  CHART-fs-source-ip:
+    type: CHART
+    id: CHART-fs-source-ip
+    children: []
+    meta:
+      chartId: 32
+      uuid: 32b3c4d5-e6f7-8901-bcde-f01234567802
+      width: 12
+      height: 50
+      sliceName: First / Last Seen per Source IP
+  CHART-fs-event-name:
+    type: CHART
+    id: CHART-fs-event-name
+    children: []
+    meta:
+      chartId: 33
+      uuid: 33c4d5e6-f7a8-9012-cdef-012345678903
+      width: 6
+      height: 50
+      sliceName: First / Last Seen per API Call
+  CHART-fs-user-agent:
+    type: CHART
+    id: CHART-fs-user-agent
+    children: []
+    meta:
+      chartId: 34
+      uuid: 34d5e6f7-a8b9-0123-def0-123456789004
+      width: 6
+      height: 50
+      sliceName: First / Last Seen per User Agent
+  CHART-activity-heatmap:
+    type: CHART
+    id: CHART-activity-heatmap
+    children: []
+    meta:
+      chartId: 35
+      uuid: 35e6f7a8-b9c0-1234-ef01-234567890105
+      width: 12
+      height: 50
+      sliceName: Activity Heatmap (Hour vs Day-of-Week)
+  CHART-dormant-reactivated:
+    type: CHART
+    id: CHART-dormant-reactivated
+    children: []
+    meta:
+      chartId: 37
+      uuid: 37a8b9c0-d1e2-3456-0123-456789012307
+      width: 12
+      height: 50
+      sliceName: Dormant Accounts Reactivated
+  CHART-velocity-spikes:
+    type: CHART
+    id: CHART-velocity-spikes
+    children: []
+    meta:
+      chartId: 38
+      uuid: 38b9c0d1-e2f3-4567-1234-567890123408
+      width: 12
+      height: 50
+      sliceName: Event Velocity Spikes per Identity
 
 metadata:
   native_filter_configuration:
@@ -902,6 +1035,27 @@ metadata:
     - slice_name: Privilege Escalation Timeline
       viz_type: echarts_timeseries_bar
       description: DSH-30 - Daily privilege-escalation API calls by event name.
+    - slice_name: First / Last Seen per IAM Identity
+      viz_type: table
+      description: DSH-31 - IAM identities with first/last seen timestamps, event counts, and active span.
+    - slice_name: First / Last Seen per Source IP
+      viz_type: table
+      description: DSH-32 - Source IPs with first/last seen, identity count, and GeoIP context.
+    - slice_name: First / Last Seen per API Call
+      viz_type: table
+      description: DSH-33 - API actions ordered by first appearance for recon detection.
+    - slice_name: First / Last Seen per User Agent
+      viz_type: table
+      description: DSH-34 - User agents ordered by first appearance for tool introduction detection.
+    - slice_name: Activity Heatmap (Hour vs Day-of-Week)
+      viz_type: table
+      description: DSH-35 - Event counts by hour-of-day and day-of-week for off-hours detection.
+    - slice_name: Dormant Accounts Reactivated
+      viz_type: table
+      description: DSH-37 - Identities with long inactivity gaps that resumed activity.
+    - slice_name: Event Velocity Spikes per Identity
+      viz_type: table
+      description: DSH-38 - Identities with 50+ events/hour burst activity periods.
 """
 
 with open(DEST, "w", encoding="utf-8") as fh:

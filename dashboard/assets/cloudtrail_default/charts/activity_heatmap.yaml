@@ -1,0 +1,50 @@
+# DSH-35: Activity Heatmap (Hour-of-Day vs Day-of-Week)
+# Reveals off-hours activity patterns.  Legitimate workloads cluster in
+# business hours; attacker activity often appears at nights/weekends.
+# MITRE ATT&CK: TA0005 Defense Evasion (timing-based)
+uuid: 35e6f7a8-b9c0-1234-ef01-234567890105
+version: 1.0.0
+dataset_uuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+slice_name: Activity Heatmap (Hour vs Day-of-Week)
+viz_type: table
+description: >
+  Event counts by hour-of-day and day-of-week (DSH-35).  Reveals off-hours
+  activity patterns — legitimate workloads cluster in business hours while
+  attacker activity often appears in nights and weekends.
+  MITRE ATT&CK: TA0005 Defense Evasion (timing-based).
+query_context: ""
+params:
+  metrics:
+    - expressionType: SQL
+      sqlExpression: "COUNT(*)"
+      label: event_count
+      hasCustomLabel: true
+      optionName: metric_heatmap_count
+  groupby:
+    - expressionType: SQL
+      sqlExpression: "DAYOFWEEK(event_time)"
+      label: day_of_week
+      hasCustomLabel: true
+      optionName: col_dow
+    - expressionType: SQL
+      sqlExpression: "HOUR(event_time)"
+      label: hour_of_day
+      hasCustomLabel: true
+      optionName: col_hour
+  adhoc_filters: []
+  granularity_sqla: event_time
+  time_range: "No filter"
+  row_limit: 168
+  order_desc: true
+  page_size: 168
+cache_timeout: null
+
+# SQL used to power this chart:
+# SELECT
+#     DAYOFWEEK(event_time) AS day_of_week,
+#     HOUR(event_time)      AS hour_of_day,
+#     COUNT(*)              AS event_count
+# FROM cloudtrail_events
+# GROUP BY DAYOFWEEK(event_time), HOUR(event_time)
+# ORDER BY day_of_week, hour_of_day
+

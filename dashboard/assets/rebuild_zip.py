@@ -56,6 +56,14 @@ FILE_MAP = {
     "charts/s3_protection_changes.yaml":              "charts/S3_Protection_Config_Changes.yaml",
     "charts/first_time_services.yaml":                "charts/First_Time_Service_Sources.yaml",
     "charts/route53_dns_changes.yaml":                "charts/Route53_DNS_Changes.yaml",
+    # Tab 5 — Temporal Analysis charts (DSH-31 to DSH-38)
+    "charts/fs_identity.yaml":                        "charts/First_Last_Seen_IAM_Identity.yaml",
+    "charts/fs_source_ip.yaml":                       "charts/First_Last_Seen_Source_IP.yaml",
+    "charts/fs_event_name.yaml":                      "charts/First_Last_Seen_API_Call.yaml",
+    "charts/fs_user_agent.yaml":                      "charts/First_Last_Seen_User_Agent.yaml",
+    "charts/activity_heatmap.yaml":                   "charts/Activity_Heatmap.yaml",
+    "charts/dormant_reactivated.yaml":                "charts/Dormant_Accounts_Reactivated.yaml",
+    "charts/velocity_spikes.yaml":                    "charts/Event_Velocity_Spikes.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):
