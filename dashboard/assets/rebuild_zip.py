@@ -64,6 +64,14 @@ FILE_MAP = {
     "charts/activity_heatmap.yaml":                   "charts/Activity_Heatmap.yaml",
     "charts/dormant_reactivated.yaml":                "charts/Dormant_Accounts_Reactivated.yaml",
     "charts/velocity_spikes.yaml":                    "charts/Event_Velocity_Spikes.yaml",
+    # Tab 6 — High-Risk API Monitor charts (HRM-39 to HRM-46)
+    "charts/hrm_timeseries.yaml":                     "charts/HRM_High_Risk_API_Timeseries.yaml",
+    "charts/hrm_top_calls.yaml":                      "charts/HRM_Top_High_Risk_API_Calls.yaml",
+    "charts/hrm_top_actors.yaml":                     "charts/HRM_Top_Actors_High_Risk.yaml",
+    "charts/hrm_top_source_ips.yaml":                 "charts/HRM_Top_Source_IPs_High_Risk.yaml",
+    "charts/hrm_defense_evasion_table.yaml":          "charts/HRM_Defense_Evasion_API_Events.yaml",
+    "charts/hrm_credential_access_table.yaml":        "charts/HRM_Credential_Access_API_Events.yaml",
+    "charts/hrm_by_region.yaml":                      "charts/HRM_High_Risk_API_By_Region.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

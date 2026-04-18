@@ -83,6 +83,7 @@ def _remove_retired_charts() -> None:
     # UUIDs of charts that have been intentionally removed from the dashboard.
     RETIRED_UUIDS = {
         "e3f4a5b6-c7d8-9012-cdef-012345678901",  # DSH-10: AWS Service Breakdown (removed)
+        "41c3d4e5-f6a7-8901-cdef-012345678941",  # HRM-41: High-Risk API by Attack Category (removed)
     }
 
     removed = 0

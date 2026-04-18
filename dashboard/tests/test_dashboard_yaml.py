@@ -156,6 +156,14 @@ def _uuid_for_chart_file(fragment: str) -> str | None:
     ("assumed_role_external",  "DSH-27 AssumedRole External IP"),
     ("priv_esc_timeline",      "DSH-30 Privilege Escalation Timeline"),
     ("route53_dns_changes",    "DSH-29 Route53 DNS Changes"),
+    # Sprint-5 — High-Risk API Monitor
+    ("hrm_timeseries",             "HRM-39 High-Risk API Timeseries"),
+    ("hrm_top_calls",              "HRM-40 High-Risk Top API Calls"),
+    ("hrm_top_actors",             "HRM-42 High-Risk Top Actors"),
+    ("hrm_top_source_ips",         "HRM-43 High-Risk Top Source IPs"),
+    ("hrm_defense_evasion_table",  "HRM-44 High-Risk Defense Evasion Table"),
+    ("hrm_credential_access_table","HRM-45 High-Risk Credential Access Table"),
+    ("hrm_by_region",              "HRM-46 High-Risk API by Region"),
 ])
 def test_new_chart_referenced_in_dashboard(fragment: str, label: str) -> None:
     uuid = _uuid_for_chart_file(fragment)

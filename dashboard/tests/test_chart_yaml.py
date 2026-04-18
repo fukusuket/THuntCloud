@@ -5,6 +5,7 @@ the structure required by the Superset v1 dashboard import format.
 """
 import os
 import re
+import sys
 
 import pytest
 import yaml
@@ -12,8 +13,16 @@ import yaml
 CHARTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "charts"
 )
+DATASET_YAML_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "datasets",
+    "cloudtrail_events.yaml"
+)
+REGISTER_DATASET_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "init"
+)
 REQUIRED_CHART_FIELDS = {"uuid", "version", "dataset_uuid", "slice_name", "viz_type", "params"}
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,6 +217,67 @@ def test_dsh26_first_time_services_exists() -> None:
 def test_dsh29_route53_dns_changes_exists() -> None:
     """DSH-29: route53_dns_changes.yaml must exist."""
     assert _find_chart_by_filename("route53_dns_changes") is not None
+
+
+# ---------------------------------------------------------------------------
+# Sprint-5 charts — High-Risk API Monitor (Tab 6)
+# ---------------------------------------------------------------------------
+
+def test_hrm_timeseries_exists() -> None:
+    """HRM-39: hrm_timeseries.yaml must exist with echarts_timeseries_bar."""
+    result = _find_chart_by_filename("hrm_timeseries")
+    assert result is not None, "charts/hrm_timeseries.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "echarts_timeseries_bar"
+    assert "High-Risk" in chart["slice_name"]
+
+
+def test_hrm_top_calls_exists() -> None:
+    """HRM-40: hrm_top_calls.yaml must exist with bar viz."""
+    result = _find_chart_by_filename("hrm_top_calls")
+    assert result is not None, "charts/hrm_top_calls.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "bar"
+
+
+def test_hrm_top_calls_exists() -> None:
+    """HRM-42: hrm_top_actors.yaml must exist with bar viz."""
+    result = _find_chart_by_filename("hrm_top_actors")
+    assert result is not None, "charts/hrm_top_actors.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "bar"
+
+
+def test_hrm_top_source_ips_exists() -> None:
+    """HRM-43: hrm_top_source_ips.yaml must exist with bar viz."""
+    result = _find_chart_by_filename("hrm_top_source_ips")
+    assert result is not None, "charts/hrm_top_source_ips.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "bar"
+
+
+def test_hrm_defense_evasion_table_exists() -> None:
+    """HRM-44: hrm_defense_evasion_table.yaml must exist with table viz."""
+    result = _find_chart_by_filename("hrm_defense_evasion_table")
+    assert result is not None, "charts/hrm_defense_evasion_table.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "table"
+
+
+def test_hrm_credential_access_table_exists() -> None:
+    """HRM-45: hrm_credential_access_table.yaml must exist with table viz."""
+    result = _find_chart_by_filename("hrm_credential_access_table")
+    assert result is not None, "charts/hrm_credential_access_table.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "table"
+
+
+def test_hrm_by_region_exists() -> None:
+    """HRM-46: hrm_by_region.yaml must exist with bar viz."""
+    result = _find_chart_by_filename("hrm_by_region")
+    assert result is not None, "charts/hrm_by_region.yaml not found"
+    _, chart = result
+    assert chart["viz_type"] == "bar"
 
 
 def test_all_groupby_columns_exist_in_dataset() -> None:
