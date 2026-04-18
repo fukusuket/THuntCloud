@@ -3,7 +3,6 @@
 from prompts.analysis_prompt import ANALYSIS_SYSTEM_PROMPT, ANALYSIS_USER_TEMPLATE
 from prompts.system_prompt import SYSTEM_PROMPT
 
-
 # ---------------------------------------------------------------------------
 # SYSTEM_PROMPT (SQL generation)
 # ---------------------------------------------------------------------------
@@ -119,4 +118,3 @@ def test_analysis_user_template_renders_correctly():
     )
     assert "SELECT event_name" in rendered
     assert "CreateUser" in rendered
-

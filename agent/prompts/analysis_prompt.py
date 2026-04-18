@@ -67,4 +67,3 @@ Results (up to 50 rows):
 Produce the three-section report (Findings, Statistical Context, API Explanation)
 described in your instructions. Base every statement strictly on the data above.
 """
-
