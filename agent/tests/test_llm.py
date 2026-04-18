@@ -13,6 +13,7 @@ from llm import (
     generate_analysis,
     generate_sql,
 )
+from prompts.analysis_prompt import ANALYSIS_SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Client caching
@@ -101,6 +102,36 @@ def test_generate_analysis_returns_markdown(mock_openai_client):
 
     assert isinstance(result, str)
     assert len(result) > 0
+
+
+def test_generate_analysis_uses_analysis_system_prompt(mock_openai_client):
+    """generate_analysis() must use ANALYSIS_SYSTEM_PROMPT, not the SQL generation prompt."""
+    df = pd.DataFrame({"event_name": ["CreateUser"], "cnt": [1]})
+    generate_analysis(
+        sql="SELECT event_name, COUNT(*) AS cnt FROM cloudtrail_events GROUP BY event_name",
+        results=df,
+        api_key="sk-test",
+    )
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    messages = call_kwargs["messages"]
+    system_content = messages[0]["content"]
+
+    # Must use the dedicated analysis prompt, not the SQL generation prompt
+    assert system_content == ANALYSIS_SYSTEM_PROMPT
+
+
+def test_generate_analysis_user_message_contains_sql(mock_openai_client):
+    """generate_analysis() user message must embed the executed SQL query."""
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    df = pd.DataFrame({"event_name": ["ConsoleLogin"]})
+    generate_analysis(sql=sql, results=df, api_key="sk-test")
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    messages = call_kwargs["messages"]
+    user_content = messages[1]["content"]
+
+    assert sql in user_content
 
 
 def test_generate_sql_handles_api_error(mock_openai_client):

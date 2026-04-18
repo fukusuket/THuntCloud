@@ -12,6 +12,7 @@ import httpx
 import pandas as pd
 from openai import OpenAI, OpenAIError
 
+from prompts.analysis_prompt import ANALYSIS_SYSTEM_PROMPT, ANALYSIS_USER_TEMPLATE
 from prompts.system_prompt import SYSTEM_PROMPT
 from schema import get_schema_description
 
@@ -226,24 +227,13 @@ def generate_analysis(
         if not results.empty
         else "(no results)"
     )
-    user_message = (
-        f"The following SQL query was executed against AWS CloudTrail logs:\n\n"
-        f"```sql\n{sql}\n```\n\n"
-        f"Results (up to 50 rows):\n\n{sample}\n\n"
-        f"Summarise ONLY the observed facts from the results above.\n"
-        f"Rules:\n"
-        f"- Use bullet points.\n"
-        f"- State counts, top values, and any notable patterns visible in the data.\n"
-        f"- Do NOT speculate, infer intent, assign blame, or make threat assessments.\n"
-        f"- Do NOT add recommendations or remediation steps.\n"
-        f"- Keep it under 10 bullet points."
-    )
+    user_message = ANALYSIS_USER_TEMPLATE.format(sql=sql, results=sample)
     client = _create_client(api_key)
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": build_system_prompt()},
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
             ],
             temperature=0,
