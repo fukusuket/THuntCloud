@@ -13,10 +13,10 @@
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
 - **No-query hunting** — select a built-in hunt from the Streamlit dropdown and get instant results — no SQL knowledge required
-- **AI-assisted analysis** — AI automatically analyses query result DataFrames and surfaces key findings in plain language
 - **GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
 - **Built-in BI dashboard** — Apache Superset with pre-built CloudTrail charts
 - **Single-command launch** — `docker compose up -d`
+- **(Optional) AI-assisted analysis** — AI automatically analyses query result DataFrames and surfaces key findings in plain language
 
 ## Screenshots
 
