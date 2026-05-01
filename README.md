@@ -1,7 +1,8 @@
 # 🪽THuntCloud🪽
 
-## AWS CloudTrail Log Threat Hunting Tool
+<img src="doc/logo.png" alt="THuntCloud Logo" width="400">
 
+## AWS CloudTrail Log Threat Hunting Tool
 > SIEM-equivalent AWS CloudTrail threat hunting on a single ordinary laptop — no cloud infrastructure required.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
