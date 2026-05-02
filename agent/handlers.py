@@ -31,7 +31,7 @@ from report import ReportEntry
 logger = logging.getLogger(__name__)
 
 
-def _handle_direct_sql(sql: str, db_path: str) -> None:
+def _handle_direct_sql(sql: str, db_path: str, description: str = "") -> None:
     """Execute a pre-built SQL query directly without requiring an API key.
 
     Runs the SQL against the DuckDB database in read-only mode, stores results
@@ -42,8 +42,11 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
     manager so it is always closed, even when an exception occurs.
 
     Args:
-        sql:     Validated DuckDB SQL from a built-in preset entry.
-        db_path: Path to the DuckDB database file.
+        sql:         Validated DuckDB SQL from a built-in preset entry.
+        db_path:     Path to the DuckDB database file.
+        description: Optional human-readable description of the preset query.
+                     Stored in the ReportEntry so it can be displayed in the
+                     Query Results History area.
     """
     # Apply date range filter (wraps sql in a date-scoped CTE when active).
     sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
@@ -86,7 +89,9 @@ def _handle_direct_sql(sql: str, db_path: str) -> None:
 
     if error_message is None:
         st.session_state.query_history.append(
-            ReportEntry(sql=effective_sql, results=results, analysis="")
+            ReportEntry(
+                sql=effective_sql, results=results, analysis="", description=description
+            )
         )
 
 

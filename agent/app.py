@@ -254,6 +254,7 @@ def render_sidebar() -> None:
                         help="Run without an API key",
                     ):
                         st.session_state["_pending_direct_sql"] = matched["sql"].strip()
+                        st.session_state["_pending_preset_description"] = desc
                         st.rerun()
                 else:
                     st.button(
@@ -357,8 +358,11 @@ def render_chat() -> None:
 
     # Handle direct SQL execution from a built-in preset (no AI needed)
     pending_direct_sql = st.session_state.pop("_pending_direct_sql", None)
+    pending_preset_description = st.session_state.pop("_pending_preset_description", "")
     if pending_direct_sql:
-        _handle_direct_sql(pending_direct_sql, db_path)
+        _handle_direct_sql(
+            pending_direct_sql, db_path, description=pending_preset_description
+        )
         st.rerun()
 
     # Handle AI analysis request triggered from the results area
@@ -394,6 +398,8 @@ def render_chat() -> None:
         for i, entry in enumerate(st.session_state.query_history, start=1):
             is_last = i == len(st.session_state.query_history)
             with st.expander(f"Query #{i}", expanded=True):
+                if entry.description:
+                    st.markdown(f"ℹ️ **{entry.description}**")
                 st.code(entry.sql, language="sql")
 
                 if entry.results is not None and not entry.results.empty:

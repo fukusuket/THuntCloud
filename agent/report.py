@@ -52,6 +52,7 @@ class ReportEntry:
     sql: str
     results: pd.DataFrame
     analysis: str = ""
+    description: str = ""
     # Prevent pandas DataFrame equality issues in dataclass comparisons
     _results_placeholder: None = field(default=None, init=False, repr=False)
 

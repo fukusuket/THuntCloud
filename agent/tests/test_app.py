@@ -1090,6 +1090,109 @@ def test_handle_edit_rerun_sql_error_appends_error_message(tmp_duckdb):
     assert len(mock_state["query_history"]) == 0
 
 
+# ---------------------------------------------------------------------------
+# Tests #DESC — Preset description displayed in Query Results History
+# ---------------------------------------------------------------------------
+
+
+def test_report_entry_has_description_field():
+    """ReportEntry must accept an optional description field.
+
+    Test #DESC-1: verifies that the description field is accessible and defaults
+    to an empty string when not provided.
+    """
+    import pandas as pd
+
+    from report import ReportEntry
+
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    assert hasattr(entry, "description"), "ReportEntry must have a 'description' field"
+    assert entry.description == ""
+
+    entry_with_desc = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        description="Detects root account usage",
+    )
+    assert entry_with_desc.description == "Detects root account usage"
+
+
+def test_handle_direct_sql_stores_description_in_query_history(tmp_duckdb):
+    """_handle_direct_sql() must store the description in the ReportEntry.
+
+    Test #DESC-2: verifies that when a description is passed to _handle_direct_sql,
+    it is persisted in query_history[0].description.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    desc = "List all root account API calls"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb, description=desc)
+
+    assert len(mock_state["query_history"]) == 1
+    assert mock_state["query_history"][0].description == desc
+
+
+def test_handle_direct_sql_description_defaults_to_empty(tmp_duckdb):
+    """_handle_direct_sql() description defaults to empty string when omitted.
+
+    Test #DESC-3: backward-compatible behavior — existing callers are unaffected.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    assert len(mock_state["query_history"]) == 1
+    assert mock_state["query_history"][0].description == ""
+
+
 def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     """Direct SQL truncation notice uses st.session_state.row_limit, not DEFAULT_ROW_LIMIT.
 
