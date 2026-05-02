@@ -11,7 +11,7 @@ Three Docker containers share one DuckDB file via a **bind mount** (`docker/data
 
 | Container | Language | DuckDB mode | Port |
 |-----------|----------|-------------|------|
-| `ingester` | Rust 1.85+ | **READ_WRITE** (sole writer) | — |
+| `ingester` | Rust 1.85+ | READ_WRITE (sole writer) | — |
 | `agent` | Python 3.12+ / Streamlit | READ_ONLY | 8501 |
 | `dashboard` | Apache Superset | READ_ONLY | 8088 |
 
