@@ -25,7 +25,7 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
-### Dashboard (Apache Superset)
+### Built-in Dashboard (Apache Superset)
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
