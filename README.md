@@ -5,7 +5,7 @@
 ## AWS CloudTrail Log Threat Hunting Tool
 > SIEM-equivalent AWS CloudTrail threat hunting on a single ordinary laptop — no cloud infrastructure required.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![CI](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml/badge.svg)](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
@@ -175,8 +175,7 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard a
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
-See [NOTICE](NOTICE) for third-party license attributions.
+GNU Affero General Public License v3.0 — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgements
 
