@@ -21,7 +21,7 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ## Screenshots
 
-### AI Chat (Streamlit UI) and Built-in Queries
+### Built-in Queries and AI Chat (Streamlit UI) 
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
@@ -124,9 +124,9 @@ sequenceDiagram
 ```bash
 # 1. Clone
 git clone https://github.com/fukusuket/THuntCloud.git
-cd THuntCloud/docker
 
 # 2. Place CloudTrail logs
+cd THuntCloud/docker
 cp /path/to/cloudtrail/logs/*.json.gz logs/
 
 # 3. Ingest logs
@@ -136,7 +136,7 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
-Open http://localhost:8501 (AI Chat) or http://localhost:8088 (Dashboard, `admin`/`admin`).
+Open http://localhost:8501 (Built-in queries and AI Chat) or http://localhost:8088 (Dashboard, `admin`/`admin`).
 
 #### With GeoIP enrichment (optional)
 
