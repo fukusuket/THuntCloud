@@ -96,10 +96,10 @@ docker compose --profile ingest run --rm ingester ingest --path /data/logs
 docker compose up -d --build
 ```
 
-**Step 3.** 🪽 Open your browser and start hunting!
+**Step 3.** 🪽 Open your browser and start hunting!🪽
 
-- 🪽 http://localhost:8501 — Built-in queries and AI Chat 
-- 🪽 http://localhost:8088 — Dashboard (`admin` / `admin`) 
+- http://localhost:8501 — Built-in queries and AI Chat 
+- http://localhost:8088 — Dashboard (`admin` / `admin`) 
 
 **(optional)** GeoIP enrichment.
 Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
