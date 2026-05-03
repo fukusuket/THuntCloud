@@ -83,9 +83,9 @@ def test_model_options_include_gpt_5_5():
     """
     from app import MODEL_OPTIONS
 
-    assert "gpt-5.5" in MODEL_OPTIONS, (
-        f"gpt-5.5 not found in MODEL_OPTIONS: {MODEL_OPTIONS}"
-    )
+    assert (
+        "gpt-5.5" in MODEL_OPTIONS
+    ), f"gpt-5.5 not found in MODEL_OPTIONS: {MODEL_OPTIONS}"
 
 
 def test_load_builtin_prompts_returns_nonempty_list():
