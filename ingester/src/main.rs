@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand};
 use duckdb::Connection;
 use ingester::date_filter::DateFilter;
 use ingester::enrich::enrich_existing;
+use ingester::field_filter::FieldFilter;
 use ingester::geoip::{GeoipConfig, GeoipEnricher};
 use ingester::ingest::{IngestOptions, ingest};
 use ingester::path_filter::PathFilter;
@@ -126,6 +127,19 @@ enum Commands {
         /// Works with both --geoip-city and --geoip-country.
         #[arg(long, value_name = "PATH")]
         geoip_asn: Option<PathBuf>,
+
+        /// Strip a fixed list of low-signal CloudTrail keys
+        /// (`maxResults`, `nextToken`, `marker`, `pageSize`, `maxItems`,
+        /// `dryRun`, `clientToken`, `clientRequestToken`, and the PascalCase
+        /// equivalents) from `requestParameters` / `responseElements` before
+        /// they are written to DuckDB.
+        ///
+        /// `raw_event` is never modified, so the full original record is
+        /// always recoverable. Intended for producing a leaner DB for
+        /// security-incident triage; combine with `--db <path>` to write
+        /// to a dedicated database file.
+        #[arg(long)]
+        strip_fields: bool,
     },
 
     /// Enrich existing cloudtrail_events rows with GeoIP data.
@@ -172,6 +186,7 @@ fn run() -> Result<()> {
             geoip_city,
             geoip_country,
             geoip_asn,
+            strip_fields,
         } => {
             // Optionally cap the rayon thread pool before any parallel work.
             if let Some(n) = workers {
@@ -193,6 +208,14 @@ fn run() -> Result<()> {
             let (city_path, country_path, asn_path) =
                 resolve_geoip_paths(geoip_city, geoip_country, geoip_asn);
 
+            // `--strip-fields` activates the built-in noise-key list. When
+            // absent, the filter stays empty and JSON is written verbatim.
+            let field_filter = if strip_fields {
+                FieldFilter::default_strip()
+            } else {
+                FieldFilter::default()
+            };
+
             let stats = if city_path.is_some() || country_path.is_some() {
                 let enricher = GeoipEnricher::open(&GeoipConfig {
                     city_db_path: city_path,
@@ -208,6 +231,7 @@ fn run() -> Result<()> {
                         date_filter,
                         path_filter,
                         geoip: Some(&enricher),
+                        field_filter,
                     },
                 )?
             } else {
@@ -219,6 +243,7 @@ fn run() -> Result<()> {
                         date_filter,
                         path_filter,
                         geoip: None,
+                        field_filter,
                     },
                 )?
             };

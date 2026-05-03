@@ -19,6 +19,7 @@ use crate::date_filter::DateFilter;
 use crate::db::{
     batch_mark_ingested, ensure_table, fetch_ingested_files_map, insert_events_with_geo,
 };
+use crate::field_filter::FieldFilter;
 use crate::geoip::GeoipEnricher;
 use crate::parser::{CloudTrailEvent, parse_cloudtrail_log};
 use crate::path_filter::PathFilter;
@@ -89,6 +90,11 @@ pub struct IngestOptions<'a> {
     /// Optional GeoIP enricher for source-IP geo-enrichment.
     /// When `None`, geo columns are stored as `NULL`.
     pub geoip: Option<&'a GeoipEnricher>,
+    /// Strip a fixed list of low-signal keys from
+    /// `requestParameters` / `responseElements` before insert.
+    /// Empty (default) → JSON is written verbatim. `raw_event` is never
+    /// modified by this filter.
+    pub field_filter: FieldFilter,
 }
 
 /// Ingest CloudTrail log files from `path` into `conn` using the given `options`.
@@ -110,6 +116,7 @@ pub fn ingest(path: &Path, conn: &Connection, options: IngestOptions<'_>) -> Res
         &options.date_filter,
         &options.path_filter,
         options.geoip,
+        &options.field_filter,
     )
 }
 
@@ -133,7 +140,16 @@ pub fn ingest_with_conn(path: &Path, conn: &Connection) -> Result<IngestStats> {
 ///
 /// Returns `(sha256_hex, records)`. This function is CPU/IO-bound and is
 /// designed to be called from a `rayon` parallel iterator.
-pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)> {
+///
+/// When `field_filter` is non-empty, the configured keys are stripped from
+/// each record's `request_parameters` and `response_elements` JSON in this
+/// function — keeping the work on the parser thread so the DuckDB writer
+/// thread is never blocked on JSON re-serialisation. `raw_json` is left
+/// untouched so the original event is always preserved in `raw_event`.
+pub fn parse_file_content(
+    path: &Path,
+    field_filter: &FieldFilter,
+) -> Result<(String, Vec<CloudTrailEvent>)> {
     let bytes =
         std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
     let sha256 = hex::encode(Sha256::digest(&bytes));
@@ -157,7 +173,19 @@ pub fn parse_file_content(path: &Path) -> Result<(String, Vec<CloudTrailEvent>)>
 
     let log = parse_cloudtrail_log(&content)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
-    Ok((sha256, log.records))
+
+    let mut records = log.records;
+    if !field_filter.is_empty() {
+        for ev in &mut records {
+            if let Some(s) = ev.request_parameters.as_deref() {
+                ev.request_parameters = Some(field_filter.apply(s));
+            }
+            if let Some(s) = ev.response_elements.as_deref() {
+                ev.response_elements = Some(field_filter.apply(s));
+            }
+        }
+    }
+    Ok((sha256, records))
 }
 
 /// Same as [`ingest_with_conn`] but controls whether the progress bar is
@@ -182,6 +210,7 @@ pub fn ingest_with_progress(
         &DateFilter::default(),
         &PathFilter::default(),
         None,
+        &FieldFilter::default(),
     )
 }
 
@@ -207,6 +236,7 @@ pub fn ingest_with_date_filter(
         date_filter,
         &PathFilter::default(),
         None,
+        &FieldFilter::default(),
     )
 }
 
@@ -230,7 +260,15 @@ pub fn ingest_with_filters(
     date_filter: &DateFilter,
     path_filter: &PathFilter,
 ) -> Result<IngestStats> {
-    ingest_core(path, conn, show_progress, date_filter, path_filter, None)
+    ingest_core(
+        path,
+        conn,
+        show_progress,
+        date_filter,
+        path_filter,
+        None,
+        &FieldFilter::default(),
+    )
 }
 
 /// Ingest log files with GeoIP enrichment, date-range filter, and path-pattern filter.
@@ -257,6 +295,7 @@ pub fn ingest_with_geoip(
         date_filter,
         path_filter,
         Some(geoip),
+        &FieldFilter::default(),
     )
 }
 
@@ -297,6 +336,7 @@ fn ingest_core(
     date_filter: &DateFilter,
     path_filter: &PathFilter,
     geoip: Option<&GeoipEnricher>,
+    field_filter: &FieldFilter,
 ) -> Result<IngestStats> {
     ensure_table(conn)?;
 
@@ -334,12 +374,18 @@ fn ingest_core(
     // Parser thread: owns `files`, chunks it, runs par_iter() per chunk, and
     // sends Vec<ParseOutcome> through the channel.  It never touches DuckDB
     // (Connection is !Send), so the !Send constraint is satisfied.
+    //
+    // The field filter is cloned into the parser thread so that JSON
+    // stripping (when enabled) runs in parallel with the file-read /
+    // decompression / parse phases. When the filter is empty
+    // (`is_empty()` is true) the call is a zero-cost no-op.
+    let parser_filter = field_filter.clone();
     let parser_handle = thread::spawn(move || {
         for chunk in files.chunks(PARSE_CHUNK_SIZE) {
             // Parallel phase: read bytes → SHA-256 → decompress → parse JSON.
             let results: Vec<ParseOutcome> = chunk
                 .par_iter()
-                .map(|p| (p.clone(), parse_file_content(p)))
+                .map(|p| (p.clone(), parse_file_content(p, &parser_filter)))
                 .collect();
             if tx.send(results).is_err() {
                 // Receiver dropped (main thread error-exited) — stop silently.
@@ -699,8 +745,8 @@ mod tests {
     fn test_parse_file_content_json() {
         let tmp = write_json_file(SINGLE_EVENT_JSON);
 
-        let (sha256, records) =
-            parse_file_content(tmp.path()).expect("parse_file_content should succeed");
+        let (sha256, records) = parse_file_content(tmp.path(), &FieldFilter::default())
+            .expect("parse_file_content should succeed");
 
         assert!(!sha256.is_empty(), "sha256 must not be empty");
         assert_eq!(sha256.len(), 64, "SHA-256 hex digest is 64 chars");
@@ -713,11 +759,61 @@ mod tests {
     fn test_parse_file_content_gz() {
         let tmp = write_gz_file(SINGLE_EVENT_JSON);
 
-        let (sha256, records) =
-            parse_file_content(tmp.path()).expect("parse_file_content should handle .gz");
+        let (sha256, records) = parse_file_content(tmp.path(), &FieldFilter::default())
+            .expect("parse_file_content should handle .gz");
 
         assert_eq!(sha256.len(), 64);
         assert_eq!(records.len(), 1);
+    }
+
+    // Test FF-01: parse_file_content with a non-empty FieldFilter strips
+    // matching keys from request_parameters / response_elements while leaving
+    // raw_json untouched (raw_event must always preserve the original record).
+    #[test]
+    fn test_parse_file_content_strips_request_parameters_when_filter_set() {
+        let json = r#"{
+            "Records": [{
+                "eventTime": "2024-01-15T10:30:00Z",
+                "eventName": "ListBuckets",
+                "eventSource": "s3.amazonaws.com",
+                "awsRegion": "us-east-1",
+                "requestParameters": {"maxResults": 50, "bucketName": "x"},
+                "responseElements": {"nextToken": "tok", "result": "ok"}
+            }]
+        }"#;
+        let tmp = write_json_file(json);
+        let filter = FieldFilter::default_strip();
+
+        let (_sha, records) = parse_file_content(tmp.path(), &filter).expect("parse should succeed");
+        let ev = &records[0];
+
+        let req: serde_json::Value =
+            serde_json::from_str(ev.request_parameters.as_deref().unwrap()).unwrap();
+        assert!(!req.as_object().unwrap().contains_key("maxResults"));
+        assert_eq!(
+            req.get("bucketName").and_then(serde_json::Value::as_str),
+            Some("x")
+        );
+
+        let res: serde_json::Value =
+            serde_json::from_str(ev.response_elements.as_deref().unwrap()).unwrap();
+        assert!(!res.as_object().unwrap().contains_key("nextToken"));
+        assert_eq!(
+            res.get("result").and_then(serde_json::Value::as_str),
+            Some("ok")
+        );
+
+        // raw_json must always preserve the original event byte-for-byte.
+        assert!(
+            ev.raw_json.contains("\"maxResults\""),
+            "raw_event must preserve maxResults; raw_json={}",
+            ev.raw_json
+        );
+        assert!(
+            ev.raw_json.contains("\"nextToken\""),
+            "raw_event must preserve nextToken; raw_json={}",
+            ev.raw_json
+        );
     }
 
     // Test #37: Ingest 100 files spanning multiple chunks (PARSE_CHUNK_SIZE=64) correctly.
