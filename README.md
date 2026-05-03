@@ -72,13 +72,10 @@ Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/
 ## Quick Start
 
 **Step 1.** Download CloudTrail logs from S3.
-Replace `<your-bucket>`, `<your-prefix>`, and `<local-output-dir>` with your actual values.
-The example prefix format is `AWSLogs/<account-id>/CloudTrail/<region>/`.
 
 ```bash
-aws s3 cp s3://<your-bucket>/<your-prefix> <local-output-dir>/ \
-  --recursive \
-  --include "*.json.gz"
+# Replace `<your-bucket>`, `<your-prefix>`, and `<local-output-dir>` with your actual values.
+aws s3 cp s3://<your-bucket>/<your-prefix> <local-output-dir>/ --recursive --include "*.json.gz"
 ```
 
 **Step 2.** Clone the repository, ingest logs, and start all services.
@@ -102,8 +99,8 @@ docker compose up -d --build
 
 **Step 3.** 🪽 Open your browser and start hunting!
 
-- 🪽 http://localhost:8501 — Built-in queries and AI Chat 🪽
-- 🪽 http://localhost:8088 — Dashboard (`admin` / `admin`) 🪽
+- 🪽 http://localhost:8501 — Built-in queries and AI Chat 
+- 🪽 http://localhost:8088 — Dashboard (`admin` / `admin`) 
 
 ####  (optional)With GeoIP enrichment
 
