@@ -217,7 +217,7 @@ Files without a recognisable `yyyy/mm/dd` segment in their path are always inclu
 |----------|---------|---------|-------|
 | `OPENAI_API_KEY` | agent | — | Required for AI features |
 | `DUCKDB_PATH` | all | — | Overrides default DB path |
-| `OPENAI_MODEL` | agent | `gpt-5.4` | SQL generation + analysis model |
+| `OPENAI_MODEL` | agent | `gpt-5.4` | SQL generation + analysis model (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` available) |
 | `OPENAI_MODEL_LITE` | agent | `gpt-5.4-mini` | Optional lighter model |
 | `DUCKDB_HOST_PATH` | docker host | `./data/db` | Host-side bind-mount directory |
 | `GEOIP_HOST_PATH` | docker host | `./data/geoip` | Host-side GeoIP directory |

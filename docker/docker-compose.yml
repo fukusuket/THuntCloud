@@ -38,7 +38,7 @@ services:
       #                                First build takes ~10–30 min; subsequent builds use cache.
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
-        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.7}
+        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.8}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
@@ -78,7 +78,7 @@ services:
       - DUCKDB_PATH=/data/db/threat_hunting.db
       - DUCKDB_READONLY=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.5}
       - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-5.4-mini}
     restart: unless-stopped
     healthcheck:

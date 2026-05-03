@@ -75,6 +75,19 @@ def test_session_state_model_default():
         assert mock_state["model"] == "gpt-5.4"
 
 
+def test_model_options_include_gpt_5_5():
+    """gpt-5.5 must appear in the available model options list.
+
+    Verifies that the recently released gpt-5.5 model is present in
+    the MODEL_OPTIONS constant used for the sidebar dropdown.
+    """
+    from app import MODEL_OPTIONS
+
+    assert "gpt-5.5" in MODEL_OPTIONS, (
+        f"gpt-5.5 not found in MODEL_OPTIONS: {MODEL_OPTIONS}"
+    )
+
+
 def test_load_builtin_prompts_returns_nonempty_list():
     """_load_builtin_prompts() must return a non-empty list of dicts with label/prompt keys."""
     from app import _load_builtin_prompts

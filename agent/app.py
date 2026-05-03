@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 # Path to the built-in threat hunting prompts YAML file.
 _BUILTIN_PROMPTS_PATH = Path(__file__).parent / "builtin_hunts.yaml"
 
+# Available OpenAI models for the sidebar model selector.
+MODEL_OPTIONS: list[str] = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
+
 # Info banner shown in the chat area when no API key is configured.
 _NO_API_KEY_BANNER = (
     "💡 **No API key needed for preset queries.** "
@@ -278,13 +281,12 @@ def render_sidebar() -> None:
             st.session_state.api_key = api_key_input
 
         # Model selection
-        model_options = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5"]
         selected_model = st.selectbox(
             "Model",
-            options=model_options,
+            options=MODEL_OPTIONS,
             index=(
-                model_options.index(st.session_state.model)
-                if st.session_state.model in model_options
+                MODEL_OPTIONS.index(st.session_state.model)
+                if st.session_state.model in MODEL_OPTIONS
                 else 0
             ),
         )

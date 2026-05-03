@@ -19,7 +19,7 @@ and pre-built preset queries.
 |------|-------|
 | Language | Python 3.12+ |
 | Framework | Streamlit |
-| AI Integration | OpenAI API (`gpt-5.4` default) |
+| AI Integration | OpenAI API (`gpt-5.4` default; `gpt-5.5`, `gpt-5.4-mini` also available) |
 | DB Client | `duckdb` Python package |
 | Data Processing | `pandas` |
 | Test Framework | `pytest`, `pytest-mock` |
@@ -97,6 +97,7 @@ agent/
 
 ### app.py
 29. `test_session_state_initialization` — Session state has expected keys on startup.
+30. `test_model_options_include_gpt_5_5` — `MODEL_OPTIONS` constant includes `gpt-5.5`.
 
 ## OpenAI API Mocking Strategy
 
@@ -190,7 +191,7 @@ def tmp_duckdb(tmp_path):
 |----------|---------|-------------|
 | `DUCKDB_PATH` | (required) | Path to the DuckDB database file |
 | `OPENAI_API_KEY` | (required for AI) | OpenAI API key |
-| `OPENAI_MODEL` | `gpt-5.4` | Model for SQL generation and analysis |
+| `OPENAI_MODEL` | `gpt-5.4` | Model for SQL generation and analysis (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` available) |
 | `OPENAI_MODEL_LITE` | `gpt-5.4-mini` | Lightweight model (optional) |
 | `SSL_CERT_FILE` | — | CA bundle for corporate TLS inspection proxy |
 | `REQUESTS_CA_BUNDLE` | — | Alternative CA bundle path (same purpose) |
