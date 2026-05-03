@@ -57,56 +57,6 @@ Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/
 └─────────────────────────────────────────────────────────┘
 ```
 
-### End-to-End Sequence Diagram
-
-The diagram below shows the full lifecycle from log ingestion through to a
-completed AI-assisted threat hunting session.
-
-```mermaid
-sequenceDiagram
-    participant OPS  as Operator
-    participant ING  as ingester (Rust)
-    participant DB   as DuckDB (bind mount)
-    participant APP  as chat / Streamlit
-    participant OAI  as OpenAI API
-    participant SS   as dashboard / Superset
-    participant U    as Analyst (Browser)
-
-    Note over OPS,ING: Phase 1 — Ingest
-    OPS->>ING: docker compose run ingester ingest --path /data/logs
-    ING->>ING: walk & filter files (date, path glob)
-    ING->>ING: parallel parse (rayon) + SHA-256 dedup
-    ING->>DB: batch insert via DuckDB Appender (READ_WRITE)
-    ING->>DB: GeoIP enrich (optional)
-    ING-->>OPS: IngestStats printed
-
-    Note over OPS,SS: Phase 2 — Start services
-    OPS->>APP: docker compose up -d
-    OPS->>SS: docker compose up -d
-    APP->>DB: open READ_ONLY connection
-    SS->>DB: open READ_ONLY connection
-
-    Note over U,OAI: Phase 3 — AI-assisted hunting (chat)
-    U->>APP: natural language question
-    APP->>OAI: generate_sql(question, schema, history)
-    OAI-->>APP: SQL string
-    APP->>APP: apply_date_filter + apply_row_limit
-    APP->>APP: validate_query (blocklist + EXPLAIN)
-    APP->>DB: execute SQL (READ_ONLY)
-    DB-->>APP: result rows (DataFrame)
-    APP->>OAI: generate_analysis(sql, results)
-    OAI-->>APP: fact-based Markdown summary
-    APP-->>U: table + analysis + chat history
-
-    Note over U,SS: Phase 4 — BI dashboard (Superset)
-    U->>SS: open http://localhost:8088
-    SS->>DB: execute chart queries (READ_ONLY)
-    DB-->>SS: aggregated result sets
-    SS-->>U: interactive charts + filters
-```
-
----
-
 ## Prerequisites
 
 | Requirement | Details |
@@ -184,6 +134,56 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard a
 | `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
 | `agent` | Python 3.12+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
+
+---
+
+### End-to-End Sequence Diagram
+
+The diagram below shows the full lifecycle from log ingestion through to a
+completed AI-assisted threat hunting session.
+
+```mermaid
+sequenceDiagram
+    participant OPS  as Operator
+    participant ING  as ingester (Rust)
+    participant DB   as DuckDB (bind mount)
+    participant APP  as chat / Streamlit
+    participant OAI  as OpenAI API
+    participant SS   as dashboard / Superset
+    participant U    as Analyst (Browser)
+
+    Note over OPS,ING: Phase 1 — Ingest
+    OPS->>ING: docker compose run ingester ingest --path /data/logs
+    ING->>ING: walk & filter files (date, path glob)
+    ING->>ING: parallel parse (rayon) + SHA-256 dedup
+    ING->>DB: batch insert via DuckDB Appender (READ_WRITE)
+    ING->>DB: GeoIP enrich (optional)
+    ING-->>OPS: IngestStats printed
+
+    Note over OPS,SS: Phase 2 — Start services
+    OPS->>APP: docker compose up -d
+    OPS->>SS: docker compose up -d
+    APP->>DB: open READ_ONLY connection
+    SS->>DB: open READ_ONLY connection
+
+    Note over U,OAI: Phase 3 — AI-assisted hunting (chat)
+    U->>APP: natural language question
+    APP->>OAI: generate_sql(question, schema, history)
+    OAI-->>APP: SQL string
+    APP->>APP: apply_date_filter + apply_row_limit
+    APP->>APP: validate_query (blocklist + EXPLAIN)
+    APP->>DB: execute SQL (READ_ONLY)
+    DB-->>APP: result rows (DataFrame)
+    APP->>OAI: generate_analysis(sql, results)
+    OAI-->>APP: fact-based Markdown summary
+    APP-->>U: table + analysis + chat history
+
+    Note over U,SS: Phase 4 — BI dashboard (Superset)
+    U->>SS: open http://localhost:8088
+    SS->>DB: execute chart queries (READ_ONLY)
+    DB-->>SS: aggregated result sets
+    SS-->>U: interactive charts + filters
+```
 
 ---
 
