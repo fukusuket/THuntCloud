@@ -121,18 +121,32 @@ sequenceDiagram
 
 ## Quick Start
 
+**Step 1.** Download CloudTrail logs from S3.
+Replace `<your-bucket>`, `<your-prefix>`, and `<local-output-dir>` with your actual values.
+The example prefix format is `AWSLogs/<account-id>/CloudTrail/<region>/`.
+
 ```bash
-# 1. Clone
+aws s3 cp s3://<your-bucket>/<your-prefix> <local-output-dir>/ \
+  --recursive \
+  --include "*.json.gz"
+```
+
+**Step 2.** Clone the repository, ingest logs, and start all services.
+
+```bash
+# Clone the repository
 git clone https://github.com/fukusuket/THuntCloud.git
 
-# 2. Place CloudTrail logs
-cd THuntCloud/docker
-cp /path/to/cloudtrail/logs/*.json.gz logs/
+# Place the downloaded logs into the Docker logs directory
+cp -r <local-output-dir>/ THuntCloud/docker/logs/
 
-# 3. Ingest logs
+# Move to the Docker directory
+cd THuntCloud/docker
+
+# Ingest logs into DuckDB
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 
-# 4. Start all services
+# Start all services (agent + dashboard)
 docker compose up -d --build
 ```
 
