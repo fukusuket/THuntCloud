@@ -101,7 +101,7 @@ docker compose up -d --build
 - http://localhost:8501 — Built-in queries and AI Chat 
 - http://localhost:8088 — Dashboard (`admin` / `admin`) 
 
-**(optional)** GeoIP enrichment.
+**(Optional)** GeoIP enrichment.
 Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
 
 ```bash
