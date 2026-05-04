@@ -15,11 +15,30 @@ use serde_json::Value;
 /// Default set of CloudTrail keys considered low-signal for security
 /// incident investigation.
 ///
+/// Selection rule: a key is included only when it is **not useful as a
+/// `request_parameters` / `response_elements` search criterion**. The
+/// original event is always preserved verbatim in `raw_event`, so any
+/// stripped value can still be retrieved by full-text search on that
+/// column when needed — stripping only removes the dedicated-column
+/// indexability of the field.
+///
 /// Categorised:
-/// - **Pagination/limits:** result set is irrelevant; only the *fact* of
-///   the API call matters.
-/// - **Idempotency tokens / dryRun:** AWS-internal request bookkeeping
+/// - **Pagination / size limits** — result set is irrelevant; only the
+///   *fact* of the API call matters.
+/// - **Idempotency tokens / dry-run** — AWS-internal request bookkeeping
 ///   with no investigative value.
+/// - **Opaque ephemeral credentials** — `sessionToken` / `secretAccessKey`
+///   are large base64 blobs that are never queried as search criteria.
+/// - **AWS catalogue / reference response data** —
+///   `eventCategoriesMapList`, `reservedNodeOfferings`, `sslPolicies`,
+///   `orderableClusterOptions`. These are AWS-defined static catalogues
+///   echoed back by `Describe*` operations.
+/// - **Query-time filter echoes** — `filterSet`, `ownersSet`. Echoes of
+///   the caller's filter criteria; almost always empty (`{}`) and never
+///   useful as a search target after the fact.
+/// - **Redundant transport headers** — `Host` / `host`. The HTTP host
+///   header (e.g. `ec2.amazonaws.com`) duplicates information already
+///   present in the dedicated `event_source` column.
 ///
 /// Both camelCase and PascalCase variants are listed because AWS API
 /// payloads use both conventions interchangeably.
@@ -42,6 +61,22 @@ pub const DEFAULT_STRIP_KEYS: &[&str] = &[
     "ClientToken",
     "clientRequestToken",
     "ClientRequestToken",
+    // Opaque ephemeral credentials issued by STS / AssumeRole
+    "sessionToken",
+    "SessionToken",
+    "secretAccessKey",
+    "SecretAccessKey",
+    // AWS catalogue / reference data echoed by Describe* operations
+    "eventCategoriesMapList",
+    "reservedNodeOfferings",
+    "sslPolicies",
+    "orderableClusterOptions",
+    // Query-time filter echoes
+    "filterSet",
+    "ownersSet",
+    // Redundant transport headers (duplicated by event_source column)
+    "Host",
+    "host",
 ];
 
 /// Filter that removes a fixed set of JSON keys at any depth.
