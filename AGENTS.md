@@ -115,10 +115,14 @@ black .                       # format
 
 ## DuckDB Schema
 
-### `cloudtrail_events` (24 columns)
+### `cloudtrail_events` (48 columns)
 
 JSON blobs are stored as **`VARCHAR`**, not DuckDB JSON type.
 Use `json_extract_string(column, '$.field')` for ad-hoc queries.
+
+Column layout: **core (17) → geo (7) → extended (24)**.
+Geo and extended columns are added via `ALTER TABLE ADD COLUMN IF NOT EXISTS` so existing
+databases are migrated transparently on the next ingest run.
 
 ```sql
 CREATE TABLE IF NOT EXISTS cloudtrail_events (
@@ -139,7 +143,7 @@ CREATE TABLE IF NOT EXISTS cloudtrail_events (
     read_only                BOOLEAN,
     event_type               VARCHAR,
     recipient_account_id     VARCHAR,
-    raw_event                VARCHAR    -- full original event JSON as VARCHAR
+    raw_event                VARCHAR    -- full original event JSON as VARCHAR; NULL when --strip-raw-event
 );
 
 -- GeoIP columns (7) — added via ALTER TABLE ADD COLUMN IF NOT EXISTS
@@ -151,6 +155,39 @@ ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_latitude     DOUBLE;
 ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_longitude    DOUBLE;
 ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_asn          VARCHAR;
 ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
+
+-- Extended columns (24) — hoisted sub-fields; added via ALTER TABLE ADD COLUMN IF NOT EXISTS
+-- userIdentity sub-fields
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_principal_id      VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_access_key_id     VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_user_name         VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_invoked_by        VARCHAR;
+-- userIdentity.sessionContext.attributes
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_mfa_authenticated       VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_creation_date           VARCHAR;
+-- userIdentity.sessionContext.sessionIssuer
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_type             VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_arn              VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_account_id       VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_user_name        VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_principal_id     VARCHAR;
+-- top-level identifiers / categorisation
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS event_id                        VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS event_category                  VARCHAR;
+-- resources / additional / shared / VPC
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS resources                       VARCHAR;  -- JSON array
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS additional_event_data           VARCHAR;  -- JSON object
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS shared_event_id                 VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS vpc_endpoint_id                 VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS management_event                VARCHAR;  -- "true"/"false"
+-- TLS posture
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_version                     VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_cipher_suite                VARCHAR;
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_client_provided_host_header VARCHAR;
+-- service-specific / misc
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS service_event_details           VARCHAR;  -- JSON object
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_credential_from_console VARCHAR;  -- "true"/"false"
+ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS api_version                     VARCHAR;
 ```
 
 ### `ingested_files`

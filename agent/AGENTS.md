@@ -139,6 +139,7 @@ def tmp_duckdb(tmp_path):
     conn = duckdb.connect(str(db_path))
     conn.execute("""
         CREATE TABLE cloudtrail_events (
+            -- Core columns (17)
             event_time               TIMESTAMP,
             event_name               VARCHAR,
             event_source             VARCHAR,
@@ -156,13 +157,39 @@ def tmp_duckdb(tmp_path):
             event_type               VARCHAR,
             recipient_account_id     VARCHAR,
             raw_event                VARCHAR,
+            -- Geo columns (7)
             geo_country_code         VARCHAR,
             geo_country_name         VARCHAR,
             geo_city                 VARCHAR,
             geo_latitude             DOUBLE,
             geo_longitude            DOUBLE,
             geo_asn                  VARCHAR,
-            geo_org                  VARCHAR
+            geo_org                  VARCHAR,
+            -- Extended columns (24)
+            user_identity_principal_id      VARCHAR,
+            user_identity_access_key_id     VARCHAR,
+            user_identity_user_name         VARCHAR,
+            user_identity_invoked_by        VARCHAR,
+            session_mfa_authenticated       VARCHAR,
+            session_creation_date           VARCHAR,
+            session_issuer_type             VARCHAR,
+            session_issuer_arn              VARCHAR,
+            session_issuer_account_id       VARCHAR,
+            session_issuer_user_name        VARCHAR,
+            session_issuer_principal_id     VARCHAR,
+            event_id                        VARCHAR,
+            event_category                  VARCHAR,
+            resources                       VARCHAR,
+            additional_event_data           VARCHAR,
+            shared_event_id                 VARCHAR,
+            vpc_endpoint_id                 VARCHAR,
+            management_event                VARCHAR,
+            tls_version                     VARCHAR,
+            tls_cipher_suite                VARCHAR,
+            tls_client_provided_host_header VARCHAR,
+            service_event_details           VARCHAR,
+            session_credential_from_console VARCHAR,
+            api_version                     VARCHAR
         )
     """)
     conn.execute("""

@@ -52,27 +52,69 @@ ingester/
 ## Key Data Structures
 
 ```rust
+/// Pre-extracted fields from `userIdentity.sessionContext`.
+pub struct SessionContext {
+    pub mfa_authenticated:   Option<String>,  // sessionContext.attributes.mfaAuthenticated
+    pub creation_date:       Option<String>,  // sessionContext.attributes.creationDate
+    pub issuer_type:         Option<String>,  // sessionContext.sessionIssuer.type
+    pub issuer_arn:          Option<String>,  // sessionContext.sessionIssuer.arn
+    pub issuer_account_id:   Option<String>,  // sessionContext.sessionIssuer.accountId
+    pub issuer_user_name:    Option<String>,  // sessionContext.sessionIssuer.userName
+    pub issuer_principal_id: Option<String>,  // sessionContext.sessionIssuer.principalId
+}
+
+/// Pre-extracted fields from the `userIdentity` sub-object.
+pub struct UserIdentity {
+    pub identity_type: Option<String>,  // userIdentity.type
+    pub arn:           Option<String>,  // userIdentity.arn
+    pub account_id:    Option<String>,  // userIdentity.accountId
+    pub principal_id:  Option<String>,  // userIdentity.principalId
+    pub access_key_id: Option<String>,  // userIdentity.accessKeyId
+    pub user_name:     Option<String>,  // userIdentity.userName
+    pub invoked_by:    Option<String>,  // userIdentity.invokedBy
+    pub session:       SessionContext,
+}
+
+/// Pre-extracted fields from the `tlsDetails` sub-object.
+pub struct TlsDetails {
+    pub tls_version:               Option<String>,  // tlsDetails.tlsVersion
+    pub cipher_suite:              Option<String>,  // tlsDetails.cipherSuite
+    pub client_provided_host_header: Option<String>, // tlsDetails.clientProvidedHostHeader
+}
+
 /// A single CloudTrail event record.
+///
+/// Column layout mirrors the DB schema: core → geo (populated externally) → extended.
 pub struct CloudTrailEvent {
-    pub event_time:               String,
-    pub event_name:               String,
-    pub event_source:             String,
-    pub aws_region:               String,
-    pub source_ip_address:        Option<String>,
-    pub user_agent:               Option<String>,
-    // user_identity fields flattened from the nested JSON object
-    pub user_identity_type:       Option<String>,
-    pub user_identity_arn:        Option<String>,
-    pub user_identity_account_id: Option<String>,
-    // JSON blobs stored as pre-serialised VARCHAR strings
-    pub request_parameters:       String,
-    pub response_elements:        String,
-    pub raw_event:                String,
-    pub error_code:               Option<String>,
-    pub error_message:            Option<String>,
-    pub read_only:                Option<bool>,
-    pub event_type:               Option<String>,
-    pub recipient_account_id:     Option<String>,
+    // ── Core fields ──────────────────────────────────────────────────────
+    pub event_time:            String,
+    pub event_name:            String,
+    pub event_source:          String,
+    pub aws_region:            String,
+    pub source_ip_address:     Option<String>,
+    pub user_agent:            Option<String>,
+    pub user_identity:         UserIdentity,   // → user_identity_* columns
+    pub request_parameters:    Option<String>, // JSON stored as VARCHAR
+    pub response_elements:     Option<String>, // JSON stored as VARCHAR
+    pub error_code:            Option<String>,
+    pub error_message:         Option<String>,
+    pub read_only:             Option<bool>,
+    pub event_type:            Option<String>,
+    pub recipient_account_id:  Option<String>,
+    pub raw_json:              String,          // written to raw_event column
+
+    // ── Extended fields (Step A) ─────────────────────────────────────────
+    pub event_id:                        Option<String>,
+    pub event_category:                  Option<String>,
+    pub resources:                       Option<String>, // JSON array
+    pub additional_event_data:           Option<String>, // JSON object
+    pub shared_event_id:                 Option<String>,
+    pub vpc_endpoint_id:                 Option<String>,
+    pub management_event:                Option<String>, // "true"/"false"
+    pub tls:                             TlsDetails,     // → tls_* columns
+    pub service_event_details:           Option<String>, // JSON object
+    pub session_credential_from_console: Option<String>, // "true"/"false"
+    pub api_version:                     Option<String>,
 }
 
 /// Statistics returned after an ingestion run.
