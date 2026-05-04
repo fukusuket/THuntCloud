@@ -95,6 +95,10 @@ pub struct IngestOptions<'a> {
     /// Empty (default) → JSON is written verbatim. `raw_event` is never
     /// modified by this filter.
     pub field_filter: FieldFilter,
+    /// Drop the `raw_event` column entirely (write `NULL` instead of the
+    /// original JSON). Use only after Step-A field hoisting has made the
+    /// raw blob unnecessary for routine investigation. Default `false`.
+    pub strip_raw_event: bool,
 }
 
 /// Ingest CloudTrail log files from `path` into `conn` using the given `options`.
@@ -117,6 +121,7 @@ pub fn ingest(path: &Path, conn: &Connection, options: IngestOptions<'_>) -> Res
         &options.path_filter,
         options.geoip,
         &options.field_filter,
+        options.strip_raw_event,
     )
 }
 
@@ -211,6 +216,7 @@ pub fn ingest_with_progress(
         &PathFilter::default(),
         None,
         &FieldFilter::default(),
+        false,
     )
 }
 
@@ -237,6 +243,7 @@ pub fn ingest_with_date_filter(
         &PathFilter::default(),
         None,
         &FieldFilter::default(),
+        false,
     )
 }
 
@@ -268,6 +275,7 @@ pub fn ingest_with_filters(
         path_filter,
         None,
         &FieldFilter::default(),
+        false,
     )
 }
 
@@ -296,6 +304,7 @@ pub fn ingest_with_geoip(
         path_filter,
         Some(geoip),
         &FieldFilter::default(),
+        false,
     )
 }
 
@@ -337,6 +346,7 @@ fn ingest_core(
     path_filter: &PathFilter,
     geoip: Option<&GeoipEnricher>,
     field_filter: &FieldFilter,
+    strip_raw_event: bool,
 ) -> Result<IngestStats> {
     ensure_table(conn)?;
 
@@ -420,7 +430,7 @@ fn ingest_core(
                         stats.files_processed += 1;
                         None
                     } else {
-                        match insert_events_with_geo(conn, &records, geoip) {
+                        match insert_events_with_geo(conn, &records, geoip, strip_raw_event) {
                             Ok(inserted) => {
                                 stats.files_processed += 1;
                                 stats.records_inserted += inserted;

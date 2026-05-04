@@ -134,14 +134,26 @@ pub fn ensure_extended_columns(conn: &Connection) -> Result<()> {
 /// Column order **must exactly match** [`ensure_table`]'s CREATE TABLE
 /// statement, then the geo columns added by [`ensure_geo_columns`], then
 /// the Step-A extended columns added by [`ensure_extended_columns`].
+///
+/// When `strip_raw_event` is `true`, the `raw_event` column receives
+/// `NULL` instead of the original JSON. All Step-A extended columns
+/// remain populated, so investigation queries continue to work — only
+/// the unscoped full-text fallback via raw_event is dropped.
 fn append_event_row(
     appender: &mut Appender<'_>,
     event: &CloudTrailEvent,
     geo: &GeoInfo,
+    strip_raw_event: bool,
 ) -> Result<()> {
     let ui = &event.user_identity;
     let session = &ui.session;
     let tls = &event.tls;
+    // When strip_raw_event is set, bind None for the raw_event column.
+    let raw_event_param: Option<&str> = if strip_raw_event {
+        None
+    } else {
+        Some(event.raw_json.as_str())
+    };
 
     // All JSON fields are pre-computed strings on CloudTrailEvent —
     // no serde_json serialisation occurs in this hot path.
@@ -167,7 +179,7 @@ fn append_event_row(
         &event.read_only,                        // read_only
         &event.event_type,                       // event_type
         &event.recipient_account_id,             // recipient_account_id
-        &event.raw_json,                         // raw_event
+        &raw_event_param,                        // raw_event (None when stripped)
         // ── geo (7) ─────────────────────────────────────────────────
         &geo.country_code,                       // geo_country_code
         &geo.country_name,                       // geo_country_name
@@ -211,16 +223,16 @@ fn append_event_row(
 ///
 /// Uses [`duckdb::Appender`] for high-throughput batch inserts.
 /// When `geoip` is `None`, all geo columns are written as `NULL`.
+/// When `strip_raw_event` is `true`, the `raw_event` column receives
+/// `NULL` (rather than the original JSON) — used by the
+/// `--strip-raw-event` CLI flag to produce a much smaller DB after
+/// Step-A field hoisting.
 /// Returns the number of rows inserted.
-///
-/// All fields that were previously re-serialised at insert time
-/// (`raw_event`, `request_parameters`, `response_elements`) are now
-/// stored as pre-computed strings on [`CloudTrailEvent`], so this
-/// function performs zero JSON serialisation.
 pub fn insert_events_with_geo(
     conn: &Connection,
     events: &[CloudTrailEvent],
     geoip: Option<&GeoipEnricher>,
+    strip_raw_event: bool,
 ) -> Result<usize> {
     if events.is_empty() {
         return Ok(0);
@@ -236,7 +248,7 @@ pub fn insert_events_with_geo(
             (Some(enricher), Some(ip)) => enricher.lookup(ip),
             _ => GeoInfo::all_none(),
         };
-        append_event_row(&mut appender, event, &geo)?;
+        append_event_row(&mut appender, event, &geo, strip_raw_event)?;
     }
 
     appender.flush().context("Failed to flush appender")?;
@@ -343,7 +355,7 @@ mod tests {
 
         let event = full_event();
         let inserted =
-            insert_events_with_geo(&conn, &[event], None).expect("insert should succeed");
+            insert_events_with_geo(&conn, &[event], None, false).expect("insert should succeed");
 
         assert_eq!(inserted, 1);
 
@@ -373,7 +385,7 @@ mod tests {
 
         let events: Vec<CloudTrailEvent> = (0..100).map(|_| full_event()).collect();
         let inserted =
-            insert_events_with_geo(&conn, &events, None).expect("batch insert should succeed");
+            insert_events_with_geo(&conn, &events, None, false).expect("batch insert should succeed");
 
         assert_eq!(inserted, 100);
 
@@ -393,7 +405,7 @@ mod tests {
 
         // minimal_event() has all optional fields set to None.
         let event = minimal_event();
-        let inserted = insert_events_with_geo(&conn, &[event], None)
+        let inserted = insert_events_with_geo(&conn, &[event], None, false)
             .expect("insert with null fields should succeed");
         assert_eq!(inserted, 1);
 
@@ -481,13 +493,57 @@ mod tests {
         ensure_extended_columns(&conn).expect("third call should also succeed");
     }
 
+    // Test D-B1: insert_events_with_geo with strip_raw_event=true writes
+    // NULL into raw_event but keeps all Step-A columns populated.
+    #[test]
+    fn test_insert_with_strip_raw_event_writes_null_raw() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        let event = full_event();
+        insert_events_with_geo(&conn, &[event], None, true).expect("insert should succeed");
+
+        let (raw, akid, ev_id): (Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT raw_event, user_identity_access_key_id, event_id \
+                 FROM cloudtrail_events LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert!(raw.is_none(), "raw_event must be NULL when stripped");
+        // Step-A columns must remain populated.
+        assert_eq!(akid.as_deref(), Some("AKIAEXAMPLE"));
+        assert_eq!(
+            ev_id.as_deref(),
+            Some("00000000-1111-2222-3333-444444444444")
+        );
+    }
+
+    // Test D-B2: strip_raw_event=false (default) preserves raw_event verbatim.
+    #[test]
+    fn test_insert_without_strip_raw_event_preserves_raw() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+        insert_events_with_geo(&conn, &[full_event()], None, false).expect("insert should succeed");
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT raw_event FROM cloudtrail_events LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(raw.is_some(), "raw_event must be preserved by default");
+        assert!(raw.unwrap().contains("DescribeInstances"));
+    }
+
     // Test D-A3: full_event() values round-trip through the appender for
     // every Step-A column (validates schema/Appender column-order pairing).
     #[test]
     fn test_insert_event_persists_extended_fields() {
         let conn = temp_db();
         ensure_table(&conn).unwrap();
-        insert_events_with_geo(&conn, &[full_event()], None).expect("insert should succeed");
+        insert_events_with_geo(&conn, &[full_event()], None, false).expect("insert should succeed");
 
         let (akid, mfa, issuer_arn, ev_id, ev_cat, res, vpc, mgmt, tls_ver, tls_suite, tls_host):
             (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
@@ -545,7 +601,7 @@ mod tests {
         let mut event = full_event();
         event.source_ip_address = Some("81.2.69.160".to_string());
 
-        insert_events_with_geo(&conn, &[event], Some(&enricher))
+        insert_events_with_geo(&conn, &[event], Some(&enricher), false)
             .expect("insert with geo should succeed");
 
         let country_code: Option<String> = conn
@@ -569,7 +625,7 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let event = full_event();
-        insert_events_with_geo(&conn, &[event], None).expect("insert without geo should succeed");
+        insert_events_with_geo(&conn, &[event], None, false).expect("insert without geo should succeed");
 
         let (cc, cn, city): (Option<String>, Option<String>, Option<String>) = conn
             .query_row(
@@ -600,7 +656,7 @@ mod tests {
         let mut event = full_event();
         event.source_ip_address = Some("10.0.0.1".to_string());
 
-        insert_events_with_geo(&conn, &[event], Some(&enricher))
+        insert_events_with_geo(&conn, &[event], Some(&enricher), false)
             .expect("insert with private IP should succeed");
 
         let country_code: Option<String> = conn

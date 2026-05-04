@@ -150,6 +150,17 @@ enum Commands {
         /// database file.
         #[arg(long)]
         strip_fields: bool,
+
+        /// Drop the `raw_event` column entirely (write `NULL`). Step-A
+        /// extended columns (user_identity_access_key_id,
+        /// session_mfa_authenticated, resources, tls_*, etc.) are still
+        /// populated, so investigation queries that target dedicated
+        /// columns continue to work — only the unscoped full-text
+        /// fallback via `WHERE raw_event LIKE …` is no longer
+        /// available. Combined with `--strip-fields`, this produces
+        /// the smallest possible DB for high-volume CloudTrail data.
+        #[arg(long)]
+        strip_raw_event: bool,
     },
 
     /// Enrich existing cloudtrail_events rows with GeoIP data.
@@ -197,6 +208,7 @@ fn run() -> Result<()> {
             geoip_country,
             geoip_asn,
             strip_fields,
+            strip_raw_event,
         } => {
             // Optionally cap the rayon thread pool before any parallel work.
             if let Some(n) = workers {
@@ -242,6 +254,7 @@ fn run() -> Result<()> {
                         path_filter,
                         geoip: Some(&enricher),
                         field_filter,
+                        strip_raw_event,
                     },
                 )?
             } else {
@@ -254,6 +267,7 @@ fn run() -> Result<()> {
                         path_filter,
                         geoip: None,
                         field_filter,
+                        strip_raw_event,
                     },
                 )?
             };
