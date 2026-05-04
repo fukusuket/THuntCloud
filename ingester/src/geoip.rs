@@ -140,49 +140,29 @@ impl GeoipEnricher {
 
         if let Some(city_reader) = &self.city_reader {
             // City DB: full info (country + city + coordinates).
-            if let Ok(city) = city_reader.lookup::<geoip2::City>(addr) {
-                info.country_code = city
-                    .country
-                    .as_ref()
-                    .and_then(|c| c.iso_code)
-                    .map(str::to_string);
-                info.country_name = city
-                    .country
-                    .as_ref()
-                    .and_then(|c| c.names.as_ref())
-                    .and_then(|n| n.get("en"))
-                    .map(|s| s.to_string());
-                info.city = city
-                    .city
-                    .as_ref()
-                    .and_then(|c| c.names.as_ref())
-                    .and_then(|n| n.get("en"))
-                    .map(|s| s.to_string());
-                if let Some(loc) = &city.location {
-                    info.latitude = loc.latitude;
-                    info.longitude = loc.longitude;
-                }
+            if let Ok(lr) = city_reader.lookup(addr)
+                && let Ok(Some(city)) = lr.decode::<geoip2::City>()
+            {
+                info.country_code = city.country.iso_code.map(str::to_string);
+                info.country_name = city.country.names.english.map(str::to_string);
+                info.city = city.city.names.english.map(str::to_string);
+                info.latitude = city.location.latitude;
+                info.longitude = city.location.longitude;
             }
         } else if let Some(country_reader) = &self.country_reader {
             // Country DB: country info only — city/lat/lon remain None.
-            if let Ok(country) = country_reader.lookup::<geoip2::Country>(addr) {
-                info.country_code = country
-                    .country
-                    .as_ref()
-                    .and_then(|c| c.iso_code)
-                    .map(str::to_string);
-                info.country_name = country
-                    .country
-                    .as_ref()
-                    .and_then(|c| c.names.as_ref())
-                    .and_then(|n| n.get("en"))
-                    .map(|s| s.to_string());
+            if let Ok(lr) = country_reader.lookup(addr)
+                && let Ok(Some(country)) = lr.decode::<geoip2::Country>()
+            {
+                info.country_code = country.country.iso_code.map(str::to_string);
+                info.country_name = country.country.names.english.map(str::to_string);
             }
         }
 
         // ASN lookup (optional, additive for both City and Country paths).
         if let Some(asn_reader) = &self.asn_reader
-            && let Ok(asn) = asn_reader.lookup::<geoip2::Asn>(addr)
+            && let Ok(lr) = asn_reader.lookup(addr)
+            && let Ok(Some(asn)) = lr.decode::<geoip2::Asn>()
         {
             info.asn = asn.autonomous_system_number.map(|n| format!("AS{n}"));
             info.org = asn.autonomous_system_organization.map(str::to_string);
