@@ -184,9 +184,11 @@ def render_sidebar() -> None:
                 horizontal=True,
                 help=(
                     "Full = original CloudTrail records.  "
-                    "Lite = noise fields stripped (maxResults, nextToken, "
-                    "marker, pageSize, maxItems, dryRun, clientToken, "
-                    "clientRequestToken)."
+                    "Lite = noise fields stripped from request_parameters "
+                    "/ response_elements (pagination tokens, idempotency "
+                    "tokens, opaque session credentials, AWS catalogue "
+                    "echoes, query-time filter echoes, redundant Host "
+                    "headers). raw_event is preserved in both variants."
                 ),
                 key="_db_variant_radio",
             )
