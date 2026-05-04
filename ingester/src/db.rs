@@ -12,11 +12,19 @@ use crate::geoip::{GeoInfo, GeoipEnricher};
 use crate::parser::CloudTrailEvent;
 
 /// Create the `cloudtrail_events` and `ingested_files` tables if they do not exist,
-/// then ensure the 7 geo-enrichment columns are present.
+/// then ensure the geo-enrichment and extended-field columns are present.
 ///
 /// This function is idempotent — calling it multiple times on the same
 /// connection is safe.
 pub fn ensure_table(conn: &Connection) -> Result<()> {
+    // CREATE TABLE only declares the original 17 core columns.  Geo
+    // columns and Step-A extended columns are added via ALTER TABLE
+    // for both new and pre-existing databases — this guarantees a
+    // single canonical column order on disk regardless of when the
+    // database was first created:
+    //   core (17)  →  geo (7)  →  extended (24)
+    // The Appender writes positionally, so this ordering is the
+    // contract that `append_event_row` relies on.
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS cloudtrail_events (
@@ -48,7 +56,8 @@ pub fn ensure_table(conn: &Connection) -> Result<()> {
     )
     .context("Failed to create database tables")?;
 
-    ensure_geo_columns(conn)
+    ensure_geo_columns(conn)?;
+    ensure_extended_columns(conn)
 }
 
 /// Add the 7 geo-enrichment columns to `cloudtrail_events` if they do not exist.
@@ -69,44 +78,129 @@ pub fn ensure_geo_columns(conn: &Connection) -> Result<()> {
     .context("Failed to add geo columns to cloudtrail_events")
 }
 
+/// Add the Step-A extended-field columns to `cloudtrail_events` if they
+/// do not exist. These hoist commonly-needed sub-fields out of the
+/// `raw_event` blob so that incident-investigation queries can run as
+/// regular column predicates.
+///
+/// Uses `ALTER TABLE … ADD COLUMN IF NOT EXISTS` so existing databases
+/// are migrated transparently on the next ingest run.
+pub fn ensure_extended_columns(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        -- userIdentity sub-fields (in addition to type/arn/accountId already present)
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_principal_id      VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_access_key_id     VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_user_name         VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS user_identity_invoked_by        VARCHAR;
+        -- userIdentity.sessionContext.attributes
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_mfa_authenticated       VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_creation_date           VARCHAR;
+        -- userIdentity.sessionContext.sessionIssuer
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_type             VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_arn              VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_account_id       VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_user_name        VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_issuer_principal_id     VARCHAR;
+        -- top-level identifiers / categorisation
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS event_id                        VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS event_category                  VARCHAR;
+        -- resources / additional / shared / VPC
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS resources                       VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS additional_event_data           VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS shared_event_id                 VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS vpc_endpoint_id                 VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS management_event                VARCHAR;
+        -- TLS posture
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_version                     VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_cipher_suite                VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS tls_client_provided_host_header VARCHAR;
+        -- service-specific / misc
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS service_event_details           VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS session_credential_from_console VARCHAR;
+        ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS api_version                     VARCHAR;
+        ",
+    )
+    .context("Failed to add extended columns to cloudtrail_events")
+}
+
 /// Append a single [`CloudTrailEvent`] row (with pre-resolved [`GeoInfo`]) to an open
 /// [`Appender`].
 ///
-/// This is the single source of truth for the 24-column row layout.
+/// This is the single source of truth for the row layout.
 /// Both [`insert_events_with_geo`] and any future bulk-append callers must use
 /// this helper so that schema changes only need to be made in one place.
+///
+/// Column order **must exactly match** [`ensure_table`]'s CREATE TABLE
+/// statement, then the geo columns added by [`ensure_geo_columns`], then
+/// the Step-A extended columns added by [`ensure_extended_columns`].
 fn append_event_row(
     appender: &mut Appender<'_>,
     event: &CloudTrailEvent,
     geo: &GeoInfo,
 ) -> Result<()> {
+    let ui = &event.user_identity;
+    let session = &ui.session;
+    let tls = &event.tls;
+
     // All JSON fields are pre-computed strings on CloudTrailEvent —
     // no serde_json serialisation occurs in this hot path.
+    //
+    // Order: core (17) → geo (7) → extended (24). Matches the on-disk
+    // column order produced by `ensure_table` + `ensure_geo_columns`
+    // + `ensure_extended_columns`.
     let params: Vec<&dyn ToSql> = vec![
-        &event.event_time,                  // event_time               TIMESTAMP
-        &event.event_name,                  // event_name               VARCHAR
-        &event.event_source,                // event_source             VARCHAR
-        &event.aws_region,                  // aws_region               VARCHAR
-        &event.source_ip_address,           // source_ip_address        VARCHAR (Option)
-        &event.user_agent,                  // user_agent               VARCHAR (Option)
-        &event.user_identity.identity_type, // user_identity_type       VARCHAR (Option)
-        &event.user_identity.arn,           // user_identity_arn        VARCHAR (Option)
-        &event.user_identity.account_id,    // user_identity_account_id VARCHAR (Option)
-        &event.request_parameters,          // request_parameters       VARCHAR (Option<String>)
-        &event.response_elements,           // response_elements        VARCHAR (Option<String>)
-        &event.error_code,                  // error_code               VARCHAR (Option)
-        &event.error_message,               // error_message            VARCHAR (Option)
-        &event.read_only,                   // read_only                BOOLEAN (Option)
-        &event.event_type,                  // event_type               VARCHAR (Option)
-        &event.recipient_account_id,        // recipient_account_id     VARCHAR (Option)
-        &event.raw_json,                    // raw_event                VARCHAR (original JSON)
-        &geo.country_code,                  // geo_country_code         VARCHAR (Option)
-        &geo.country_name,                  // geo_country_name         VARCHAR (Option)
-        &geo.city,                          // geo_city                 VARCHAR (Option)
-        &geo.latitude,                      // geo_latitude             DOUBLE  (Option)
-        &geo.longitude,                     // geo_longitude            DOUBLE  (Option)
-        &geo.asn,                           // geo_asn                  VARCHAR (Option)
-        &geo.org,                           // geo_org                  VARCHAR (Option)
+        // ── core (17) ────────────────────────────────────────────────
+        &event.event_time,                       // event_time
+        &event.event_name,                       // event_name
+        &event.event_source,                     // event_source
+        &event.aws_region,                       // aws_region
+        &event.source_ip_address,                // source_ip_address
+        &event.user_agent,                       // user_agent
+        &ui.identity_type,                       // user_identity_type
+        &ui.arn,                                 // user_identity_arn
+        &ui.account_id,                          // user_identity_account_id
+        &event.request_parameters,               // request_parameters
+        &event.response_elements,                // response_elements
+        &event.error_code,                       // error_code
+        &event.error_message,                    // error_message
+        &event.read_only,                        // read_only
+        &event.event_type,                       // event_type
+        &event.recipient_account_id,             // recipient_account_id
+        &event.raw_json,                         // raw_event
+        // ── geo (7) ─────────────────────────────────────────────────
+        &geo.country_code,                       // geo_country_code
+        &geo.country_name,                       // geo_country_name
+        &geo.city,                               // geo_city
+        &geo.latitude,                           // geo_latitude
+        &geo.longitude,                          // geo_longitude
+        &geo.asn,                                // geo_asn
+        &geo.org,                                // geo_org
+        // ── extended (24) ───────────────────────────────────────────
+        &ui.principal_id,                        // user_identity_principal_id
+        &ui.access_key_id,                       // user_identity_access_key_id
+        &ui.user_name,                           // user_identity_user_name
+        &ui.invoked_by,                          // user_identity_invoked_by
+        &session.mfa_authenticated,              // session_mfa_authenticated
+        &session.creation_date,                  // session_creation_date
+        &session.issuer_type,                    // session_issuer_type
+        &session.issuer_arn,                     // session_issuer_arn
+        &session.issuer_account_id,              // session_issuer_account_id
+        &session.issuer_user_name,               // session_issuer_user_name
+        &session.issuer_principal_id,            // session_issuer_principal_id
+        &event.event_id,                         // event_id
+        &event.event_category,                   // event_category
+        &event.resources,                        // resources (JSON)
+        &event.additional_event_data,            // additional_event_data (JSON)
+        &event.shared_event_id,                  // shared_event_id
+        &event.vpc_endpoint_id,                  // vpc_endpoint_id
+        &event.management_event,                 // management_event
+        &tls.tls_version,                        // tls_version
+        &tls.cipher_suite,                       // tls_cipher_suite
+        &tls.client_provided_host_header,        // tls_client_provided_host_header
+        &event.service_event_details,            // service_event_details (JSON)
+        &event.session_credential_from_console,  // session_credential_from_console
+        &event.api_version,                      // api_version
     ];
     appender
         .append_row(params.as_slice())
@@ -331,6 +425,102 @@ mod tests {
             )
             .expect("information_schema query should succeed");
         assert_eq!(geo_col_count, 7, "should have exactly 7 geo_ columns");
+    }
+
+    // Test D-A1: ensure_extended_columns adds all Step-A columns.
+    #[test]
+    fn test_ensure_extended_columns_adds_all_columns() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+
+        let expected = [
+            "user_identity_principal_id",
+            "user_identity_access_key_id",
+            "user_identity_user_name",
+            "user_identity_invoked_by",
+            "session_mfa_authenticated",
+            "session_creation_date",
+            "session_issuer_type",
+            "session_issuer_arn",
+            "session_issuer_account_id",
+            "session_issuer_user_name",
+            "session_issuer_principal_id",
+            "event_id",
+            "event_category",
+            "resources",
+            "additional_event_data",
+            "shared_event_id",
+            "vpc_endpoint_id",
+            "management_event",
+            "tls_version",
+            "tls_cipher_suite",
+            "tls_client_provided_host_header",
+            "service_event_details",
+            "session_credential_from_console",
+            "api_version",
+        ];
+        for col in expected {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM information_schema.columns \
+                     WHERE table_name = 'cloudtrail_events' AND column_name = ?",
+                    [col],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 1, "extended column missing: {col}");
+        }
+    }
+
+    // Test D-A2: ensure_extended_columns is idempotent.
+    #[test]
+    fn test_ensure_extended_columns_is_idempotent() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+        ensure_extended_columns(&conn).expect("second call should succeed");
+        ensure_extended_columns(&conn).expect("third call should also succeed");
+    }
+
+    // Test D-A3: full_event() values round-trip through the appender for
+    // every Step-A column (validates schema/Appender column-order pairing).
+    #[test]
+    fn test_insert_event_persists_extended_fields() {
+        let conn = temp_db();
+        ensure_table(&conn).unwrap();
+        insert_events_with_geo(&conn, &[full_event()], None).expect("insert should succeed");
+
+        let (akid, mfa, issuer_arn, ev_id, ev_cat, res, vpc, mgmt, tls_ver, tls_suite, tls_host):
+            (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
+             Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
+             Option<String>) = conn
+            .query_row(
+                "SELECT user_identity_access_key_id, session_mfa_authenticated, \
+                        session_issuer_arn, event_id, event_category, resources, \
+                        vpc_endpoint_id, management_event, tls_version, tls_cipher_suite, \
+                        tls_client_provided_host_header \
+                 FROM cloudtrail_events LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
+                        r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?)),
+            )
+            .unwrap();
+        assert_eq!(akid.as_deref(), Some("AKIAEXAMPLE"));
+        assert_eq!(mfa.as_deref(), Some("true"));
+        assert_eq!(
+            issuer_arn.as_deref(),
+            Some("arn:aws:iam::123456789012:role/issuer")
+        );
+        assert_eq!(
+            ev_id.as_deref(),
+            Some("00000000-1111-2222-3333-444444444444")
+        );
+        assert_eq!(ev_cat.as_deref(), Some("Management"));
+        assert!(res.as_deref().unwrap().contains("arn:aws:s3:::bucket"));
+        assert_eq!(vpc.as_deref(), Some("vpce-12345"));
+        assert_eq!(mgmt.as_deref(), Some("true"));
+        assert_eq!(tls_ver.as_deref(), Some("TLSv1.2"));
+        assert_eq!(tls_suite.as_deref(), Some("ECDHE-RSA-AES128-GCM-SHA256"));
+        assert_eq!(tls_host.as_deref(), Some("ec2.us-east-1.amazonaws.com"));
     }
 
     // Test D-02: ensure_geo_columns is idempotent.
