@@ -198,6 +198,8 @@ ingester ingest --path <dir>
                 [--geoip-city   <path>]     # GeoLite2-City.mmdb   (or GEOIP_CITY_PATH)
                 [--geoip-country <path>]    # GeoLite2-Country.mmdb (or GEOIP_COUNTRY_PATH)
                 [--geoip-asn    <path>]     # GeoLite2-ASN.mmdb    (or GEOIP_ASN_PATH)
+                [--strip-fields]            # remove low-signal keys from requestParameters / responseElements
+                [--strip-raw-event]         # write NULL for raw_event column (saves storage)
 
 ingester enrich
                 [--db           <path>]
@@ -258,6 +260,7 @@ THuntCloud/
 │       ├── ingest.rs          # Pipeline: walk → filter → parallel parse → insert
 │       ├── enrich.rs          # Geo back-fill (UPDATE per unique IP)
 │       ├── geoip.rs           # MaxMind GeoLite2 lookup + private-IP classification
+│       ├── field_filter.rs    # --strip-fields: recursive JSON key removal (FieldFilter)
 │       ├── date_filter.rs     # --from / --to path-based date filter
 │       ├── path_filter.rs     # --include / --exclude glob filter
 │       └── progress.rs        # Progress bar (indicatif)

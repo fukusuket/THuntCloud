@@ -35,6 +35,7 @@ ingester/
 │   │                      # gz decompression is done inline in parse_file_content()
 │   ├── enrich.rs          # Geo back-fill for existing rows (enrich subcommand)
 │   ├── geoip.rs           # MaxMind GeoLite2 lookup + private-IP classification
+│   ├── field_filter.rs    # --strip-fields: recursive JSON key removal (FieldFilter)
 │   ├── date_filter.rs     # --from / --to path-based date filter
 │   ├── path_filter.rs     # --include / --exclude glob filter
 │   └── progress.rs        # Progress bar wrapper (indicatif)
@@ -160,6 +161,16 @@ Integration and CLI tests are in `ingester/tests/`.
 ### date_filter.rs / path_filter.rs
 - `test_date_filter_*` — various from/to boundary cases; no-date files always match
 - `test_path_filter_*` — include/exclude glob matching; `*` crosses path separators
+
+### field_filter.rs
+- `test_empty_filter_returns_input_unchanged` — `FieldFilter::default()` is a no-op; zero allocations
+- `test_default_strip_removes_pagination_keys` — `maxResults`, `nextToken`, etc. are removed
+- `test_strip_is_recursive_into_nested_objects` — nested JSON objects are also stripped
+- `test_strip_descends_into_arrays` — arrays are traversed and objects inside are stripped
+- `test_strip_is_case_sensitive_with_both_variants` — only listed casing variants are removed; unlisted casing (`MAXRESULTS`) is preserved
+- `test_invalid_json_is_returned_unchanged` — non-JSON strings are passed through verbatim
+- `test_non_object_top_level_json_is_returned_unchanged` — top-level `null` / string → no-op
+- `test_custom_keys_are_stripped` — `FieldFilter::new([...])` strips arbitrary keys
 
 ### CLI (tests/cli_test.rs)
 - `test_cli_ingest_command` — `ingester ingest --path <dir>` exits 0
