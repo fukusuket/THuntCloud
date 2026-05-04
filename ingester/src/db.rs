@@ -163,56 +163,56 @@ fn append_event_row(
     // + `ensure_extended_columns`.
     let params: Vec<&dyn ToSql> = vec![
         // ── core (17) ────────────────────────────────────────────────
-        &event.event_time,                       // event_time
-        &event.event_name,                       // event_name
-        &event.event_source,                     // event_source
-        &event.aws_region,                       // aws_region
-        &event.source_ip_address,                // source_ip_address
-        &event.user_agent,                       // user_agent
-        &ui.identity_type,                       // user_identity_type
-        &ui.arn,                                 // user_identity_arn
-        &ui.account_id,                          // user_identity_account_id
-        &event.request_parameters,               // request_parameters
-        &event.response_elements,                // response_elements
-        &event.error_code,                       // error_code
-        &event.error_message,                    // error_message
-        &event.read_only,                        // read_only
-        &event.event_type,                       // event_type
-        &event.recipient_account_id,             // recipient_account_id
-        &raw_event_param,                        // raw_event (None when stripped)
+        &event.event_time,           // event_time
+        &event.event_name,           // event_name
+        &event.event_source,         // event_source
+        &event.aws_region,           // aws_region
+        &event.source_ip_address,    // source_ip_address
+        &event.user_agent,           // user_agent
+        &ui.identity_type,           // user_identity_type
+        &ui.arn,                     // user_identity_arn
+        &ui.account_id,              // user_identity_account_id
+        &event.request_parameters,   // request_parameters
+        &event.response_elements,    // response_elements
+        &event.error_code,           // error_code
+        &event.error_message,        // error_message
+        &event.read_only,            // read_only
+        &event.event_type,           // event_type
+        &event.recipient_account_id, // recipient_account_id
+        &raw_event_param,            // raw_event (None when stripped)
         // ── geo (7) ─────────────────────────────────────────────────
-        &geo.country_code,                       // geo_country_code
-        &geo.country_name,                       // geo_country_name
-        &geo.city,                               // geo_city
-        &geo.latitude,                           // geo_latitude
-        &geo.longitude,                          // geo_longitude
-        &geo.asn,                                // geo_asn
-        &geo.org,                                // geo_org
+        &geo.country_code, // geo_country_code
+        &geo.country_name, // geo_country_name
+        &geo.city,         // geo_city
+        &geo.latitude,     // geo_latitude
+        &geo.longitude,    // geo_longitude
+        &geo.asn,          // geo_asn
+        &geo.org,          // geo_org
         // ── extended (24) ───────────────────────────────────────────
-        &ui.principal_id,                        // user_identity_principal_id
-        &ui.access_key_id,                       // user_identity_access_key_id
-        &ui.user_name,                           // user_identity_user_name
-        &ui.invoked_by,                          // user_identity_invoked_by
-        &session.mfa_authenticated,              // session_mfa_authenticated
-        &session.creation_date,                  // session_creation_date
-        &session.issuer_type,                    // session_issuer_type
-        &session.issuer_arn,                     // session_issuer_arn
-        &session.issuer_account_id,              // session_issuer_account_id
-        &session.issuer_user_name,               // session_issuer_user_name
-        &session.issuer_principal_id,            // session_issuer_principal_id
-        &event.event_id,                         // event_id
-        &event.event_category,                   // event_category
-        &event.resources,                        // resources (JSON)
-        &event.additional_event_data,            // additional_event_data (JSON)
-        &event.shared_event_id,                  // shared_event_id
-        &event.vpc_endpoint_id,                  // vpc_endpoint_id
-        &event.management_event,                 // management_event
-        &tls.tls_version,                        // tls_version
-        &tls.cipher_suite,                       // tls_cipher_suite
-        &tls.client_provided_host_header,        // tls_client_provided_host_header
-        &event.service_event_details,            // service_event_details (JSON)
-        &event.session_credential_from_console,  // session_credential_from_console
-        &event.api_version,                      // api_version
+        &ui.principal_id,                       // user_identity_principal_id
+        &ui.access_key_id,                      // user_identity_access_key_id
+        &ui.user_name,                          // user_identity_user_name
+        &ui.invoked_by,                         // user_identity_invoked_by
+        &session.mfa_authenticated,             // session_mfa_authenticated
+        &session.creation_date,                 // session_creation_date
+        &session.issuer_type,                   // session_issuer_type
+        &session.issuer_arn,                    // session_issuer_arn
+        &session.issuer_account_id,             // session_issuer_account_id
+        &session.issuer_user_name,              // session_issuer_user_name
+        &session.issuer_principal_id,           // session_issuer_principal_id
+        &event.event_id,                        // event_id
+        &event.event_category,                  // event_category
+        &event.resources,                       // resources (JSON)
+        &event.additional_event_data,           // additional_event_data (JSON)
+        &event.shared_event_id,                 // shared_event_id
+        &event.vpc_endpoint_id,                 // vpc_endpoint_id
+        &event.management_event,                // management_event
+        &tls.tls_version,                       // tls_version
+        &tls.cipher_suite,                      // tls_cipher_suite
+        &tls.client_provided_host_header,       // tls_client_provided_host_header
+        &event.service_event_details,           // service_event_details (JSON)
+        &event.session_credential_from_console, // session_credential_from_console
+        &event.api_version,                     // api_version
     ];
     appender
         .append_row(params.as_slice())
@@ -384,8 +384,8 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let events: Vec<CloudTrailEvent> = (0..100).map(|_| full_event()).collect();
-        let inserted =
-            insert_events_with_geo(&conn, &events, None, false).expect("batch insert should succeed");
+        let inserted = insert_events_with_geo(&conn, &events, None, false)
+            .expect("batch insert should succeed");
 
         assert_eq!(inserted, 100);
 
@@ -527,11 +527,9 @@ mod tests {
         ensure_table(&conn).unwrap();
         insert_events_with_geo(&conn, &[full_event()], None, false).expect("insert should succeed");
         let raw: Option<String> = conn
-            .query_row(
-                "SELECT raw_event FROM cloudtrail_events LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT raw_event FROM cloudtrail_events LIMIT 1", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert!(raw.is_some(), "raw_event must be preserved by default");
         assert!(raw.unwrap().contains("DescribeInstances"));
@@ -545,10 +543,22 @@ mod tests {
         ensure_table(&conn).unwrap();
         insert_events_with_geo(&conn, &[full_event()], None, false).expect("insert should succeed");
 
-        let (akid, mfa, issuer_arn, ev_id, ev_cat, res, vpc, mgmt, tls_ver, tls_suite, tls_host):
-            (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
-             Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
-             Option<String>) = conn
+        // Eleven Option<String> columns spelled out as a type alias to
+        // satisfy clippy::type_complexity in test code.
+        type ExtendedRow = (
+            Option<String>, // access_key_id
+            Option<String>, // mfa_authenticated
+            Option<String>, // issuer_arn
+            Option<String>, // event_id
+            Option<String>, // event_category
+            Option<String>, // resources
+            Option<String>, // vpc_endpoint_id
+            Option<String>, // management_event
+            Option<String>, // tls_version
+            Option<String>, // tls_cipher_suite
+            Option<String>, // tls_client_provided_host_header
+        );
+        let (akid, mfa, issuer_arn, ev_id, ev_cat, res, vpc, mgmt, tls_ver, tls_suite, tls_host): ExtendedRow = conn
             .query_row(
                 "SELECT user_identity_access_key_id, session_mfa_authenticated, \
                         session_issuer_arn, event_id, event_category, resources, \
@@ -556,8 +566,21 @@ mod tests {
                         tls_client_provided_host_header \
                  FROM cloudtrail_events LIMIT 1",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
-                        r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?)),
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(akid.as_deref(), Some("AKIAEXAMPLE"));
@@ -625,7 +648,8 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         let event = full_event();
-        insert_events_with_geo(&conn, &[event], None, false).expect("insert without geo should succeed");
+        insert_events_with_geo(&conn, &[event], None, false)
+            .expect("insert without geo should succeed");
 
         let (cc, cn, city): (Option<String>, Option<String>, Option<String>) = conn
             .query_row(

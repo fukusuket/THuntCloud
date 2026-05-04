@@ -15,7 +15,6 @@ import yaml
 from config import (
     DB_VARIANT_FULL,
     DB_VARIANT_LITE,
-    get_duckdb_path,
     get_duckdb_path_for_variant,
     get_duckdb_path_lite,
 )

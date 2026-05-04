@@ -619,7 +619,10 @@ mod tests {
             Some("arn:aws:iam::1:role/r")
         );
         assert_eq!(ui.session.issuer_user_name.as_deref(), Some("r"));
-        assert_eq!(ui.session.issuer_principal_id.as_deref(), Some("AROAEXAMPLE"));
+        assert_eq!(
+            ui.session.issuer_principal_id.as_deref(),
+            Some("AROAEXAMPLE")
+        );
 
         // top-level fields
         assert_eq!(ev.event_id.as_deref(), Some("EID-1234"));
@@ -632,7 +635,10 @@ mod tests {
 
         // tlsDetails
         assert_eq!(ev.tls.tls_version.as_deref(), Some("TLSv1.3"));
-        assert_eq!(ev.tls.cipher_suite.as_deref(), Some("TLS_AES_128_GCM_SHA256"));
+        assert_eq!(
+            ev.tls.cipher_suite.as_deref(),
+            Some("TLS_AES_128_GCM_SHA256")
+        );
         assert_eq!(
             ev.tls.client_provided_host_header.as_deref(),
             Some("sts.amazonaws.com")
@@ -640,8 +646,18 @@ mod tests {
 
         // raw-JSON fields
         assert!(ev.resources.as_deref().unwrap().contains("arn:aws:s3:::b"));
-        assert!(ev.additional_event_data.as_deref().unwrap().contains("\"v\""));
-        assert!(ev.service_event_details.as_deref().unwrap().contains("\"x\""));
+        assert!(
+            ev.additional_event_data
+                .as_deref()
+                .unwrap()
+                .contains("\"v\"")
+        );
+        assert!(
+            ev.service_event_details
+                .as_deref()
+                .unwrap()
+                .contains("\"x\"")
+        );
     }
 
     // Test A1-02: mfaAuthenticated may be a JSON bool *or* a string. Both
@@ -656,11 +672,19 @@ mod tests {
         ]}"#;
         let log = parse_cloudtrail_log(json).expect("parse should succeed");
         assert_eq!(
-            log.records[0].user_identity.session.mfa_authenticated.as_deref(),
+            log.records[0]
+                .user_identity
+                .session
+                .mfa_authenticated
+                .as_deref(),
             Some("true")
         );
         assert_eq!(
-            log.records[1].user_identity.session.mfa_authenticated.as_deref(),
+            log.records[1]
+                .user_identity
+                .session
+                .mfa_authenticated
+                .as_deref(),
             Some("false")
         );
     }

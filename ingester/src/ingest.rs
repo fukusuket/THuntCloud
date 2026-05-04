@@ -338,6 +338,11 @@ pub fn ingest_with_geoip(
 /// - A DuckDB insertion error causes the insertion loop to break, `rx` is
 ///   dropped (signalling the parser thread to exit), the parser thread is
 ///   joined, and then the error is propagated via `?`.
+//
+// Each parameter maps 1:1 to a logically distinct knob exposed via
+// `IngestOptions`. Bundling them into a struct here would just push the
+// same fan-out one level down without simplifying anything.
+#[allow(clippy::too_many_arguments)]
 fn ingest_core(
     path: &Path,
     conn: &Connection,
@@ -794,7 +799,8 @@ mod tests {
         let tmp = write_json_file(json);
         let filter = FieldFilter::default_strip();
 
-        let (_sha, records) = parse_file_content(tmp.path(), &filter).expect("parse should succeed");
+        let (_sha, records) =
+            parse_file_content(tmp.path(), &filter).expect("parse should succeed");
         let ev = &records[0];
 
         let req: serde_json::Value =
