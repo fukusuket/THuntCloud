@@ -182,7 +182,7 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         // Insert without enricher so geo columns remain NULL.
-        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None, false).unwrap();
 
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
@@ -211,7 +211,7 @@ mod tests {
     fn test_enrich_private_ip_writes_marker() {
         let conn = temp_db();
         ensure_table(&conn).unwrap();
-        insert_events_with_geo(&conn, &[event_with_ip("10.0.0.1")], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_ip("10.0.0.1")], None, false).unwrap();
 
         let enricher = make_enricher();
         enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
@@ -231,7 +231,7 @@ mod tests {
     fn test_enrich_skips_null_source_ip() {
         let conn = temp_db();
         ensure_table(&conn).unwrap();
-        insert_events_with_geo(&conn, &[event_with_null_ip()], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_null_ip()], None, false).unwrap();
 
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
@@ -248,7 +248,7 @@ mod tests {
     fn test_enrich_is_idempotent() {
         let conn = temp_db();
         ensure_table(&conn).unwrap();
-        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None, false).unwrap();
 
         let enricher = make_enricher();
         let stats1 = enrich_existing(&conn, &enricher).expect("first enrich should succeed");
@@ -270,7 +270,7 @@ mod tests {
 
         // Insert 5 rows with the same IP.
         let events: Vec<_> = (0..5).map(|_| event_with_ip("81.2.69.160")).collect();
-        insert_events_with_geo(&conn, &events, None).unwrap();
+        insert_events_with_geo(&conn, &events, None, false).unwrap();
 
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
@@ -299,8 +299,8 @@ mod tests {
         ensure_table(&conn).unwrap();
 
         // One public IP row + one NULL-ip row.
-        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None).unwrap();
-        insert_events_with_geo(&conn, &[event_with_null_ip()], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_ip("81.2.69.160")], None, false).unwrap();
+        insert_events_with_geo(&conn, &[event_with_null_ip()], None, false).unwrap();
 
         let enricher = make_enricher();
         let stats = enrich_existing(&conn, &enricher).expect("enrich_existing should succeed");
@@ -322,7 +322,7 @@ mod tests {
         let conn = temp_db();
         ensure_table(&conn).unwrap();
         // CloudTrail sometimes stores "AWS" as the sourceIPAddress.
-        insert_events_with_geo(&conn, &[event_with_ip("AWS")], None).unwrap();
+        insert_events_with_geo(&conn, &[event_with_ip("AWS")], None, false).unwrap();
 
         let enricher = make_enricher();
         // Should not error even though "AWS" is not an IP address.

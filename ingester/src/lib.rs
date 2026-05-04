@@ -5,6 +5,7 @@
 pub mod date_filter;
 pub mod db;
 pub mod enrich;
+pub mod field_filter;
 pub mod geoip;
 pub mod ingest;
 pub mod parser;

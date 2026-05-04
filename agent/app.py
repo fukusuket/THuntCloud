@@ -12,7 +12,12 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-from config import get_duckdb_path
+from config import (
+    DB_VARIANT_FULL,
+    DB_VARIANT_LITE,
+    get_duckdb_path_for_variant,
+    get_duckdb_path_lite,
+)
 from handlers import (
     _analyze_current_results,
     _handle_direct_sql,
@@ -55,6 +60,7 @@ SESSION_STATE_DEFAULTS: dict = {
     "date_end": None,  # date | None — upper bound for event_time filter
     "row_limit": DEFAULT_ROW_LIMIT,  # maximum rows returned per query
     "conversation_context": [],  # recent (user_query, sql, summary) turns for LLM context
+    "db_variant": DB_VARIANT_FULL,  # active DB variant; "Lite" only available when DUCKDB_PATH_LITE is set
 }
 
 
@@ -145,12 +151,14 @@ def _export_session(
 
 
 def _get_duckdb_path() -> str:
-    """Resolve the DuckDB path from environment variable.
+    """Resolve the DuckDB path for the active session variant.
 
-    Delegates to :func:`config.get_duckdb_path` which reads ``DUCKDB_PATH``
-    and falls back to the Docker-standard default path.
+    When ``DUCKDB_PATH_LITE`` is set and the user has selected the Lite
+    variant in the sidebar, return that path. Otherwise return the
+    Full path from ``DUCKDB_PATH`` (or the Docker-standard default).
     """
-    return get_duckdb_path()
+    variant = st.session_state.get("db_variant", DB_VARIANT_FULL)
+    return get_duckdb_path_for_variant(variant)
 
 
 def render_sidebar() -> None:
@@ -159,6 +167,38 @@ def render_sidebar() -> None:
     Handles AGT-07 (preset prompts), AGT-08 (session export), AGT-09 (API key).
     """
     with st.sidebar:
+        # Database variant selector — only shown when a Lite DB has been
+        # configured via the DUCKDB_PATH_LITE environment variable.
+        # The Lite variant points at a DuckDB file produced by
+        # `ingester ingest --strip-fields`, where pagination/idempotency
+        # noise has been removed from request_parameters / response_elements.
+        lite_path = get_duckdb_path_lite()
+        if lite_path:
+            st.subheader("🗄️ Database")
+            variants = [DB_VARIANT_FULL, DB_VARIANT_LITE]
+            current = st.session_state.db_variant
+            if current not in variants:
+                current = DB_VARIANT_FULL
+            chosen = st.radio(
+                "Variant",
+                options=variants,
+                index=variants.index(current),
+                horizontal=True,
+                help=(
+                    "Full = original CloudTrail records.  "
+                    "Lite = noise fields stripped from request_parameters "
+                    "/ response_elements (pagination tokens, idempotency "
+                    "tokens, opaque session credentials, AWS catalogue "
+                    "echoes, query-time filter echoes, redundant Host "
+                    "headers). raw_event is preserved in both variants."
+                ),
+                key="_db_variant_radio",
+            )
+            if chosen != st.session_state.db_variant:
+                st.session_state.db_variant = chosen
+            active_path = get_duckdb_path_for_variant(st.session_state.db_variant)
+            st.caption(f"📁 `{active_path}`")
+
         # Date range filter
         st.subheader("📅 Date Range Filter")
         today = date.today()

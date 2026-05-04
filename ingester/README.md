@@ -39,6 +39,13 @@ ingester ingest --path /logs/ \
   --geoip-city    /data/geoip/GeoLite2-City.mmdb \
   --geoip-asn     /data/geoip/GeoLite2-ASN.mmdb
 
+# Strip low-signal fields from requestParameters / responseElements (lean DB)
+ingester ingest --path /logs/ --strip-fields
+
+# Strip both low-signal fields AND the raw_event column (smallest possible DB)
+ingester ingest --path /logs/ --strip-fields --strip-raw-event \
+  --db /data/lean_hunting.db
+
 # Back-fill GeoIP data on an existing database (no re-ingest needed)
 ingester enrich \
   --geoip-city /data/geoip/GeoLite2-City.mmdb \
@@ -63,7 +70,39 @@ ingester ingest --path <PATH>
                [--geoip-city    <PATH>]   GeoLite2-City.mmdb
                [--geoip-country <PATH>]   GeoLite2-Country.mmdb (lighter alternative)
                [--geoip-asn     <PATH>]   GeoLite2-ASN.mmdb
+               [--strip-fields]           Strip low-signal keys from requestParameters / responseElements
+               [--strip-raw-event]        Write NULL for raw_event column (saves storage)
 ```
+
+#### `--strip-fields`
+
+Removes a fixed list of low-signal CloudTrail keys from `requestParameters` and
+`responseElements` before they are written to DuckDB.  The categories stripped are:
+
+| Category | Keys |
+|----------|------|
+| Pagination / size limits | `maxResults`, `MaxResults`, `maxItems`, `MaxItems`, `nextToken`, `NextToken`, `marker`, `Marker`, `pageSize`, `PageSize` |
+| Idempotency / dry-run | `dryRun`, `DryRun`, `clientToken`, `ClientToken`, `clientRequestToken`, `ClientRequestToken` |
+| Opaque ephemeral credentials | `sessionToken`, `SessionToken`, `secretAccessKey`, `SecretAccessKey` |
+| AWS catalogue / reference data | `eventCategoriesMapList`, `reservedNodeOfferings`, `sslPolicies`, `orderableClusterOptions` |
+| Query-time filter echoes | `filterSet`, `ownersSet` |
+| Redundant transport headers | `Host`, `host` |
+
+The stripping is recursive (nested objects and arrays are also processed).
+The `raw_event` column is **never** modified by this flag, so the full original
+record is always recoverable via full-text search on that column.
+
+#### `--strip-raw-event`
+
+Writes `NULL` instead of the full JSON blob to the `raw_event` column.
+All Step-A extended columns (`user_identity_access_key_id`,
+`session_mfa_authenticated`, `resources`, `tls_*`, etc.) are still populated,
+so investigation queries that target dedicated columns continue to work.
+Only the unscoped full-text fallback via `WHERE raw_event LIKE …` is no longer
+available.
+
+Combine with `--strip-fields` to produce the **smallest possible DB** for
+high-volume CloudTrail data.  Use `--db <path>` to write to a dedicated file.
 
 ### `enrich`
 
@@ -244,6 +283,7 @@ ingester/
 │   ├── ingest.rs         # Pipeline orchestration (walk → filter → parallel parse → insert)
 │   ├── enrich.rs         # Geo back-fill for existing rows (UPDATE per unique IP)
 │   ├── geoip.rs          # MaxMind GeoLite2 lookup + private-IP classification
+│   ├── field_filter.rs   # --strip-fields: recursive JSON key removal (FieldFilter)
 │   ├── date_filter.rs    # --from / --to filter (extracts yyyy/mm/dd from path)
 │   ├── path_filter.rs    # --include / --exclude glob filter
 │   └── progress.rs       # Progress bar wrapper (indicatif)
