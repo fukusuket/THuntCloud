@@ -104,6 +104,10 @@ def _handle_direct_sql(
                 chart_config=chart_config,
             )
         )
+        # Link this message to its query_history entry for interleaved rendering.
+        st.session_state.messages[-1]["query_index"] = (
+            len(st.session_state.query_history) - 1
+        )
 
 
 def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
@@ -173,6 +177,10 @@ def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
     )
     st.session_state.query_history.append(
         ReportEntry(sql=effective_sql, results=results, analysis=summary)
+    )
+    # Link this message to its query_history entry for interleaved rendering.
+    st.session_state.messages[-1]["query_index"] = (
+        len(st.session_state.query_history) - 1
     )
 
 
@@ -320,6 +328,10 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     if error_message is None:
         st.session_state.query_history.append(
             ReportEntry(sql=effective_sql, results=results, analysis=summary)
+        )
+        # Link this message to its query_history entry for interleaved rendering.
+        st.session_state.messages[-1]["query_index"] = (
+            len(st.session_state.query_history) - 1
         )
         # Update conversation context for follow-up queries.
         summary_text = summary if summary else "(no summary)"

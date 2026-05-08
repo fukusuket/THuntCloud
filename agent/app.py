@@ -543,33 +543,21 @@ def render_chat() -> None:
         _analyze_current_results()
         st.rerun()
 
-    # ---- Chat history ----
+    # ---- Chat history interleaved with query results (AGT-01 / AGT-04) ----
+    # Each assistant message that has a "query_index" key renders its associated
+    # query result immediately after the message bubble, so every exchange of
+    # (user question → assistant answer → results) appears as one coherent block.
+    query_history_len = len(st.session_state.query_history)
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # ---- SQL editor for the last query (AGT-03) ----
-    if st.session_state.last_sql:
-        with st.expander("🛠 Edit & Re-run SQL", expanded=False):
-            edited_sql = st.text_area(
-                "SQL",
-                value=st.session_state.last_sql,
-                height=150,
-                label_visibility="collapsed",
-            )
-            if st.button("▶ Run Edited SQL"):
-                _handle_edit_rerun_sql(edited_sql, db_path)
-                st.rerun()
+        query_idx = msg.get("query_index")
+        if query_idx is not None and query_idx < query_history_len:
+            entry = st.session_state.query_history[query_idx]
+            is_last = query_idx == query_history_len - 1
 
-    # ---- Query results history (all entries accumulated, AGT-04) ----
-    # Every executed query is appended here; nothing is overwritten.
-    if st.session_state.query_history:
-        st.markdown("---")
-        st.subheader("📊 Query Results History")
-
-        for i, entry in enumerate(st.session_state.query_history, start=1):
-            is_last = i == len(st.session_state.query_history)
-            with st.expander(f"Query #{i}", expanded=True):
+            with st.expander(f"Query #{query_idx + 1}", expanded=True):
                 if entry.description:
                     st.markdown(f"ℹ️ **{entry.description}**")
                 st.code(entry.sql, language="sql")
@@ -605,6 +593,19 @@ def render_chat() -> None:
                     ):
                         st.session_state["_pending_ai_analysis"] = True
                         st.rerun()
+
+    # ---- SQL editor for the last query (AGT-03) ----
+    if st.session_state.last_sql:
+        with st.expander("🛠 Edit & Re-run SQL", expanded=False):
+            edited_sql = st.text_area(
+                "SQL",
+                value=st.session_state.last_sql,
+                height=150,
+                label_visibility="collapsed",
+            )
+            if st.button("▶ Run Edited SQL"):
+                _handle_edit_rerun_sql(edited_sql, db_path)
+                st.rerun()
 
     # ---- No API key guidance banner (Proposal 3) ----
     if not st.session_state.api_key:

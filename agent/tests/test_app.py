@@ -228,8 +228,9 @@ def test_builtin_hunts_direct_sql_is_valid_duckdb(tmp_path):
         for entry in prompts:
             sql = entry.get("sql")
             if sql:
-                validate_query(conn_ro, sql), (
-                    f"SQL validation failed for preset {entry['label']!r}"
+                (
+                    validate_query(conn_ro, sql),
+                    (f"SQL validation failed for preset {entry['label']!r}"),
                 )
     finally:
         conn_ro.close()
@@ -1496,7 +1497,204 @@ def test_builtin_hunts_chart_field_valid_types():
                 chart, dict
             ), f"chart must be a dict in {entry['label']!r}"
             chart_type = chart.get("type")
-            assert chart_type in valid_types, (
-                f"chart.type {chart_type!r} not in {valid_types} "
-                f"for {entry['label']!r}"
-            )
+            assert (
+                chart_type in valid_types
+            ), f"chart.type {chart_type!r} not in {valid_types} for {entry['label']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Tests #INTERLEAVE — query_index links messages to query_history entries
+# ---------------------------------------------------------------------------
+
+
+def test_handle_direct_sql_success_adds_query_index_to_message(tmp_duckdb):
+    """_handle_direct_sql() must set query_index on the assistant message on success.
+
+    Test #INTERLEAVE-1: the query_index must equal the index of the newly appended
+    query_history entry so the UI can render results inline after the message.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0].get("query_index") == 0
+
+
+def test_handle_direct_sql_error_does_not_add_query_index(tmp_duckdb):
+    """_handle_direct_sql() must NOT set query_index when the query fails.
+
+    Test #INTERLEAVE-2: error messages must not carry a query_index because no
+    query_history entry is appended on failure.
+    """
+    from tests.conftest import MockSessionState
+
+    bad_sql = "SELECT * FROM nonexistent_table_xyz"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(bad_sql, tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0].get("query_index") is None
+
+
+def test_handle_user_query_success_adds_query_index_to_message(tmp_duckdb):
+    """_handle_user_query() must set query_index on the assistant message on success.
+
+    Test #INTERLEAVE-3: verifies the interleaved rendering link for AI-generated queries.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    result_df = pd.DataFrame({"event_name": ["CreateUser"]})
+
+    mock_state = MockSessionState(
+        api_key="sk-test",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        conversation_context=[],
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("handlers.generate_sql", return_value=sql),
+        patch("handlers.execute_with_retry", return_value=(result_df, sql)),
+        patch("handlers.generate_analysis", return_value="Summary"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_user_query
+
+        _handle_user_query("Show me events", tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0].get("query_index") == 0
+
+
+def test_handle_edit_rerun_sql_success_adds_query_index_to_message(tmp_duckdb):
+    """_handle_edit_rerun_sql() must set query_index on the assistant message on success.
+
+    Test #INTERLEAVE-4: verifies the interleaved rendering link for edited SQL queries.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql=sql,
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+        row_limit=1000,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_edit_rerun_sql
+
+        _handle_edit_rerun_sql(sql, tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 1
+    assert mock_state["messages"][0].get("query_index") == 0
+
+
+def test_query_index_increments_across_multiple_queries(tmp_duckdb):
+    """query_index must reflect the correct position after multiple successful queries.
+
+    Test #INTERLEAVE-5: the second message's query_index must be 1, not 0.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    assert len(mock_state["messages"]) == 2
+    assert mock_state["messages"][0].get("query_index") == 0
+    assert mock_state["messages"][1].get("query_index") == 1

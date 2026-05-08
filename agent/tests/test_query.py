@@ -165,7 +165,7 @@ def test_apply_row_limit_wraps_when_limit_only_in_subquery():
     Without this guard, the inner LIMIT would fool the regex into thinking a
     top-level cap is already present, leaving the outer query uncapped.
     """
-    sql = "SELECT * FROM " "(SELECT event_name FROM cloudtrail_events LIMIT 50) sub"
+    sql = "SELECT * FROM (SELECT event_name FROM cloudtrail_events LIMIT 50) sub"
     result = apply_row_limit(sql, 100)
     # The outer LIMIT cap must be present.
     assert "LIMIT 100" in result.upper()
@@ -193,7 +193,7 @@ def test_apply_row_limit_replaces_cte_trailing_limit():
     Test #RL-EC3: the WITH clause must not be wrapped in an outer subquery —
     DuckDB does not allow CTEs inside a derived-table FROM clause.
     """
-    sql = "WITH cte AS (SELECT * FROM cloudtrail_events) " "SELECT * FROM cte LIMIT 10"
+    sql = "WITH cte AS (SELECT * FROM cloudtrail_events) SELECT * FROM cte LIMIT 10"
     result = apply_row_limit(sql, 200)
     # Must replace in-place, not wrap.
     assert result.upper().endswith("LIMIT 200")
@@ -298,8 +298,7 @@ def test_apply_date_filter_result_is_valid_duckdb(tmp_duckdb):
     Test #DF-5: DuckDB integration smoke test.
     """
     sql = (
-        "SELECT event_name, COUNT(*) AS cnt "
-        "FROM cloudtrail_events GROUP BY event_name"
+        "SELECT event_name, COUNT(*) AS cnt FROM cloudtrail_events GROUP BY event_name"
     )
     filtered = apply_date_filter(sql, date(2024, 1, 1), date(2024, 12, 31))
     conn = duckdb.connect(tmp_duckdb, read_only=True)
