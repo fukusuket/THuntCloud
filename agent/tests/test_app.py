@@ -83,9 +83,9 @@ def test_model_options_include_gpt_5_5():
     """
     from app import MODEL_OPTIONS
 
-    assert (
-        "gpt-5.5" in MODEL_OPTIONS
-    ), f"gpt-5.5 not found in MODEL_OPTIONS: {MODEL_OPTIONS}"
+    assert "gpt-5.5" in MODEL_OPTIONS, (
+        f"gpt-5.5 not found in MODEL_OPTIONS: {MODEL_OPTIONS}"
+    )
 
 
 def test_load_builtin_prompts_returns_nonempty_list():
@@ -106,9 +106,9 @@ def test_load_builtin_prompts_includes_root_account():
 
     prompts = _load_builtin_prompts()
     labels = [p["label"] for p in prompts]
-    assert any(
-        "Root" in label for label in labels
-    ), "Expected a 'Root Account' entry in built-in prompts"
+    assert any("Root" in label for label in labels), (
+        "Expected a 'Root Account' entry in built-in prompts"
+    )
 
 
 def test_export_session_returns_valid_json():
@@ -171,9 +171,9 @@ def test_builtin_hunts_yaml_has_direct_sql_entries():
 
     prompts = _load_builtin_prompts()
     sql_entries = [p for p in prompts if p.get("sql")]
-    assert (
-        len(sql_entries) >= 10
-    ), f"Expected at least 10 direct-SQL entries, got {len(sql_entries)}"
+    assert len(sql_entries) >= 10, (
+        f"Expected at least 10 direct-SQL entries, got {len(sql_entries)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -467,9 +467,9 @@ def test_handle_direct_sql_applies_date_filter_from_session_state(tmp_duckdb):
         _handle_direct_sql(sql, tmp_duckdb)
 
     # The stored SQL must include the date filter CTE
-    assert (
-        "_ct_filtered" in mock_state["last_sql"]
-    ), "Expected '_ct_filtered' CTE in last_sql when date filter is active"
+    assert "_ct_filtered" in mock_state["last_sql"], (
+        "Expected '_ct_filtered' CTE in last_sql when date filter is active"
+    )
     assert "2024-01-01" in mock_state["last_sql"]
     assert "2024-12-31" in mock_state["last_sql"]
     # All 3 rows must be returned (all are within 2024)
@@ -1215,7 +1215,7 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     """
     from tests.conftest import MockSessionState
 
-    custom_limit = 777  # Unique value distinct from DEFAULT_ROW_LIMIT (100)
+    custom_limit = 777  # Unique value distinct from DEFAULT_ROW_LIMIT (500)
     # Return exactly custom_limit rows so truncation is detected.
     result_df = pd.DataFrame({"event_name": ["A"] * custom_limit})
 
@@ -1248,7 +1248,7 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     assert len(mock_state["messages"]) == 1
     content = mock_state["messages"][0]["content"]
     # The truncation notice must contain the session row_limit (777), not 1,000.
-    # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (100) → False,
+    # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (500) → False,
     # so no truncation notice is emitted and "truncated to 777" is absent.
     assert "truncated to 777" in content
 
@@ -1493,13 +1493,13 @@ def test_builtin_hunts_chart_field_valid_types():
     for entry in prompts:
         chart = entry.get("chart")
         if chart is not None:
-            assert isinstance(
-                chart, dict
-            ), f"chart must be a dict in {entry['label']!r}"
+            assert isinstance(chart, dict), (
+                f"chart must be a dict in {entry['label']!r}"
+            )
             chart_type = chart.get("type")
-            assert (
-                chart_type in valid_types
-            ), f"chart.type {chart_type!r} not in {valid_types} for {entry['label']!r}"
+            assert chart_type in valid_types, (
+                f"chart.type {chart_type!r} not in {valid_types} for {entry['label']!r}"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -74,9 +74,9 @@ def test_report_entry_chart_config_defaults_to_none():
     Test #CHART-R1: backward-compatible — existing callers are unaffected.
     """
     entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
-    assert hasattr(
-        entry, "chart_config"
-    ), "ReportEntry must have a 'chart_config' field"
+    assert hasattr(entry, "chart_config"), (
+        "ReportEntry must have a 'chart_config' field"
+    )
     assert entry.chart_config is None
 
 
