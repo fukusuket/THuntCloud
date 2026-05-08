@@ -19,6 +19,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f511 Root Account Activity"
   description: "Detects any API call made by the root account. Root should never be used in production."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     List all API calls made by the root account. Include event_time, event_name,
     source_ip_address, and aws_region. Order by most recent first.
@@ -38,6 +41,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f464 New IAM Users / Keys"
   description: "Identifies IAM user and access key creation events. Unexpected creation may indicate persistence."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Identify all IAM CreateUser, CreateAccessKey, and CreateLoginProfile events.
     Show who created them, when, and from which IP. Flag anything created outside
@@ -59,6 +65,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f310 Console Logins"
   description: "Lists all console login attempts. Brute force = multiple failures followed by success."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     List all ConsoleLogin events including successes and failures.
     Identify accounts with multiple failed attempts followed by a success
@@ -82,6 +91,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f513 Console Login without MFA"
   description: "Detects console logins where MFA was not used. High-risk indicator of account compromise."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find all ConsoleLogin events where MFA was not used. Include user identity,
     source IP, region, and the MFAUsed flag from additionalEventData.
@@ -104,6 +116,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f504 Privilege Escalation (IAM)"
   description: "Detects IAM policy attachment and role manipulation events used for privilege escalation."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Detect potential IAM privilege escalation: look for PutUserPolicy,
     AttachUserPolicy, PutRolePolicy, AttachRolePolicy, CreatePolicyVersion,
@@ -130,6 +145,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f510 AssumeRole Cross-Account"
   description: "Shows AssumeRole events where caller and target are in different AWS accounts. Indicates lateral movement."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Show all AssumeRole events where the assumed role ARN is in a different
     AWS account than the caller. Include session duration and external ID if present.
@@ -155,6 +173,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001fa9e Self AssumeRole Detection"
   description: "Detects roles that assume themselves. Often a code bug; counts toward STS API quotas."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find all AssumeRole events where the caller's session issuer ARN matches the
     target role ARN (self-assume). These waste STS quota and may indicate
@@ -179,6 +200,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f451 User Added to Admin Group"
   description: "Detects users added to groups with 'admin' in the name. Classic privilege escalation technique."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find all AddUserToGroup events where the group name contains 'admin'.
     Show who performed the action, the target user, group name, and time.
@@ -200,6 +224,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f510 MFA & Password Changes"
   description: "Detects MFA deactivation and password resets. Strong indicator of account takeover."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Detect changes to authentication settings: CreateVirtualMFADevice,
     DeactivateMFADevice, DeleteVirtualMFADevice, EnableMFADevice,
@@ -224,6 +251,12 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f5dd Access Key Abuse"
   description: "Detects access keys used from 3+ distinct source IPs in 7 days. Strong indicator of key leak."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - distinct_source_ips
+      - total_events
   prompt: |
     Find access key lifecycle events: CreateAccessKey, DeleteAccessKey,
     UpdateAccessKey, GetAccessKeyLastUsed. Also check for keys used from
@@ -248,6 +281,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f504 Credential Report & Enumeration"
   description: "Detects IAM enumeration activity that maps the entire IAM landscape. Common in early attack stages."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Detect IAM enumeration activity: GenerateCredentialReport,
     GetCredentialReport, ListUsers, ListRoles, ListPolicies,
@@ -272,6 +308,9 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f3e2 Cross-Account Access"
   description: "Finds events where the caller account differs from the recipient account. Lateral movement signal."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find all events where the caller's AWS account ID differs from the
     recipient account ID. This includes cross-account role assumptions
@@ -295,6 +334,11 @@
 - category: "\U0001f511 Identity & Access"
   label: "\U0001f4cb Top IAM Actions by Principal"
   description: "Ranks principals by IAM API call volume. High volume may indicate enumeration or approaching service limits."
+  chart:
+    type: bar
+    x: event_name
+    y:
+      - api_count
   prompt: |
     Identify the top callers of the IAM service by number of API calls.
     Show principal ARN, event names, account ID, and call count.
@@ -319,6 +363,11 @@
 - category: "\U0001f6e1 Detection & Response"
   label: "\U0001f6ab Access Denied Errors"
   description: "Groups AccessDenied errors by identity and API. Top offenders may indicate credential misuse."
+  chart:
+    type: bar
+    x: event_name
+    y:
+      - denied_count
   prompt: |
     Show all AccessDenied and UnauthorizedAccess errors in the logs.
     Group by user identity and event_name to find the top offenders.
@@ -340,6 +389,9 @@
 - category: "\U0001f6e1 Detection & Response"
   label: "\U0001f6d1 CloudTrail Tampering"
   description: "Detects any attempt to stop or modify CloudTrail. The most critical alert — indicates cover-up."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Check for any attempts to disable or modify CloudTrail:
     StopLogging, DeleteTrail, UpdateTrail, PutEventSelectors.
@@ -366,6 +418,11 @@
 - category: "\U0001f6e1 Detection & Response"
   label: "\u274c Top Error Codes (Last 7 Days)"
   description: "Ranks error codes by frequency over the last 7 days. Error spikes can signal probing or outage."
+  chart:
+    type: bar
+    x: error_code
+    y:
+      - event_count
   prompt: |
     Find the most frequent API error codes and messages in the past 7 days.
     Show error count, number of affected identities, first and last occurrence.
@@ -388,6 +445,9 @@
 - category: "\U0001f6e1 Detection & Response"
   label: "\u2614 AWS Support Role Access"
   description: "Detects when AWS Support assumed the AWSServiceRoleForSupport role. Required for data sovereignty audits."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Show any events where AWS Support has taken over the AWSServiceRoleForSupport
     role. This is relevant for data sovereignty and compliance requirements.
@@ -415,6 +475,11 @@
 - category: "\U0001faa3 Data & Storage"
   label: "\U0001faa3 S3 Data Access Anomalies"
   description: "Detects bulk GetObject calls (>=100/hour) that may indicate data exfiltration."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - call_count
   prompt: |
     Find unusual S3 activity: large numbers of GetObject calls from a single
     IP or user within a short time window (potential exfiltration).
@@ -508,6 +573,9 @@
 - category: "\U0001faa3 Data & Storage"
   label: "\U0001f513 KMS Key Operations"
   description: "Flags sensitive KMS operations including key deletion and high-volume Decrypt calls."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find sensitive KMS operations: DisableKey, ScheduleKeyDeletion,
     CreateGrant, PutKeyPolicy, Decrypt (high volume from single source).
@@ -533,6 +601,11 @@
 - category: "\U0001faa3 Data & Storage"
   label: "\U0001f4e7 Data Exfiltration Channels"
   description: "Detects high-volume SNS/SQS/SES/S3 PutObject calls (>=50/hour) that may indicate exfiltration."
+  chart:
+    type: bar
+    x: event_name
+    y:
+      - call_count
   prompt: |
     Look for potential data exfiltration via messaging/storage services:
     SNS Publish, SQS SendMessage, SES SendEmail, and any PutObject to
@@ -563,6 +636,9 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f525 Security Group Modifications"
   description: "Detects security group rule changes, especially rules allowing 0.0.0.0/0 on any port."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find all security group changes: AuthorizeSecurityGroupIngress,
     AuthorizeSecurityGroupEgress, RevokeSecurityGroupIngress,
@@ -591,6 +667,9 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f30d Security Group Opened to Internet"
   description: "Finds security group rules that allow traffic from 0.0.0.0/0. Direct public exposure risk."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find security group rules that allow traffic from 0.0.0.0/0 (any IP).
     This includes AuthorizeSecurityGroupIngress and ModifySecurityGroupRules.
@@ -617,6 +696,9 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f4e1 Network Infrastructure Changes"
   description: "Detects VPC and network-level changes that may establish attacker-controlled infrastructure."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Detect VPC and network changes: CreateVpc, DeleteVpc, CreateSubnet,
     CreateInternetGateway, AttachInternetGateway, CreateNatGateway,
@@ -644,6 +726,9 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f5a5 Write Events from Management Console"
   description: "Identifies mutating API calls made via the AWS console. Useful when CLI-only access is expected."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     List all write (mutating) API calls made via the AWS Management Console.
     These may be unexpected if your environment only uses CLI/SDK access.
@@ -669,6 +754,11 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f512 TLS Downgrade Detection"
   description: "Finds API calls using TLS 1.1 or older. Support ended June 2023; usage may indicate legacy clients."
+  chart:
+    type: bar
+    x: event_source
+    y:
+      - call_count
   prompt: |
     Find all API calls that used TLS version 1.1 or lower. These clients
     must be upgraded as older TLS is deprecated by AWS. Show event source,
@@ -695,6 +785,9 @@
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f6a7 VPC Endpoint Access Denied"
   description: "Detects access denied errors via VPC endpoints. May indicate misconfigured endpoint policy."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find access denied errors that occurred via VPC endpoints. These may
     indicate misconfigured VPC endpoint policies or unauthorized access attempts.
@@ -730,6 +823,9 @@
 - category: "\U0001f575 Threat Patterns"
   label: "\U0001f319 Off-Hours Activity"
   description: "Flags mutating API calls outside business hours (JST 22:00-06:00). Human logins at night may be compromised."
+  chart:
+    type: timeseries
+    bucket: hour
   prompt: |
     Find API calls made between 10 PM and 6 AM local time (UTC 13:00–23:00 JST).
     Filter for write/mutating operations (read_only = false).
@@ -754,6 +850,12 @@
 - category: "\U0001f575 Threat Patterns"
   label: "\U0001f50d Reconnaissance Pattern"
   description: "Identifies callers who ran 10+ distinct read-only API calls in one hour. Common early attack phase."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - distinct_api_calls
+      - total_calls
   prompt: |
     Identify potential reconnaissance: callers who executed 10 or more distinct
     Describe*, List*, or Get* API calls within any 1-hour window.
@@ -778,6 +880,11 @@
 - category: "\U0001f575 Threat Patterns"
   label: "\U0001f30d Multi-Region Activity"
   description: "Detects identities performing writes in 3+ regions in one day. Geographic spread may indicate compromise."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - distinct_regions
   prompt: |
     Identify user identities (user_identity_arn) that performed write operations
     (read_only = false) in 3 or more distinct aws_region values within the
@@ -800,6 +907,11 @@
 - category: "\U0001f575 Threat Patterns"
   label: "\U0001f916 Unusual User Agents"
   description: "Lists rare user agents (<5 events). Custom tooling like Pacu or curl may indicate attacker tooling."
+  chart:
+    type: bar
+    x: user_agent
+    y:
+      - event_count
   prompt: |
     List all distinct user_agent values with their event counts.
     Flag user agents that appear fewer than 5 times — they may indicate
@@ -831,6 +943,12 @@
 - category: "\U0001f4ca Activity & Baseline"
   label: "\U0001f4ca Top Callers This Week"
   description: "Shows the 20 most active IAM entities by event count over the past 7 days."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - read_events
+      - write_events
   prompt: |
     Show the top 20 most active IAM entities (by event count) in the past 7 days.
     Break down by read vs write operations. Flag any service accounts performing
@@ -862,6 +980,12 @@
 - category: "\U0001f4ca Activity & Baseline"
   label: "\U0001f4ca Activity by Region"
   description: "Counts API calls per AWS region. Unexpected regions may indicate unauthorized resource creation."
+  chart:
+    type: bar
+    x: aws_region
+    y:
+      - total_events
+      - write_events
   prompt: |
     Show the total number of API calls broken down by AWS region.
     Highlight regions with unusually high activity or regions that are
@@ -881,6 +1005,9 @@
 - category: "\U0001f4ca Activity & Baseline"
   label: "\U0001f50d Events with Errors (24h)"
   description: "Lists all error events in the past 24 hours. Quick overview of what is failing right now."
+  chart:
+    type: timeseries
+    bucket: hour
   prompt: |
     Show all API calls in the past 24 hours that resulted in errors.
     Include caller, service, action, region, error code and message.
@@ -909,6 +1036,9 @@
 - category: "\u26a1 Compute & Serverless"
   label: "\U0001f5a5 EC2 Instance Launches"
   description: "Lists all RunInstances events. Unexpected launches in unusual regions may indicate cryptomining."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     List all RunInstances events. Show who launched the instances, when,
     from which IP, and in which region. Flag launches by unexpected users
@@ -930,6 +1060,9 @@
 - category: "\u26a1 Compute & Serverless"
   label: "\u26a1 Lambda Function Tampering"
   description: "Detects Lambda creation, code updates, and permission changes. Attackers use Lambda for persistence."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find Lambda-related events: CreateFunction, UpdateFunctionCode,
     UpdateFunctionConfiguration, AddPermission, CreateEventSourceMapping.
@@ -963,6 +1096,9 @@
 - category: "\u2601 IaC & Platform"
   label: "\U0001f3d7 CloudFormation / IaC Abuse"
   description: "Detects CloudFormation stack operations. Attackers may use IaC to rapidly deploy malicious infrastructure."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Find CloudFormation stack operations: CreateStack, UpdateStack,
     DeleteStack, CreateChangeSet. Attackers may use IaC to rapidly deploy
@@ -992,6 +1128,12 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f30d Top Source Countries"
   description: "Ranks source countries by API call volume. Identifies the geographic distribution of all activity."
+  chart:
+    type: bar
+    x: geo_country_name
+    y:
+      - event_count
+      - write_events
   prompt: |
     Rank source countries by API call volume using the geo_country_code and
     geo_country_name columns. Show event count and unique IP count per country.
@@ -1014,6 +1156,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f6a8 Unusual Country Access"
   description: "Detects API calls from unexpected countries by showing rare country/identity combinations."
+  chart:
+    type: bar
+    x: geo_country_code
+    y:
+      - event_count
   prompt: |
     Find all source IPs from countries other than the expected baseline,
     grouped by user identity ARN. Show event counts and countries.
@@ -1039,6 +1186,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f3e2 Top ASN / Organizations"
   description: "Lists autonomous systems (ISPs/cloud providers) by API call volume. Spot VPN/hosting providers."
+  chart:
+    type: bar
+    x: geo_org
+    y:
+      - event_count
   prompt: |
     Show the top ASN organizations making API calls. Cloud provider ASNs
     (AWS, GCP, Azure) are expected, but VPN/hosting providers may indicate
@@ -1060,6 +1212,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\u26a0 Identity Multi-Country Access"
   description: "Finds identities calling APIs from 2+ countries. May indicate credential theft used from different locations."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - distinct_countries
   prompt: |
     Identify user identities that made API calls from two or more distinct
     countries. This is a strong indicator of credential compromise —
@@ -1084,6 +1241,8 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f575 Impossible Travel Detection"
   description: "Detects the same identity calling APIs from distant cities within a short time window."
+  chart:
+    type: none
   prompt: |
     Find cases where the same user_identity_arn made API calls from
     geographically distant locations (different cities or countries)
@@ -1129,6 +1288,9 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f5fa Console Logins by Country"
   description: "Maps console login events to their geographic origin. Logins from unexpected countries are high-risk."
+  chart:
+    type: timeseries
+    bucket: day
   prompt: |
     Show all console login events with their GeoIP information.
     Group by country and show success/failure counts. Console logins
@@ -1153,6 +1315,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f310 Private / Internal IP Summary"
   description: "Summarizes events from private, loopback, and AWS-internal IPs. Baseline for expected internal traffic."
+  chart:
+    type: bar
+    x: ip_type
+    y:
+      - event_count
   prompt: |
     Summarize events originating from private IPs, loopback, and link-local
     addresses. These represent internal AWS traffic and should dominate
@@ -1172,6 +1339,12 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f50d Write Events by Country"
   description: "Shows mutating (write) API calls grouped by country. Writes from unexpected countries are high-priority."
+  chart:
+    type: bar
+    x: geo_country_name
+    y:
+      - write_events
+      - unique_callers
   prompt: |
     Show all write (mutating) API calls grouped by source country.
     Writes from unexpected countries are a stronger signal than reads.
@@ -1195,6 +1368,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f6ab Access Denied by Country"
   description: "Groups access denied errors by source country. Concentrated denials from one country may signal an attack."
+  chart:
+    type: bar
+    x: geo_country_name
+    y:
+      - denied_count
   prompt: |
     Show access denied errors grouped by source country. Concentrated
     denials from a single foreign country may indicate a credential
@@ -1219,6 +1397,11 @@
 - category: "\U0001f30d GeoIP Analysis"
   label: "\U0001f4cd Top Source Cities"
   description: "Ranks source cities by event volume. Pinpoints the most active geographic origins."
+  chart:
+    type: bar
+    x: geo_city
+    y:
+      - event_count
   prompt: |
     Rank source cities by API call volume. Show country, city, event count,
     and unique IPs. City-level data can help identify specific attacker

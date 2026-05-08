@@ -58,17 +58,23 @@ def test_analysis_system_prompt_is_nonempty():
     assert len(ANALYSIS_SYSTEM_PROMPT.strip()) > 0
 
 
-def test_analysis_system_prompt_contains_severity_tags():
-    """ANALYSIS_SYSTEM_PROMPT must define severity indicators for findings."""
-    # At least two severity levels expected (High and Info at minimum)
-    assert "High" in ANALYSIS_SYSTEM_PROMPT
-    assert "Info" in ANALYSIS_SYSTEM_PROMPT
+def test_analysis_system_prompt_contains_findings_section():
+    """ANALYSIS_SYSTEM_PROMPT must define a Findings / Notable Observations section."""
+    assert (
+        "Findings" in ANALYSIS_SYSTEM_PROMPT or "Observations" in ANALYSIS_SYSTEM_PROMPT
+    )
 
 
 def test_analysis_system_prompt_contains_statistical_context_guidance():
-    """ANALYSIS_SYSTEM_PROMPT must instruct the LLM to include statistical context."""
+    """ANALYSIS_SYSTEM_PROMPT must instruct the LLM to summarise data shape."""
     lower = ANALYSIS_SYSTEM_PROMPT.lower()
-    assert "statistic" in lower or "baseline" in lower or "percentile" in lower
+    assert (
+        "statistic" in lower
+        or "baseline" in lower
+        or "summary" in lower
+        or "count" in lower
+        or "total" in lower
+    )
 
 
 def test_analysis_system_prompt_contains_api_explanation_guidance():

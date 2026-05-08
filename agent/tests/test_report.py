@@ -68,6 +68,28 @@ def test_report_includes_all_queries():
     assert "### Analysis" not in report
 
 
+def test_report_entry_chart_config_defaults_to_none():
+    """ReportEntry.chart_config must default to None when not provided.
+
+    Test #CHART-R1: backward-compatible — existing callers are unaffected.
+    """
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    assert hasattr(
+        entry, "chart_config"
+    ), "ReportEntry must have a 'chart_config' field"
+    assert entry.chart_config is None
+
+
+def test_report_entry_chart_config_stores_dict():
+    """ReportEntry.chart_config must accept and persist a dict.
+
+    Test #CHART-R2: verifies the field is writable with a chart config dict.
+    """
+    config = {"type": "bar", "x": "event_name", "y": ["api_count"]}
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame(), chart_config=config)
+    assert entry.chart_config == config
+
+
 def test_report_sanitizes_sensitive_data():
     """Credentials in query results and summary text are redacted."""
     secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # 40-char secret-like string

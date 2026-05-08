@@ -9,6 +9,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 import yaml
 
@@ -62,6 +63,130 @@ SESSION_STATE_DEFAULTS: dict = {
     "conversation_context": [],  # recent (user_query, sql, summary) turns for LLM context
     "db_variant": DB_VARIANT_FULL,  # active DB variant; "Lite" only available when DUCKDB_PATH_LITE is set
 }
+
+
+# ---------------------------------------------------------------------------
+# Chart rendering helpers
+# ---------------------------------------------------------------------------
+
+
+def _render_bar_chart(df: pd.DataFrame, chart_config: dict | None) -> None:
+    """Render a Plotly Express horizontal bar chart.
+
+    Uses the x/y keys from chart_config when provided; falls back to the first
+    non-numeric column (y-axis) and all numeric columns (x-axis) for auto-detection.
+
+    Args:
+        df:           The query result DataFrame.
+        chart_config: Chart configuration dict, or None for auto-detection.
+    """
+    import plotly.express as px
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    non_numeric_cols = [c for c in df.columns if c not in numeric_cols]
+
+    if chart_config:
+        x_col = chart_config.get("x")
+        y_cols = chart_config.get("y", [])
+        if isinstance(y_cols, str):
+            y_cols = [y_cols]
+    else:
+        x_col = non_numeric_cols[0] if non_numeric_cols else None
+        y_cols = numeric_cols
+
+    if not x_col or not y_cols:
+        return
+
+    if len(y_cols) == 1:
+        fig = px.bar(df, x=y_cols[0], y=x_col, orientation="h")
+    else:
+        plot_df = df[[x_col] + y_cols].melt(
+            id_vars=x_col, var_name="metric", value_name="value"
+        )
+        fig = px.bar(
+            plot_df,
+            x="value",
+            y=x_col,
+            color="metric",
+            orientation="h",
+            barmode="group",
+        )
+
+    with st.expander("📊 Bar Chart", expanded=True):
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def _render_timeseries_chart(df: pd.DataFrame, chart_config: dict) -> None:
+    """Render a time-series bar chart by bucketing the event_time column.
+
+    Skips rendering when the DataFrame has no event_time column, when the
+    timestamps cannot be parsed, or when there is only one distinct bucket
+    (a single-bar chart provides no visual value).
+
+    Args:
+        df:           The query result DataFrame containing an event_time column.
+        chart_config: Chart configuration dict; uses bucket='day' by default.
+    """
+    if "event_time" not in df.columns:
+        return
+
+    bucket = chart_config.get("bucket", "day")
+    ts = pd.to_datetime(df["event_time"], errors="coerce").dropna()
+    if ts.empty:
+        return
+
+    if bucket == "hour":
+        bucketed = ts.dt.floor("h").dt.strftime("%Y-%m-%d %H:00")
+        title = "📈 Timeline (per hour)"
+    else:
+        bucketed = ts.dt.date.astype(str)
+        title = "📈 Timeline (per day)"
+
+    counts = bucketed.value_counts().sort_index()
+    if len(counts) < 2:
+        return
+
+    chart_df = counts.reset_index()
+    chart_df.columns = ["bucket", "count"]
+
+    with st.expander(title, expanded=True):
+        st.line_chart(chart_df, x="bucket", y="count")
+
+
+def render_chart(df: pd.DataFrame, chart_config: dict | None) -> None:
+    """Render a chart from the query result based on the chart configuration.
+
+    Dispatch table:
+    - chart_config=None          → auto-detect: Plotly bar if numeric cols exist
+    - type='none'                → skip
+    - type='bar'                 → Plotly Express horizontal bar (x/y from config)
+    - type='timeseries'          → st.bar_chart bucketed by day or hour
+
+    Args:
+        df:           The query result DataFrame.
+        chart_config: Chart configuration dict with 'type', 'x', 'y', 'bucket'
+                      keys, or None for auto-detection.
+    """
+    if df is None or df.empty:
+        return
+
+    chart_type = chart_config.get("type") if chart_config else None
+
+    if chart_type == "none":
+        return
+
+    if chart_type == "timeseries":
+        _render_timeseries_chart(df, chart_config or {})
+        return
+
+    if chart_type == "bar":
+        _render_bar_chart(df, chart_config)
+        return
+
+    # Auto-detection: render a bar chart when at least one numeric column exists.
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if numeric_cols:
+        _render_bar_chart(df, None)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +423,7 @@ def render_sidebar() -> None:
                     ):
                         st.session_state["_pending_direct_sql"] = matched["sql"].strip()
                         st.session_state["_pending_preset_description"] = desc
+                        st.session_state["_pending_chart_config"] = matched.get("chart")
                         st.rerun()
                 else:
                     st.button(
@@ -401,9 +527,13 @@ def render_chat() -> None:
     # Handle direct SQL execution from a built-in preset (no AI needed)
     pending_direct_sql = st.session_state.pop("_pending_direct_sql", None)
     pending_preset_description = st.session_state.pop("_pending_preset_description", "")
+    pending_chart_config = st.session_state.pop("_pending_chart_config", None)
     if pending_direct_sql:
         _handle_direct_sql(
-            pending_direct_sql, db_path, description=pending_preset_description
+            pending_direct_sql,
+            db_path,
+            description=pending_preset_description,
+            chart_config=pending_chart_config,
         )
         st.rerun()
 
@@ -451,6 +581,7 @@ def render_chat() -> None:
                             "Add a `LIMIT` clause or narrow your query for more specific results."
                         )
                     st.dataframe(entry.results, use_container_width=True)
+                    render_chart(entry.results, entry.chart_config)
                 else:
                     st.info("No results returned.")
 

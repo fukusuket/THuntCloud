@@ -1250,3 +1250,253 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (100) → False,
     # so no truncation notice is emitted and "truncated to 777" is absent.
     assert "truncated to 777" in content
+
+
+# ---------------------------------------------------------------------------
+# Tests #CHART — render_chart() visualisation
+# ---------------------------------------------------------------------------
+
+
+def test_render_chart_type_none_skips_all_rendering():
+    """render_chart() with type='none' must not call st.plotly_chart or st.bar_chart.
+
+    Test #CHART-1: explicit opt-out must suppress chart rendering entirely.
+    """
+    df = pd.DataFrame({"event_name": ["CreateUser"], "count": [5]})
+    config = {"type": "none"}
+    with (
+        patch("streamlit.plotly_chart") as mock_plotly,
+        patch("streamlit.bar_chart") as mock_bar,
+    ):
+        from app import render_chart
+
+        render_chart(df, config)
+
+    mock_plotly.assert_not_called()
+    mock_bar.assert_not_called()
+
+
+def test_render_chart_type_bar_calls_plotly_chart():
+    """render_chart() with type='bar' must invoke st.plotly_chart inside an expander.
+
+    Test #CHART-2: verifies Plotly Express horizontal bar chart rendering path.
+    """
+    df = pd.DataFrame(
+        {"event_name": ["CreateUser", "DeleteUser"], "api_count": [10, 5]}
+    )
+    config = {"type": "bar", "x": "event_name", "y": ["api_count"]}
+    with (
+        patch("streamlit.plotly_chart") as mock_plotly,
+        patch("streamlit.expander") as mock_expander,
+    ):
+        mock_expander.return_value.__enter__ = MagicMock(return_value=None)
+        mock_expander.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import render_chart
+
+        render_chart(df, config)
+
+    mock_plotly.assert_called_once()
+
+
+def test_render_chart_type_timeseries_calls_line_chart():
+    """render_chart() with type='timeseries' must bucket event_time and call st.line_chart.
+
+    Test #CHART-3: line chart is more appropriate than bar chart for time-series data
+    because it clearly shows trends and continuity over time.
+    """
+    df = pd.DataFrame(
+        {
+            "event_time": pd.to_datetime(["2024-01-01", "2024-01-01", "2024-01-02"]),
+            "event_name": ["A", "B", "C"],
+        }
+    )
+    config = {"type": "timeseries", "bucket": "day"}
+    with (
+        patch("streamlit.line_chart") as mock_line,
+        patch("streamlit.expander") as mock_expander,
+    ):
+        mock_expander.return_value.__enter__ = MagicMock(return_value=None)
+        mock_expander.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import render_chart
+
+        render_chart(df, config)
+
+    mock_line.assert_called_once()
+
+
+def test_render_chart_timeseries_single_bucket_skips():
+    """render_chart() with type='timeseries' and only one distinct date must skip.
+
+    Test #CHART-4: a single-bar chart provides no visual value.
+    """
+    df = pd.DataFrame(
+        {
+            "event_time": pd.to_datetime(["2024-01-01", "2024-01-01"]),
+            "event_name": ["A", "B"],
+        }
+    )
+    config = {"type": "timeseries", "bucket": "day"}
+    with (
+        patch("streamlit.bar_chart") as mock_bar,
+        patch("streamlit.expander"),
+    ):
+        from app import render_chart
+
+        render_chart(df, config)
+
+    mock_bar.assert_not_called()
+
+
+def test_render_chart_timeseries_no_event_time_skips():
+    """render_chart() with type='timeseries' but no event_time column must skip.
+
+    Test #CHART-5: guards against schema mismatches.
+    """
+    df = pd.DataFrame({"event_name": ["A", "B"], "count": [1, 2]})
+    config = {"type": "timeseries"}
+    with (
+        patch("streamlit.bar_chart") as mock_bar,
+        patch("streamlit.plotly_chart") as mock_plotly,
+    ):
+        from app import render_chart
+
+        render_chart(df, config)
+
+    mock_bar.assert_not_called()
+    mock_plotly.assert_not_called()
+
+
+def test_render_chart_auto_with_numeric_calls_plotly_chart():
+    """render_chart() with config=None and a numeric column must call st.plotly_chart.
+
+    Test #CHART-6: auto-detection path falls back to Plotly bar chart.
+    """
+    df = pd.DataFrame({"event_name": ["A", "B"], "count": [3, 7]})
+    with (
+        patch("streamlit.plotly_chart") as mock_plotly,
+        patch("streamlit.expander") as mock_expander,
+    ):
+        mock_expander.return_value.__enter__ = MagicMock(return_value=None)
+        mock_expander.return_value.__exit__ = MagicMock(return_value=False)
+
+        from app import render_chart
+
+        render_chart(df, None)
+
+    mock_plotly.assert_called_once()
+
+
+def test_render_chart_auto_without_numeric_skips():
+    """render_chart() with config=None and no numeric columns must not render a chart.
+
+    Test #CHART-7: pure-text result sets should not produce an empty chart.
+    """
+    df = pd.DataFrame({"event_name": ["A", "B"], "region": ["us-east-1", "us-west-2"]})
+    with (
+        patch("streamlit.plotly_chart") as mock_plotly,
+        patch("streamlit.bar_chart") as mock_bar,
+    ):
+        from app import render_chart
+
+        render_chart(df, None)
+
+    mock_plotly.assert_not_called()
+    mock_bar.assert_not_called()
+
+
+def test_handle_direct_sql_stores_chart_config_in_report_entry(tmp_duckdb):
+    """_handle_direct_sql() must persist chart_config into the ReportEntry.
+
+    Test #CHART-8: verifies the chart_config kwarg is threaded through to query_history.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+    chart_config = {"type": "bar", "x": "event_name", "y": ["count"]}
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb, chart_config=chart_config)
+
+    assert len(mock_state["query_history"]) == 1
+    assert mock_state["query_history"][0].chart_config == chart_config
+
+
+def test_handle_direct_sql_chart_config_defaults_to_none(tmp_duckdb):
+    """_handle_direct_sql() must store None for chart_config when not provided.
+
+    Test #CHART-9: backward-compatible — existing callers are unaffected.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(sql, tmp_duckdb)
+
+    assert mock_state["query_history"][0].chart_config is None
+
+
+def test_builtin_hunts_chart_field_valid_types():
+    """All chart fields in builtin_hunts.yaml must have valid type values.
+
+    Test #CHART-10: prevents typos in the chart.type enum from shipping.
+    """
+    from app import _load_builtin_prompts
+
+    valid_types = {"bar", "timeseries", "none"}
+    prompts = _load_builtin_prompts()
+    for entry in prompts:
+        chart = entry.get("chart")
+        if chart is not None:
+            assert isinstance(
+                chart, dict
+            ), f"chart must be a dict in {entry['label']!r}"
+            chart_type = chart.get("type")
+            assert chart_type in valid_types, (
+                f"chart.type {chart_type!r} not in {valid_types} "
+                f"for {entry['label']!r}"
+            )

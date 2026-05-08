@@ -53,6 +53,7 @@ class ReportEntry:
     results: pd.DataFrame
     analysis: str = ""
     description: str = ""
+    chart_config: dict | None = None
     # Prevent pandas DataFrame equality issues in dataclass comparisons
     _results_placeholder: None = field(default=None, init=False, repr=False)
 
