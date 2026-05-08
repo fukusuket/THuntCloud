@@ -1,7 +1,7 @@
 # Custom Apache Superset image with DuckDB support.
 # Installs duckdb-engine (SQLAlchemy dialect) and the duckdb Python package
 # so that DuckDB appears as a connectable database inside Superset.
-FROM apache/superset:4.1.2
+FROM apache/superset:4.1.4
 
 USER root
 
