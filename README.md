@@ -91,8 +91,11 @@ cp -r <local-output-dir>/ THuntCloud/docker/logs/
 # Move to the Docker directory
 cd THuntCloud/docker
 
-# Ingest logs into DuckDB
+# Ingest CloudTrail logs into DuckDB
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+# (Optional) Ingest AWS Config snapshots.
+docker compose --profile ingest run --rm ingester config-import --path /data/config
 
 # Start all services (agent + dashboard)
 docker compose up -d --build
@@ -104,11 +107,6 @@ docker compose up -d --build
 - http://localhost:8088 — Dashboard (`admin` / `admin`)
 - http://localhost:8502 — AWS Config resource graph
 
-**(Optional)** Import AWS Config snapshots (VPC / Subnet / EC2 resource graph).
-
-```bash
-docker compose --profile ingest run --rm ingester config-import --path /data/config
-```
 
 **(Optional)** GeoIP enrichment.
 Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
