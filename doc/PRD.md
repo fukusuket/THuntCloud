@@ -78,21 +78,26 @@ This product is a locally-executed threat hunting tool targeting AWS logs, prima
 ┌─────────────────────────────────────────────────────────┐
 │                    Docker Compose                       │
 │                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌──────────────┐  │
-│  │   ingester   │   │    agent     │  │  dashboard   │  │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset)  │  │
-│  │              │   │              │  │              │  │
-│  │ CloudTrail   │   │  AI-Agent    │  │   Visualize  │  │
-│  │ gz ingest    │   │ SQL gen/exec │  │              │  │
-│  └──────┬───────┘   └──────┬───────┘  └───────┬──────┘  │
-│         │                  │                  │         │
-│         └──────────────────┴──────────────────┘         │
-│                            │                            │
-│                    ┌───────▼──────┐                     │
-│                    │   DuckDB     │                     │
-│                    │  (Persistent │                     │
-│                    │   Volume)    │                     │
-│                    └──────────────┘                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │   ingester   │  │    agent     │  │  dashboard   │  │
+│  │  (Rust)      │  │  (Streamlit) │  │  (Superset)  │  │
+│  │              │  │              │  │              │  │
+│  │ CloudTrail   │  │  AI-Agent    │  │   Visualize  │  │
+│  │ gz ingest    │  │ SQL gen/exec │  │              │  │
+│  └──────┬───────┘  └──────┬───────┘  └───────┬──────┘  │
+│         │                 │                  │         │
+│         │        ┌────────┴──────┐           │         │
+│         │        │  config_viz   │           │         │
+│         │        │ (FastAPI+     │           │         │
+│         │        │  React)       │           │         │
+│         │        │ Resource Graph│           │         │
+│         │        └──────┬────────┘           │         │
+│         └───────────────┴────────────────────┘         │
+│                         │                              │
+│                 ┌────────▼──────┐                      │
+│                 │   DuckDB      │                      │
+│                 │  (Bind Mount) │                      │
+│                 └───────────────┘                      │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -166,7 +171,31 @@ An interactive threat hunting UI that leverages an AI-Agent to assist with analy
 
 ---
 
-### 6.3 dashboard Module
+### 6.3 config_viz Module
+
+#### Overview
+An interactive web UI that visualises AWS Config snapshot resources as a hierarchical graph.
+Built with FastAPI (Python 3.12) on the backend and React 18 + React Flow on the frontend.
+
+#### Technology Stack
+- Backend: FastAPI + DuckDB Python client (READ_ONLY)
+- Frontend: React 18 + Vite + TypeScript + React Flow + dagre
+
+#### Functional Requirements
+
+| ID | Feature | Priority |
+|----|---------|----------|
+| CFG-01 | List all ingested AWS Config snapshots | Must |
+| CFG-02 | Display resource graph with hierarchical layout (VPC / Subnet / EC2 nesting) | Must |
+| CFG-03 | Filter graph by AWS resource type | Must |
+| CFG-04 | Click-to-inspect detail panel (configuration + tags) | Must |
+| CFG-05 | Hover tooltip (resource ID, name, region, type) | Must |
+| CFG-06 | Layout toggle (Top-Bottom / Left-Right) | Should |
+| CFG-07 | AWS service icons for resource types | Should |
+
+---
+
+### 6.4 dashboard Module
 
 #### Overview
 A BI dashboard for visualizing logs stored in DuckDB. Powered by Apache Superset, it runs in a Docker container fully independent from the agent UI.
@@ -195,10 +224,10 @@ A BI dashboard for visualizing logs stored in DuckDB. Powered by Apache Superset
 
 | Service | Default Port | Description |
 |---------|-------------|-------------|
-| ingester | — | Log ingestion worker (CLI or API) |
-| agent | 8501 | Streamlit UI |
-| dashboard | 8088 | Apache Superset |
-| duckdb-volume | — | Persistent volume (shared storage) |
+| ingester | — | Log ingestion worker (CLI, profile: `ingest`) |
+| agent | 8501 | Streamlit AI threat hunting UI |
+| config_viz | 8502 | AWS Config resource graph (FastAPI + React) |
+| dashboard | 8088 | Apache Superset BI dashboard |
 
 ### 7.2 Hardware Requirements
 
@@ -254,36 +283,36 @@ A BI dashboard for visualizing logs stored in DuckDB. Powered by Apache Superset
 
 ### 11.1 DuckDB Container Sharing Strategy [RESOLVED]
 
-**Decision: Adopt Docker Named Volume + 1-writer / n-readers architecture**
+**Decision: Adopt Docker Bind Mount + 1-writer / n-readers architecture**
 
 DuckDB is an in-process database and does not support concurrent writes from multiple processes (a second process attempting to write will fail due to file locking). However, multiple READ_ONLY connections are permitted while one process holds a write lock. Given this constraint, the following architecture is adopted.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│           Docker Named Volume: duckdb_data                  │
-│           Mounted on host NVMe/SSD (recommended)            │
-└────────────┬────────────────────┬───────────────────────────┘
-             │ READ_WRITE (1)     │ READ_ONLY (multiple)
-             ▼                    ▼
-        ingester             agent / dashboard
-      (write only)           (read only)
+┌──────────────────────────────────────────────────────────────┐
+│           Bind Mount: docker/data/db/threat_hunting.db        │
+│           Mounted on host NVMe/SSD (recommended)              │
+└────────────┬────────────────────────┬─────────────────────────┘
+             │ READ_WRITE (1)          │ READ_ONLY (multiple)
+             ▼                         ▼
+        ingester             agent / config_viz / dashboard
+      (write only)                  (read only)
 ```
 
 Rationale and technical comparison:
 
 | Option | Performance | Concurrent Access | Implementation Cost | Decision |
 |--------|-------------|-------------------|--------------------|---------:|
-| **Named Volume + READ_ONLY** | ◎ Near-direct NVMe speed | 1W / nR | Low | **Adopted** |
-| Bind Mount (host path) | ◎ Same as above | Same | Low | Alternative (equivalent to Named Volume; suitable when user manages paths) |
+| **Bind Mount + READ_ONLY** | ◎ Near-direct NVMe speed | 1W / nR | Low | **Adopted** |
+| Named Volume | ◎ Same as above | Same | Low | Equivalent; bind mount preferred (avoids WSL2 path issues) |
 | DuckLake (ducklake extension) | ○ | ◎ Multiple writers | High (requires separate catalog DB) | Consider for v2+ |
 | Arrow Flight proxy | △ Network overhead | ◎ | High | Rejected (avoids complexity in v1) |
 | NAS / network storage | ✕ Officially discouraged by DuckDB | ✕ | Low | Rejected |
 
 **Implementation guidelines:**
-- Define a Named Volume `duckdb_data` in `docker-compose.yml` and mount it to all containers
-- ingester opens the database as `READ_WRITE`; agent and dashboard open as `READ_ONLY`
-- The default flow is sequential: ingester completes ingestion and releases the lock before agent/dashboard query
-- SSD (SATA or NVMe) is strongly recommended for storage; HDD is discouraged (per DuckDB official guidelines)
+- Each service declares its own `volumes:` entry in `docker-compose.yml` pointing to the host bind-mount path.
+- ingester opens the database as `READ_WRITE`; agent, config_viz, and dashboard open as `READ_ONLY`.
+- The default flow is sequential: ingester completes ingestion and releases the lock before read-only services start.
+- SSD (SATA or NVMe) is strongly recommended for storage; HDD is discouraged (per DuckDB official guidelines).
 
 ---
 
@@ -356,19 +385,19 @@ Dashboard management policy:
 
 ### 11.5 License Policy [RESOLVED]
 
-**Decision: Release the entire project under Apache License 2.0**
+**Decision: Release the entire project under GNU Affero General Public License v3.0 (AGPL-3.0)**
 
-Rationale and compatibility with dependency licenses:
+Rationale: AGPL-3.0 ensures that any hosted/network-accessible modifications must also be released as open source.
 
 | Component | License | Compatibility |
 |-----------|---------|---------------|
-| Rust (language & standard library) | MIT OR Apache 2.0 | ◎ |
-| DuckDB | MIT | ◎ Apache 2.0 is compatible with MIT |
-| Streamlit | Apache 2.0 | ◎ Identical |
-| Apache Superset | Apache 2.0 | ◎ Identical |
-| Docker Compose | Apache 2.0 | ◎ Identical |
+| Rust (language & standard library) | MIT OR Apache 2.0 | ◎ Compatible with AGPL-3.0 |
+| DuckDB | MIT | ◎ MIT is compatible with AGPL-3.0 |
+| Streamlit | Apache 2.0 | ◎ Apache 2.0 is compatible with AGPL-3.0 |
+| Apache Superset | Apache 2.0 | ◎ Compatible |
+| Docker Compose | Apache 2.0 | ◎ Compatible |
 | OpenAI API client (usage only) | Terms of Service (separate from OSS distribution) | ◎ API usage is outside license scope |
-| **This project** | **Apache 2.0** | ◎ Compatible with all dependencies |
+| **This project** | **AGPL-3.0** | ◎ See [LICENSE](../LICENSE) |
 
 ---
 

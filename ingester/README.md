@@ -1,10 +1,11 @@
 # ingester
 
-AWS CloudTrail log ingestion module for THuntCloud.
+AWS CloudTrail log and AWS Config snapshot ingestion module for THuntCloud.
 
-Reads CloudTrail log files (`.json` / `.json.gz`) from the local filesystem,
-parses them, optionally enriches each event with GeoIP data, and inserts all
-records into DuckDB via high-throughput batch appends.
+- **`ingest`** — Reads CloudTrail log files (`.json` / `.json.gz`), optionally enriches each event with GeoIP data, and inserts all records into DuckDB via high-throughput batch appends.
+- **`enrich`** — Back-fills GeoIP columns on an existing database without re-ingesting.
+- **`config-import`** — Reads AWS Config snapshot JSON files and populates the `config_snapshots`, `config_resources`, and `config_edges` tables.
+
 This is the **only** component that opens DuckDB in `READ_WRITE` mode.
 
 ---
@@ -16,6 +17,7 @@ This is the **only** component that opens DuckDB in `READ_WRITE` mode.
 - [Processing Pipeline](#processing-pipeline)
   - [Sequence Diagram — ingest](#sequence-diagram--ingest)
   - [Sequence Diagram — enrich](#sequence-diagram--enrich)
+  - [Sequence Diagram — config-import](#sequence-diagram--config-import)
 - [Database Schema](#database-schema)
 - [Module Structure](#module-structure)
 - [Development](#development)
@@ -50,6 +52,9 @@ ingester ingest --path /logs/ --strip-fields --strip-raw-event \
 ingester enrich \
   --geoip-city /data/geoip/GeoLite2-City.mmdb \
   --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
+
+# Import AWS Config snapshots
+ingester config-import --path /data/config-snapshots/
 ```
 
 ---
@@ -104,6 +109,8 @@ available.
 Combine with `--strip-fields` to produce the **smallest possible DB** for
 high-volume CloudTrail data.  Use `--db <path>` to write to a dedicated file.
 
+---
+
 ### `enrich`
 
 ```
@@ -114,9 +121,37 @@ ingester enrich
                [--geoip-asn     <PATH>]
 ```
 
-**DB path resolution order:** `--db` CLI arg → `DUCKDB_PATH` env var → `/data/db/threat_hunting.db`
+Back-fills `geo_*` columns on rows that were ingested without a GeoIP database.
+Only rows where `geo_country_code IS NULL` are updated.
 
-`--include`/`--exclude` glob patterns use `*` that crosses `/` boundaries.
+---
+
+### `config-import`
+
+```
+ingester config-import --path <PATH>
+                       [--db <PATH>]        DuckDB file (default: /data/db/threat_hunting.db)
+                       [--no-progress]      Disable progress bar
+```
+
+Walks `<PATH>` for `.json` files and writes records to three tables:
+`config_snapshots`, `config_resources`, and `config_edges`.
+
+SHA-256 deduplication via the shared `ingested_files` table prevents re-importing
+unchanged files across runs.
+
+**Dangling edge filter:** relationship entries whose `resourceId` target does not
+exist in the same snapshot are silently dropped, keeping the graph self-contained.
+
+Example output:
+
+```
+Config import complete: files_processed=1 files_skipped=0 resources_inserted=134 edges_inserted=46 errors=0 elapsed_secs=0.08
+```
+
+**DB path resolution order (all subcommands):** `--db` CLI arg → `DUCKDB_PATH` env var → `/data/db/threat_hunting.db`
+
+`--include`/`--exclude` glob patterns (`ingest` only) use `*` that crosses `/` boundaries.
 Files without a recognisable `yyyy/mm/dd` date segment in their path are always included.
 
 ---
@@ -219,9 +254,58 @@ sequenceDiagram
 
 ---
 
+### Sequence Diagram — `config-import`
+
+```mermaid
+sequenceDiagram
+    participant CLI  as main.rs (CLI)
+    participant CI   as config_import.rs
+    participant CP   as config_parser.rs
+    participant WD   as WalkDir
+    participant DB   as config_db.rs (DuckDB Appender)
+
+    CLI->>CI: import_config(path, conn, opts)
+    CI->>DB: ensure_table (ingested_files)
+    CI->>DB: ensure_config_tables (config_snapshots / resources / edges)
+    DB-->>CI: tables ready
+
+    CI->>DB: fetch_ingested_files_map(conn)
+    DB-->>CI: HashMap<path, sha256>
+
+    CI->>WD: walk directory for *.json files
+    WD-->>CI: list of file paths
+
+    loop For each .json file
+        CI->>CI: compute_sha256(file)
+        CI-->>CI: skip if SHA-256 matches ingested_files
+        CI->>CP: parse_config_snapshot(bytes)
+        CP-->>CI: ParsedSnapshot {snapshot_id, resources, edges}
+        CI->>DB: insert_config_snapshot(metadata)
+        CI->>DB: insert_config_resources(resources) via Appender
+        CI->>CI: filter dangling edges (target must exist in snapshot)
+        CI->>DB: insert_config_edges(edges) via Appender
+    end
+
+    CI->>DB: batch_mark_ingested(newly_ingested)
+    CI-->>CLI: ImportStats {files, resources, edges, errors, elapsed}
+    CLI->>CLI: print summary
+```
+
+**Key design points:**
+
+| Aspect | Detail |
+|--------|--------|
+| Deduplication | SHA-256 via shared `ingested_files` table — unchanged snapshot files are skipped on re-run. |
+| Dangling edges | Relationship entries whose `resourceId` target is absent from the snapshot are dropped at import time. |
+| Empty tags | `tags: {}` is normalised to `NULL` rather than storing a meaningless empty JSON string. |
+| Timestamp | ISO 8601 capture times (`2026-01-01T00:00:00.000Z`) are normalised to `YYYY-MM-DD HH:MM:SS.mmm` for DuckDB's `TIMESTAMP` column. |
+| Batch insert | Resources and edges use `duckdb::Appender` for throughput; snapshot metadata uses `INSERT OR IGNORE` for idempotency. |
+
+---
+
 ## Database Schema
 
-### `cloudtrail_events` (24 columns)
+### `cloudtrail_events` (48 columns)
 
 **Core (17):**
 
@@ -257,10 +341,16 @@ sequenceDiagram
 | `geo_asn` | VARCHAR | Autonomous System Number |
 | `geo_org` | VARCHAR | AS organization name |
 
+**Extended (24, nullable):** hoisted sub-fields from `userIdentity`, `sessionContext`, `tlsDetails`, etc. — see `db.rs` for the full list.
+
 JSON blobs (`request_parameters`, `response_elements`, `raw_event`) are stored as `VARCHAR`.
 Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 
+---
+
 ### `ingested_files`
+
+Shared by both `ingest` and `config-import` for SHA-256 deduplication.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -270,27 +360,79 @@ Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 
 ---
 
+### `config_snapshots`
+
+One row per imported Config snapshot file.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | VARCHAR (PK) | `configSnapshotId` from the JSON |
+| `account_id` | VARCHAR | AWS account ID (from first item) |
+| `aws_region` | VARCHAR | AWS region (from first item) |
+| `captured_at` | TIMESTAMP | Latest `configurationItemCaptureTime` across all items |
+| `source_path` | VARCHAR | Absolute path of the source JSON file |
+| `record_count` | INTEGER | Number of configuration items in the snapshot |
+
+---
+
+### `config_resources`
+
+One row per `configurationItem` in a snapshot.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `resource_id` | VARCHAR (PK, part) | AWS resource ID |
+| `snapshot_id` | VARCHAR (PK, part) | Parent snapshot ID |
+| `resource_type` | VARCHAR (PK, part) | AWS resource type (e.g. `AWS::EC2::Instance`) |
+| `aws_region` | VARCHAR | Region of the resource |
+| `resource_name` | VARCHAR | Human-readable resource name |
+| `configuration` | VARCHAR | Compact JSON of the `configuration` sub-object |
+| `tags` | VARCHAR | Compact JSON of the `tags` map (NULL when empty) |
+
+---
+
+### `config_edges`
+
+Directed relationships between resources within the same snapshot.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | VARCHAR (PK, part) | Parent snapshot ID |
+| `source_id` | VARCHAR (PK, part) | Resource ID of the relationship origin |
+| `target_id` | VARCHAR (PK, part) | Resource ID of the relationship target |
+| `edge_type` | VARCHAR (PK, part) | Relationship label (e.g. `Is associated with`) |
+
+> Edges whose `target_id` does not exist in `config_resources` for the same
+> `snapshot_id` are dropped at import time (dangling edge filter).
+
+---
+
 ## Module Structure
 
 ```
 ingester/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs           # CLI entry point (clap) — subcommands: ingest, enrich
-│   ├── lib.rs            # Public API re-exports
-│   ├── parser.rs         # CloudTrail JSON parsing (serde_json)
-│   ├── db.rs             # DuckDB schema management + batch insert (Appender) + geo ensure
-│   ├── ingest.rs         # Pipeline orchestration (walk → filter → parallel parse → insert)
-│   ├── enrich.rs         # Geo back-fill for existing rows (UPDATE per unique IP)
-│   ├── geoip.rs          # MaxMind GeoLite2 lookup + private-IP classification
-│   ├── field_filter.rs   # --strip-fields: recursive JSON key removal (FieldFilter)
-│   ├── date_filter.rs    # --from / --to filter (extracts yyyy/mm/dd from path)
-│   ├── path_filter.rs    # --include / --exclude glob filter
-│   └── progress.rs       # Progress bar wrapper (indicatif)
+│   ├── main.rs            # CLI entry point (clap) — subcommands: ingest, enrich, config-import
+│   ├── lib.rs             # Public API re-exports
+│   ├── parser.rs          # CloudTrail JSON parsing (serde_json)
+│   ├── db.rs              # DuckDB schema management + batch insert (Appender) + geo columns
+│   ├── ingest.rs          # CloudTrail pipeline (walk → filter → parallel parse → insert)
+│   ├── enrich.rs          # GeoIP back-fill for existing rows (UPDATE per unique IP)
+│   ├── geoip.rs           # MaxMind GeoLite2 lookup + private-IP classification
+│   ├── field_filter.rs    # --strip-fields: recursive JSON key removal (FieldFilter)
+│   ├── date_filter.rs     # --from / --to filter (extracts yyyy/mm/dd from path)
+│   ├── path_filter.rs     # --include / --exclude glob filter
+│   ├── progress.rs        # Progress bar wrapper (indicatif)
+│   ├── config_parser.rs   # Config snapshot JSON → ParsedSnapshot / ParsedResource / ParsedEdge
+│   ├── config_db.rs       # Config table schema + Appender writes (config_snapshots/resources/edges)
+│   └── config_import.rs   # Config import pipeline (walk → SHA-256 dedup → parse → insert)
 └── tests/
-    ├── cli_test.rs           # CLI integration tests
-    ├── integration_test.rs   # End-to-end ingest tests with a real DuckDB
-    └── testdata/             # Sample CloudTrail JSON / gz fixtures
+    ├── cli_test.rs              # CLI integration tests (ingest / enrich)
+    ├── config_import_test.rs    # CLI integration tests (config-import)
+    ├── integration_test.rs      # End-to-end ingest tests with a real DuckDB
+    ├── testdata/                # CloudTrail JSON / gz fixtures + malformed sample
+    └── testdata_config/         # Config snapshot JSON fixtures
 ```
 
 ---
@@ -321,4 +463,3 @@ cargo fmt                     # Format
 | `GEOIP_CITY_PATH` | Path to GeoLite2-City.mmdb |
 | `GEOIP_COUNTRY_PATH` | Path to GeoLite2-Country.mmdb |
 | `GEOIP_ASN_PATH` | Path to GeoLite2-ASN.mmdb |
-

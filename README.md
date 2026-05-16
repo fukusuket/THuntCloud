@@ -16,6 +16,7 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 - **No-query hunting** — select a built-in hunt from the Streamlit dropdown and get instant results — no SQL knowledge required
 - **GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
 - **Built-in BI dashboard** — Apache Superset with pre-built CloudTrail charts
+- **AWS Config visualization** — interactive resource graph with hierarchical layout (VPC / Subnet / EC2 nesting)
 - **Single-command launch** — `docker compose up -d`
 - **(Optional) AI-assisted analysis** — AI automatically analyses query result DataFrames and surfaces key findings in plain language
 
@@ -33,28 +34,29 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 ## Architecture
 
-Three Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
+Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Docker Compose                       │
-│                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐   │
-│  │   ingester   │   │    agent     │  │  dashboard  │   │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │   │
-│  │              │   │              │  │             │   │
-│  │ CloudTrail   │   │   AI Chat    │  │  Visualize  │   │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │   │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │   │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘   │
-│         └──────────────────┴─────────────────┘          │
-│                            │                            │
-│                    ┌───────▼──────┐                     │
-│                    │   DuckDB     │                     │
-│                    │ (Bind Mount) │                     │
-│                    │  (SSD)       │                     │
-│                    └──────────────┘                     │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       Docker Compose                             │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  ┌─────────┐ │
+│  │   ingester   │  │    agent     │  │config_viz│  │dashboard│ │
+│  │  (Rust)      │  │  (Streamlit) │  │(FastAPI+ │  │(Superset│ │
+│  │              │  │              │  │ React)   │  │        )│ │
+│  │ CloudTrail   │  │  AI Chat     │  │ Resource │  │ Visualiz│ │
+│  │ gz ingest    │  │  SQL gen/exec│  │  Graph   │  │         │ │
+│  │ Config import│  │  READ_ONLY   │  │ READ_ONLY│  │READ_ONLY│ │
+│  │ READ_WRITE   │  │              │  │          │  │         │ │
+│  └──────┬───────┘  └──────┬───────┘  └────┬─────┘  └────┬────┘ │
+│         └─────────────────┴───────────────┴──────────────┘      │
+│                                  │                               │
+│                         ┌────────▼─────┐                        │
+│                         │   DuckDB     │                        │
+│                         │ (Bind Mount) │                        │
+│                         │   (SSD)      │                        │
+│                         └──────────────┘                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -98,8 +100,15 @@ docker compose up -d --build
 
 **Step 3.** 🪽 Open your browser and start hunting!🪽
 
-- http://localhost:8501 — Built-in queries and AI Chat 
-- http://localhost:8088 — Dashboard (`admin` / `admin`) 
+- http://localhost:8501 — Built-in queries and AI Chat
+- http://localhost:8088 — Dashboard (`admin` / `admin`)
+- http://localhost:8502 — AWS Config resource graph
+
+**(Optional)** Import AWS Config snapshots (VPC / Subnet / EC2 resource graph).
+
+```bash
+docker compose --profile ingest run --rm ingester config-import --path /data/config
+```
 
 **(Optional)** GeoIP enrichment.
 Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
@@ -132,6 +141,7 @@ docker compose --profile resync run --rm superset-resync # Fix blank dashboard a
 | `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
 | `agent` | Python 3.12+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
+| `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
 
 ---
 

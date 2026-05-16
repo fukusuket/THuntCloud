@@ -27,7 +27,7 @@ Optional GeoIP enrichment populates 7 geo columns using MaxMind GeoLite2 databas
 ingester/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs            # CLI entry point (clap) — ingest + enrich subcommands
+│   ├── main.rs            # CLI entry point (clap) — ingest + enrich + config-import subcommands
 │   ├── lib.rs             # Public API re-exports
 │   ├── parser.rs          # CloudTrail JSON parsing (serde_json)
 │   ├── db.rs              # DuckDB schema, batch insert (Appender), geo columns
@@ -38,15 +38,22 @@ ingester/
 │   ├── field_filter.rs    # --strip-fields: recursive JSON key removal (FieldFilter)
 │   ├── date_filter.rs     # --from / --to path-based date filter
 │   ├── path_filter.rs     # --include / --exclude glob filter
-│   └── progress.rs        # Progress bar wrapper (indicatif)
+│   ├── progress.rs        # Progress bar wrapper (indicatif)
+│   ├── config_parser.rs   # AWS Config snapshot JSON → typed structs
+│   ├── config_db.rs       # Config tables schema + Appender writes
+│   ├── config_import.rs   # config-import pipeline: walk → SHA dedup → parse → insert
+│   └── test_util.rs       # Shared test fixtures (only compiled under #[cfg(test)])
 └── tests/
-    ├── cli_test.rs           # CLI integration tests (assert_cmd)
-    ├── integration_test.rs   # End-to-end pipeline tests
-    └── testdata/
-        ├── single_event.json     # 1 CloudTrail event
-        ├── multi_event.json      # 3 CloudTrail events
-        ├── single_event.json.gz  # 1 event, gzip-compressed
-        └── malformed.json        # Invalid JSON (error handling)
+    ├── cli_test.rs              # CLI integration tests (assert_cmd) — ingest + enrich
+    ├── config_import_test.rs    # CLI integration tests for config-import subcommand
+    ├── integration_test.rs      # End-to-end pipeline tests
+    ├── testdata/
+    │   ├── single_event.json     # 1 CloudTrail event
+    │   ├── multi_event.json      # 3 CloudTrail events
+    │   ├── single_event.json.gz  # 1 event, gzip-compressed
+    │   └── malformed.json        # Invalid JSON (error handling)
+    └── testdata_config/
+        └── config_snapshot_mini.json  # 2-resource AWS Config snapshot fixture
 ```
 
 ## Key Data Structures
@@ -214,10 +221,19 @@ Integration and CLI tests are in `ingester/tests/`.
 - `test_non_object_top_level_json_is_returned_unchanged` — top-level `null` / string → no-op
 - `test_custom_keys_are_stripped` — `FieldFilter::new([...])` strips arbitrary keys
 
+### config_parser.rs / config_db.rs / config_import.rs
+- `test_parse_config_snapshot_*` — parse Config snapshot JSON into typed structs
+- `test_config_db_*` — create Config tables, insert snapshots/resources/edges
+- `test_config_import_*` — walk → SHA dedup → parse → insert pipeline
+
 ### CLI (tests/cli_test.rs)
 - `test_cli_ingest_command` — `ingester ingest --path <dir>` exits 0
 - `test_cli_missing_path_shows_error` — missing `--path` produces usage error
 - `test_cli_enrich_requires_geoip_arg` — `enrich` without GeoIP arg exits non-zero
+
+### CLI (tests/config_import_test.rs)
+- `test_cli_config_import_succeeds_and_prints_summary` — `ingester config-import --path <file>` exits 0 and prints summary (CLI-CI-01)
+- `test_cli_config_import_missing_path_shows_error` — missing `--path` produces usage error (CLI-CI-02)
 
 ## Testing Patterns
 

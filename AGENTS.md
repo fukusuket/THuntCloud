@@ -7,19 +7,20 @@ Module-level detail: [ingester/AGENTS.md](ingester/AGENTS.md) · [agent/AGENTS.m
 
 ## Architecture at a Glance
 
-Three Docker containers share one DuckDB file via a **bind mount** (`docker/data/db/threat_hunting.db`).
+Four Docker containers share one DuckDB file via a **bind mount** (`docker/data/db/threat_hunting.db`).
 
 | Container | Language | DuckDB mode | Port |
 |-----------|----------|-------------|------|
 | `ingester` | Rust 1.85+ | READ_WRITE (sole writer) | — |
 | `agent` | Python 3.12+ / Streamlit | READ_ONLY | 8501 |
 | `dashboard` | Apache Superset | READ_ONLY | 8088 |
+| `config_viz` | Python 3.12+ / FastAPI + React 18 | READ_ONLY | 8502 |
 
 The bind-mount (not a named volume) is intentional — Docker Engine on Linux/WSL2 misresolves
 relative paths for named-volume `driver_opts`, so each service declares its own `volumes:` entry
 in `docker/docker-compose.yml`.
 
-`ingester` must finish before `agent`/`dashboard` start. Concurrent write sessions are not supported.
+`ingester` must finish before `agent`/`dashboard`/`config_viz` start. Concurrent write sessions are not supported.
 
 ---
 
@@ -38,7 +39,8 @@ This project strictly follows **Test-Driven Development** (Red-Green-Refactor).
 When implementing a feature:
 - Ask: "What is the test list for this feature?"
 - Rust: `#[test]` in `#[cfg(test)] mod tests` within the same source file.
-- Python: `def test_*` in `agent/tests/test_*.py`.
+- Python: `def test_*` in `agent/tests/test_*.py` or `config_viz/tests/test_*.py`.
+- TypeScript (frontend): `*.test.tsx` / `*.test.ts` in `config_viz/frontend/src/__tests__/`.
 
 ---
 
@@ -60,7 +62,7 @@ When implementing a feature:
 - **Tests:** unit tests in `#[cfg(test)] mod tests` in the same file; integration tests in
   `ingester/tests/`.
 
-### Python (`agent/`)
+### Python (`agent/` and `config_viz/backend/`)
 
 - **Formatter:** `black` (line length 88).
 - **Linter:** `ruff`.
@@ -80,10 +82,13 @@ When implementing a feature:
 Run from `docker/`:
 
 ```bash
-# First-time ingest
+# First-time ingest (CloudTrail)
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
 
-# Start agent + dashboard
+# First-time ingest (AWS Config snapshots)
+docker compose --profile ingest run --rm ingester config-import --path /data/config
+
+# Start agent + dashboard + config_viz
 docker compose up -d --build
 
 # Re-ingest from scratch
@@ -104,11 +109,20 @@ cargo test                    # unit + integration + CLI tests
 cargo clippy -- -D warnings   # lint
 cargo fmt                     # format
 
-# Python (agent/)
+# Python backend (agent/)
 pytest                        # all tests
 pytest --cov=. --cov-report=term-missing
 ruff check .                  # lint
 black .                       # format
+```bash
+# Python backend (config_viz/)
+pytest                        # all tests (34 backend tests)
+ruff check .                  # lint
+black .                       # format
+
+# TypeScript frontend (config_viz/frontend/)
+npm test                      # all tests (33 frontend tests)
+npm run build                 # Vite production build → ../static/
 ```
 
 ---
@@ -123,8 +137,6 @@ Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 Column layout: **core (17) → geo (7) → extended (24)**.
 Geo and extended columns are added via `ALTER TABLE ADD COLUMN IF NOT EXISTS` so existing
 databases are migrated transparently on the next ingest run.
-
-```sql
 CREATE TABLE IF NOT EXISTS cloudtrail_events (
     -- Core columns (17)
     event_time               TIMESTAMP,
@@ -272,7 +284,7 @@ Files without a recognisable `yyyy/mm/dd` segment in their path are always inclu
 ## Security Rules
 
 1. **API keys:** never hardcode — always read from environment variables.
-2. **SQL safety:** `READ_ONLY` DuckDB connection + keyword blocklist + `EXPLAIN` validation.
+2. **SQL safety:** `READ_ONLY` DuckDB connection + keyword blocklist + `EXPLAIN` validation (applies to `agent` and `config_viz` backend).
 3. **No external data upload:** only the OpenAI API call sends data externally (SQL prompt + results).
 4. **Network:** all services are local-only by default.
 
@@ -290,7 +302,7 @@ THuntCloud/
 │   ├── README.md
 │   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs            # CLI (ingest + enrich subcommands)
+│       ├── main.rs            # CLI (ingest + enrich + config-import subcommands)
 │       ├── lib.rs
 │       ├── parser.rs          # CloudTrail JSON parsing (serde_json)
 │       ├── db.rs              # DuckDB schema, batch insert (Appender), geo columns
@@ -300,19 +312,69 @@ THuntCloud/
 │       ├── field_filter.rs    # --strip-fields: recursive JSON key removal (FieldFilter)
 │       ├── date_filter.rs     # --from / --to path-based date filter
 │       ├── path_filter.rs     # --include / --exclude glob filter
-│       └── progress.rs        # Progress bar (indicatif)
+│       ├── progress.rs        # Progress bar (indicatif)
+│       ├── config_parser.rs   # AWS Config snapshot JSON → typed structs
+│       ├── config_db.rs       # Config tables schema + Appender writes
+│       ├── config_import.rs   # config-import pipeline: walk → SHA dedup → parse → insert
+│       └── test_util.rs       # Shared test fixtures (only compiled under #[cfg(test)])
 ├── agent/                     # Python / Streamlit AI-agent UI
 │   ├── AGENTS.md              # Agent-specific TDD context
 │   ├── app.py
+│   ├── handlers.py            # Stateful handler functions
 │   ├── llm.py
 │   ├── query.py
 │   ├── report.py
 │   ├── schema.py
 │   ├── config.py
 │   ├── builtin_hunts.yaml
-│   └── prompts/system_prompt.py
+│   └── prompts/
+│       ├── system_prompt.py
+│       └── analysis_prompt.py
+├── config_viz/                # AWS Config resource graph (FastAPI + React)
+│   ├── PLAN.md                # Implementation plan (Phase A/B/C — all complete)
+│   ├── README.md              # config_viz module documentation
+│   ├── Dockerfile             # Multi-stage: Node build → Python runtime
+│   ├── backend/               # FastAPI backend (Python 3.12+)
+│   │   ├── __init__.py
+│   │   ├── main.py            # FastAPI app + 4 REST endpoints + /icons static mount
+│   │   ├── db.py              # DuckDB READ_ONLY connection (get_conn dependency)
+│   │   ├── query.py           # SQL queries + keyword blocklist
+│   │   ├── requirements.txt
+│   │   └── scripts/
+│   │       └── extract_icons.py   # AWS icon download (runs at Docker build time; failure-safe)
+│   ├── frontend/              # React 18 + Vite + TypeScript SPA
+│   │   ├── package.json       # (type: module)
+│   │   ├── vite.config.ts     # outDir: ../static
+│   │   ├── vitest.config.ts
+│   │   └── src/
+│   │       ├── App.tsx        # Root component (state management)
+│   │       ├── types.ts       # Shared TypeScript types
+│   │       ├── api.ts         # fetch wrappers for 4 API endpoints
+│   │       ├── components/
+│   │       │   ├── AwsNode.tsx        # Leaf node + hover tooltip
+│   │       │   ├── AwsGroupNode.tsx   # Container node (dashed border)
+│   │       │   ├── GraphCanvas.tsx    # ReactFlow + dagre layout
+│   │       │   ├── Sidebar.tsx        # Snapshot list + filter + layout toggle
+│   │       │   └── DetailPanel.tsx    # Resource detail slide-in panel
+│   │       ├── utils/
+│   │       │   ├── layout.ts   # applyDagreLayout() (compound graph)
+│   │       │   └── icons.ts    # AWS resource type → icon URL (with fallback)
+│   │       └── mocks/          # MSW v2 handlers for tests
+│   ├── static/                # Vite build output (served by FastAPI)
+│   └── tests/
+│       ├── conftest.py         # tmp_db_empty, tmp_db_seeded, tmp_db_hierarchy fixtures
+│       └── test_query.py       # 34 backend tests (BA-01 to BA-14)
 ├── dashboard/                 # Apache Superset BI dashboard
 │   ├── Dockerfile
 │   ├── superset_config.py
 │   ├── assets/                # cloudtrail_default.zip + YAML definitions
-│   └── init/                  # bootstrap.sh, register_duckdb.py,
+│   └── init/                  # bootstrap.sh, register_duckdb.py
+├── doc/                       # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── DEVELOPMENT.md
+│   ├── PRD.md
+│   ├── TDD_GUIDE.md
+│   └── TESTING.md
+└── docker/
+    └── docker-compose.yml     # Orchestration (5 services + profiles)
+```

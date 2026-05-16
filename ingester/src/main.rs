@@ -8,6 +8,7 @@ use std::process;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use duckdb::Connection;
+use ingester::config_import::{ImportOptions, import_config};
 use ingester::date_filter::DateFilter;
 use ingester::enrich::enrich_existing;
 use ingester::field_filter::FieldFilter;
@@ -191,6 +192,27 @@ enum Commands {
         #[arg(long, value_name = "PATH")]
         geoip_asn: Option<PathBuf>,
     },
+
+    /// Import AWS Config snapshot JSON files into DuckDB.
+    ///
+    /// Walks the given path for `.json` files and writes records to the
+    /// `config_snapshots`, `config_resources`, and `config_edges` tables.
+    /// Already-ingested files (matched by SHA-256) are skipped automatically.
+    #[command(name = "config-import")]
+    ConfigImport {
+        /// Path to a file or directory containing Config snapshot JSON files.
+        #[arg(short, long)]
+        path: PathBuf,
+
+        /// Path to the DuckDB database file.
+        /// Falls back to the DUCKDB_PATH environment variable, then /data/db/threat_hunting.db.
+        #[arg(short, long)]
+        db: Option<PathBuf>,
+
+        /// Disable progress bar output.
+        #[arg(long)]
+        no_progress: bool,
+    },
 }
 
 fn run() -> Result<()> {
@@ -312,6 +334,37 @@ fn run() -> Result<()> {
             println!(
                 "Enrichment complete: enriched_count={} skipped_count={} elapsed_secs={:.2}",
                 stats.enriched_count, stats.skipped_count, stats.elapsed_secs,
+            );
+            Ok(())
+        }
+
+        Commands::ConfigImport {
+            path,
+            db,
+            no_progress,
+        } => {
+            let db_path = resolve_db_path(db);
+            let conn = Connection::open(&db_path)
+                .with_context(|| format!("Failed to open DuckDB at {}", db_path.display()))?;
+
+            let stats = import_config(
+                &path,
+                &conn,
+                ImportOptions {
+                    show_progress: !no_progress,
+                },
+            )
+            .context("Config import failed")?;
+
+            println!(
+                "Config import complete: files_processed={} files_skipped={} \
+                 resources_inserted={} edges_inserted={} errors={} elapsed_secs={:.2}",
+                stats.files_processed,
+                stats.files_skipped,
+                stats.resources_inserted,
+                stats.edges_inserted,
+                stats.errors,
+                stats.elapsed_secs,
             );
             Ok(())
         }

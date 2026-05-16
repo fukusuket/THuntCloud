@@ -42,11 +42,16 @@ Every module in THuntCloud must have comprehensive test coverage. Tests are writ
 ingester/
 ├── src/
 │   ├── parser.rs          # Unit tests in #[cfg(test)] mod tests { ... }
-│   ├── decompressor.rs    # Unit tests in #[cfg(test)] mod tests { ... }
 │   ├── db.rs              # Unit tests in #[cfg(test)] mod tests { ... }
-│   └── ingest.rs          # Unit tests in #[cfg(test)] mod tests { ... }
+│   ├── ingest.rs          # Unit tests in #[cfg(test)] mod tests { ... }
+│   ├── config_parser.rs   # Unit tests in #[cfg(test)] mod tests { ... }
+│   ├── config_db.rs       # Unit tests in #[cfg(test)] mod tests { ... }
+│   ├── config_import.rs   # Unit tests in #[cfg(test)] mod tests { ... }
+│   └── test_util.rs       # Shared test fixtures (only compiled under #[cfg(test)])
 └── tests/
-    ├── integration_test.rs  # Integration tests (full pipeline)
+    ├── cli_test.rs             # CLI integration tests (ingest + enrich)
+    ├── config_import_test.rs   # CLI integration tests (config-import)
+    ├── integration_test.rs     # End-to-end pipeline tests
     └── testdata/
         ├── single_event.json
         ├── multi_event.json
@@ -173,24 +178,30 @@ cargo test --test integration_test      # Only integration tests
 ```
 agent/
 ├── app.py
+├── handlers.py
 ├── llm.py
 ├── query.py
 ├── report.py
 ├── schema.py
 ├── config.py
+├── prompts/
+│   ├── system_prompt.py
+│   └── analysis_prompt.py
 └── tests/
     ├── conftest.py          # Shared fixtures
     ├── test_config.py
     ├── test_llm.py
+    ├── test_prompts.py
     ├── test_query.py
     ├── test_report.py
-    └── test_schema.py
+    ├── test_schema.py
+    └── test_app.py
 ```
 
 ### Shared Fixtures (conftest.py)
 
 ```python
-# tests/conftest.py
+# agent/tests/conftest.py
 import pytest
 import duckdb
 from unittest.mock import MagicMock, patch
@@ -212,14 +223,14 @@ def tmp_duckdb(tmp_path):
             user_identity_type   VARCHAR,
             user_identity_arn    VARCHAR,
             user_identity_account_id VARCHAR,
-            request_parameters   JSON,
-            response_elements    JSON,
+            request_parameters   VARCHAR,
+            response_elements    VARCHAR,
             error_code           VARCHAR,
             error_message        VARCHAR,
             read_only            BOOLEAN,
             event_type           VARCHAR,
             recipient_account_id VARCHAR,
-            raw_event            JSON
+            raw_event            VARCHAR
         )
     """)
     conn.execute("""
@@ -238,9 +249,9 @@ def tmp_duckdb(tmp_path):
 
 
 @pytest.fixture
-def mock_openai():
+def mock_openai_client():
     """Mock OpenAI client returning a SQL query."""
-    with patch("agent.llm.OpenAI") as mock_cls:
+    with patch("llm.OpenAI") as mock_cls:   # <-- 'llm.OpenAI', not 'agent.llm.OpenAI'
         client = MagicMock()
         mock_cls.return_value = client
 
@@ -280,41 +291,48 @@ class TestDuckDBConnection:
 
 
 class TestSQLValidation:
-    def test_accepts_select(self):
-        from agent.query import validate_sql
-        assert validate_sql("SELECT * FROM cloudtrail_events") is True
+    def test_accepts_select(self, tmp_duckdb):
+        from query import validate_query
+        conn = duckdb.connect(tmp_duckdb, read_only=True)
+        validate_query(conn, "SELECT * FROM cloudtrail_events")  # no exception
+        conn.close()
 
     def test_rejects_insert(self):
-        from agent.query import validate_sql
-        assert validate_sql("INSERT INTO t VALUES (1)") is False
+        from query import QueryValidationError, validate_sql_blocklist
+        with pytest.raises(QueryValidationError):
+            validate_sql_blocklist("INSERT INTO t VALUES (1)")
 
     def test_rejects_drop_case_insensitive(self):
-        from agent.query import validate_sql
-        assert validate_sql("drop table cloudtrail_events") is False
+        from query import QueryValidationError, validate_sql_blocklist
+        with pytest.raises(QueryValidationError):
+            validate_sql_blocklist("drop table cloudtrail_events")
 ```
 
 ### OpenAI API Mocking
 
 **Rule: Never call the real OpenAI API in tests.**
 
+**Important:** `pytest.ini` sets `pythonpath = .`, so mock as `llm.OpenAI`,
+**not** `agent.llm.OpenAI`.
+
 ```python
 # tests/test_llm.py
 
-def test_generate_sql_returns_query(mock_openai):
-    from agent.llm import generate_sql
+def test_generate_sql_returns_query(mock_openai_client):
+    from llm import generate_sql
 
     sql = generate_sql("Show all root account activity")
     assert "SELECT" in sql
     assert "cloudtrail_events" in sql
 
 
-def test_generate_sql_strips_markdown_fences(mock_openai):
+def test_generate_sql_strips_markdown_fences(mock_openai_client):
     # Override mock response with markdown-wrapped SQL
-    mock_openai.chat.completions.create.return_value.choices[
+    mock_openai_client.chat.completions.create.return_value.choices[
         0
     ].message.content = "```sql\nSELECT * FROM cloudtrail_events\n```"
 
-    from agent.llm import generate_sql
+    from llm import generate_sql
 
     sql = generate_sql("Show everything")
     assert not sql.startswith("```")
@@ -327,11 +345,11 @@ def test_generate_sql_strips_markdown_fences(mock_openai):
 cd agent
 source .venv/bin/activate
 
-pytest                                  # All tests
+pytest                                  # All tests (134 tests)
 pytest tests/test_query.py              # Specific file
 pytest -k "test_validate"              # Pattern match
 pytest -v --tb=short                   # Verbose + short traceback
-pytest --cov=agent --cov-report=term   # Coverage report
+pytest --cov=. --cov-report=term       # Coverage report
 ```
 
 ---
@@ -381,11 +399,12 @@ agent/tests/testdata/          # For Python agent tests (if needed)
 
 ## Coverage Targets
 
-| Module    | Target Coverage | Focus Areas                                    |
-| --------- | --------------- | ---------------------------------------------- |
-| ingester  | 80%+            | parser, decompressor, db insert logic          |
-| agent     | 80%+            | SQL validation, LLM response parsing, reports  |
-| dashboard | N/A             | Configuration-only; tested via manual QA       |
+| Module     | Target Coverage | Focus Areas                                                   |
+| ---------- | --------------- | ------------------------------------------------------------- |
+| ingester   | 80%+            | parser, db insert logic, config import pipeline               |
+| agent      | 80%+            | SQL validation, LLM response parsing, reports                 |
+| config_viz | 80%+            | query functions, blocklist, graph endpoint, frontend components |
+| dashboard  | N/A             | Configuration-only; tested via manual QA                      |
 
 ### Measuring Coverage
 
@@ -394,9 +413,119 @@ agent/tests/testdata/          # For Python agent tests (if needed)
 cargo install cargo-tarpaulin
 cargo tarpaulin --out Html
 
-# Python
-pytest --cov=agent --cov-report=html
+# Python (agent)
+pytest --cov=. --cov-report=html
 open htmlcov/index.html
+
+# Python (config_viz)
+cd config_viz
+pytest --cov=backend --cov-report=html
+
+# TypeScript (config_viz frontend)
+cd config_viz/frontend
+npm run coverage
+```
+
+---
+
+## config_viz Testing
+
+### Test Framework
+
+- **Backend:** `pytest` >= 8.0 + `httpx` (FastAPI TestClient)
+- **Frontend:** `vitest` + `@testing-library/react` + MSW v2
+
+### Test Organization
+
+```
+config_viz/
+├── backend/
+│   ├── main.py
+│   ├── db.py
+│   └── query.py
+├── frontend/
+│   └── src/
+│       └── __tests__/          # Vitest frontend tests (33 tests)
+│           ├── App.test.tsx
+│           ├── Sidebar.test.tsx
+│           ├── GraphCanvas.test.tsx
+│           ├── AwsNode.test.tsx
+│           ├── AwsGroupNode.test.tsx
+│           ├── DetailPanel.test.tsx
+│           ├── layout.test.ts
+│           └── icons.test.ts
+└── tests/
+    ├── conftest.py             # tmp_db_empty, tmp_db_seeded, tmp_db_hierarchy, client_* fixtures
+    └── test_query.py           # 34 backend tests (BA-01 to BA-14)
+```
+
+### Backend Tests (pytest)
+
+34 tests covering all API endpoints and SQL safety:
+
+| Test ID | Coverage |
+|---------|---------|
+| BA-01/02 | `GET /api/snapshots` — empty DB and populated DB |
+| BA-03 | `GET /api/snapshots/{id}/resource-types` |
+| BA-04/05 | `GET /api/snapshots/{id}/graph` — node count + dangling edge filter |
+| BA-06 | `GET /api/snapshots/{id}/resources/{rid}` — detail |
+| BA-07 | 404 for non-existent snapshot |
+| BA-08/09 | `resource_type=` filter + `limit=` cap |
+| BA-10 | Keyword blocklist rejects write SQL |
+| BA-11 | Hierarchical `parentId` / `awsGroupNode` / "Contains" edge exclusion |
+| BA-12 | Graceful handling when Config tables are absent from DB |
+| BA-13 | Service group nodes in full graph view |
+| BA-14 | Containment hierarchy depth (region → service → VPC → subnet → instance) |
+
+```bash
+cd config_viz
+pytest                          # All 34 tests
+pytest -v --tb=short
+pytest --cov=backend --cov-report=term-missing
+```
+
+### Frontend Tests (Vitest)
+
+33 tests using `@testing-library/react` and MSW v2 for API mocking:
+
+| Test ID | Coverage |
+|---------|---------|
+| BF-01 | `Sidebar` fetches snapshot list |
+| BF-02 | Snapshot selection triggers graph API call |
+| BF-03/12 | `GraphCanvas` renders nodes, edges, and compound nodes |
+| BF-04 | `AwsNode` tooltip on hover |
+| BF-05/06 | Click → `DetailPanel` opens + fetches detail |
+| BF-07/10 | Resource type filter + layout toggle |
+| BF-08 | `applyDagreLayout()` assigns positions (compound graph) |
+| BF-09 | `icons.ts` fallback for unknown resource types |
+| BF-11 | `AwsGroupNode` dashed border rendering |
+
+```bash
+cd config_viz/frontend
+npm test                        # Watch mode
+npm test -- --run               # Single-pass (CI)
+npm run coverage                # With coverage report
+```
+
+### DuckDB Fixtures (conftest.py)
+
+```python
+# config_viz/tests/conftest.py
+@pytest.fixture
+def tmp_db_seeded(tmp_path):
+    """Temporary DuckDB with one snapshot + resources + edges."""
+    db_path = tmp_path / "test.db"
+    conn = duckdb.connect(str(db_path))
+    # Creates config_snapshots, config_resources, config_edges tables
+    # and inserts minimal test data
+    ...
+    conn.close()
+    yield db_path
+
+@pytest.fixture
+def tmp_db_hierarchy(tmp_path):
+    """Temporary DuckDB with VPC → Subnet → EC2 containment hierarchy."""
+    ...
 ```
 
 ---
@@ -405,8 +534,8 @@ open htmlcov/index.html
 
 Every PR must pass:
 
-1. **All tests green** (`cargo test` + `pytest`)
-2. **No lint warnings** (`cargo clippy -- -D warnings` + `ruff check .`)
-3. **Format compliance** (`cargo fmt --check` + `black --check .`)
+1. **All tests green** (`cargo test` + `pytest` for agent + `pytest` for config_viz + `npm test` for config_viz frontend)
+2. **No lint warnings** (`cargo clippy -- -D warnings` + `ruff check .` + `black --check .`)
+3. **Format compliance** (`cargo fmt --check`)
 4. **No new test regressions** (test count must not decrease)
 

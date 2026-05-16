@@ -6,39 +6,45 @@ All architectural documentation, comments, and code annotations in this project 
 
 ## System Overview
 
-THuntCloud is a locally-executed, AI-assisted threat hunting tool for AWS CloudTrail logs. It consists of three independent containers orchestrated by Docker Compose, sharing a DuckDB database via a Docker Named Volume.
+THuntCloud is a locally-executed, AI-assisted threat hunting tool for AWS CloudTrail logs.
+It consists of four independent containers orchestrated by Docker Compose, sharing a DuckDB
+database via a Docker bind mount.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Docker Compose                        │
-│                                                         │
-│  ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
-│  │   ingester   │   │    agent     │  │  dashboard  │  │
-│  │  (Rust)      │   │  (Streamlit) │  │  (Superset) │  │
-│  │              │   │              │  │             │  │
-│  │ CloudTrail   │   │  AI-Agent    │  │ BI / Viz    │  │
-│  │ gz ingest    │   │ SQL gen/exec │  │             │  │
-│  │ READ_WRITE   │   │ READ_ONLY    │  │ READ_ONLY   │  │
-│  └──────┬───────┘   └──────┬───────┘  └──────┬──────┘  │
-│         └──────────────────┴──────────────────┘         │
-│                            │                            │
-│                    ┌───────▼──────┐                     │
-│                    │   DuckDB     │                     │
-│                    │  Named Vol   │                     │
-│                    │  (SSD)       │                     │
-│                    └──────────────┘                     │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                         Docker Compose                              │
+│                                                                     │
+│  ┌────────────┐  ┌────────────┐  ┌──────────────┐  ┌───────────┐  │
+│  │  ingester  │  │   agent    │  │  config_viz  │  │ dashboard │  │
+│  │  (Rust)    │  │ (Streamlit)│  │(FastAPI+     │  │ (Superset)│  │
+│  │            │  │            │  │  React)      │  │           │  │
+│  │ CloudTrail │  │ AI-Agent   │  │ AWS Config   │  │ BI / Viz  │  │
+│  │ gz ingest  │  │ SQL gen/   │  │ Resource     │  │           │  │
+│  │ Config     │  │ exec       │  │ Graph        │  │           │  │
+│  │ import     │  │            │  │              │  │           │  │
+│  │ READ_WRITE │  │ READ_ONLY  │  │ READ_ONLY    │  │ READ_ONLY │  │
+│  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘  └─────┬─────┘  │
+│        └───────────────┴─────────────────┴────────────────┘        │
+│                                   │                                 │
+│                          ┌────────▼──────┐                         │
+│                          │    DuckDB     │                         │
+│                          │ (Bind Mount)  │                         │
+│                          │   (SSD)       │                         │
+│                          └───────────────┘                         │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Module Responsibilities
 
 ### ingester (Rust)
 
-**Purpose:** Parse AWS CloudTrail JSON/gz log files from the local filesystem and store them in DuckDB.
+**Purpose:** Parse AWS CloudTrail JSON/gz log files and AWS Config snapshots from the local
+filesystem and store them in DuckDB.
 
 - Sole writer to DuckDB (`READ_WRITE` mode)
 - Runs as a one-shot CLI command (Docker Compose profile: `ingest`)
 - Handles gz decompression, JSON parsing, schema creation, and batch insertion
+- Three subcommands: `ingest`, `enrich`, `config-import`
 - Targets: 10 GB in under 5 minutes, 50 GB on 16 GB RAM
 
 ### agent (Python / Streamlit)
@@ -50,6 +56,18 @@ THuntCloud is a locally-executed, AI-assisted threat hunting tool for AWS CloudT
 - Executes queries and displays results
 - Generates threat hunting reports (Markdown / PDF)
 
+### config_viz (Python / FastAPI + React)
+
+**Purpose:** Interactive AWS Config resource graph viewer.
+
+- Reads from DuckDB (`READ_ONLY` mode)
+- FastAPI backend exposes 4 REST endpoints for graph data
+- React 18 + Vite + TypeScript frontend renders hierarchical resource graph
+  - `reactflow` for graph rendering, `@dagrejs/dagre` for auto-layout
+  - Container nesting: VPC / Subnet / EC2 shown as nested boxes
+  - Click-to-inspect detail panel with full configuration and tags
+- Port 8502
+
 ### dashboard (Apache Superset)
 
 **Purpose:** BI dashboard for log visualization.
@@ -60,26 +78,26 @@ THuntCloud is a locally-executed, AI-assisted threat hunting tool for AWS CloudT
 
 ## DuckDB Sharing Strategy
 
-### Decision: Docker Named Volume + 1-Writer / N-Readers
+### Decision: Docker Bind Mount + 1-Writer / N-Readers
 
 DuckDB is an in-process database. It does not support concurrent writes from multiple processes. However, multiple `READ_ONLY` connections are permitted while one process holds the write lock.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│           Docker Named Volume: duckdb_data                  │
-│           Mounted on host NVMe/SSD (recommended)            │
-└────────────┬────────────────────┬───────────────────────────┘
-             │ READ_WRITE (1)     │ READ_ONLY (multiple)
-             ▼                    ▼
-        ingester             agent / dashboard
-      (write only)           (read only)
+┌───────────────────────────────────────────────────────────────┐
+│         Bind Mount: docker/data/db/threat_hunting.db           │
+│         Mounted on host NVMe/SSD (recommended)                 │
+└─────────┬──────────────────────┬─────────────────────────────-┘
+          │ READ_WRITE (1)        │ READ_ONLY (multiple)
+          ▼                       ▼
+       ingester           agent / config_viz / dashboard
+     (write only)              (read only)
 ```
 
 ### Access Rules
 
 1. `ingester` opens the database as `READ_WRITE` — it is the exclusive writer.
-2. `agent` and `dashboard` open the database as `READ_ONLY` — they are concurrent readers.
-3. The default workflow is sequential: ingester completes ingestion first, then agent/dashboard query.
+2. `agent`, `config_viz`, and `dashboard` open the database as `READ_ONLY` — they are concurrent readers.
+3. The default workflow is sequential: ingester completes ingestion first, then read-only services query.
 4. SSD storage (SATA or NVMe) is strongly recommended; HDD is discouraged.
 
 ### Alternatives Considered
@@ -95,75 +113,46 @@ DuckDB is an in-process database. It does not support concurrent writes from mul
 ## Data Flow
 
 ```
-CloudTrail logs (.json / .json.gz)
-        │
-        ▼
-┌───────────────┐
-│  ingester     │
-│               │
-│  1. Walk dir  │
-│  2. Detect gz │──→ flate2 decompression
-│  3. Parse JSON│──→ serde_json deserialization
-│  4. Insert DB │──→ DuckDB batch appender
-│  5. Track     │──→ Duplicate prevention (checksum)
-└───────┬───────┘
-        │ DuckDB READ_WRITE
-        ▼
-┌───────────────┐
-│  DuckDB       │
-│  threat_      │
-│  hunting.db   │
-└───────┬───────┘
-        │ DuckDB READ_ONLY
-        ▼
-┌───────────────┐     ┌────────────────┐
-│  agent        │     │  dashboard     │
-│               │     │                │
-│  User query   │     │ Pre-built      │
-│  → AI → SQL   │     │ charts/tables  │
-│  → Execute    │     │                │
-│  → Analyze    │     │                │
-│  → Report     │     │                │
-└───────────────┘     └────────────────┘
+CloudTrail logs (.json / .json.gz)    AWS Config snapshots (.json)
+        │                                       │
+        ▼                                       ▼
+┌───────────────────────────────────────────────────────┐
+│  ingester                                             │
+│                                                       │
+│  ingest subcommand          config-import subcommand  │
+│  1. Walk dir                1. Walk dir               │
+│  2. Detect gz ──→ flate2    2. SHA-256 dedup          │
+│  3. Parse JSON ──→ serde    3. Parse snapshot JSON    │
+│  4. Insert DB ──→ DuckDB    4. Insert snapshots /     │
+│  5. Track  ──→ SHA-256 dedup   resources / edges      │
+└──────────────────────┬────────────────────────────────┘
+                       │ DuckDB READ_WRITE
+                       ▼
+             ┌─────────────────┐
+             │     DuckDB      │
+             │  threat_        │
+             │  hunting.db     │
+             └────────┬────────┘
+                      │ DuckDB READ_ONLY
+          ┌───────────┴──────────────────────┐
+          ▼                    ▼             ▼
+┌──────────────┐  ┌──────────────────┐  ┌────────────────┐
+│  agent       │  │  config-viz      │  │  dashboard     │
+│              │  │                  │  │                │
+│  User query  │  │ FastAPI backend  │  │ Pre-built      │
+│  → AI → SQL  │  │ React 18 SPA     │  │ charts/tables  │
+│  → Execute   │  │ Resource graph   │  │                │
+│  → Analyze   │  │ (port 8502)      │  │ (port 8088)    │
+│  → Report    │  │                  │  │                │
+└──────────────┘  └──────────────────┘  └────────────────┘
 ```
 
 ## CloudTrail Table Schema
 
-The ingester creates and populates `cloudtrail_events` with **24 columns** (17 core + 7 GeoIP).  
+The ingester creates and populates `cloudtrail_events` with **48 columns** (17 core + 7 GeoIP + 24 extended).  
 JSON blobs are stored as **`VARCHAR`**, not DuckDB JSON type — use `json_extract_string()` to query them.
 
-```sql
-CREATE TABLE IF NOT EXISTS cloudtrail_events (
-    -- Core columns (17)
-    event_time               TIMESTAMP,
-    event_name               VARCHAR,
-    event_source             VARCHAR,
-    aws_region               VARCHAR,
-    source_ip_address        VARCHAR,
-    user_agent               VARCHAR,
-    user_identity_type       VARCHAR,
-    user_identity_arn        VARCHAR,
-    user_identity_account_id VARCHAR,
-    request_parameters       VARCHAR,   -- JSON stored as VARCHAR
-    response_elements        VARCHAR,   -- JSON stored as VARCHAR
-    error_code               VARCHAR,
-    error_message            VARCHAR,
-    read_only                BOOLEAN,
-    event_type               VARCHAR,
-    recipient_account_id     VARCHAR,
-    raw_event                VARCHAR    -- full original event JSON as VARCHAR
-);
-
--- GeoIP columns (7) — added via ALTER TABLE ADD COLUMN IF NOT EXISTS
--- NULL when ingested without a GeoLite2 database
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_code VARCHAR;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_country_name VARCHAR;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_city         VARCHAR;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_latitude     DOUBLE;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_longitude    DOUBLE;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_asn          VARCHAR;
-ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
-```
+See the full schema definition in [AGENTS.md](../AGENTS.md#duckdb-schema).
 
 ### Schema Design Decisions
 
@@ -182,6 +171,7 @@ ALTER TABLE cloudtrail_events ADD COLUMN IF NOT EXISTS geo_org          VARCHAR;
 | ------------------ | ----- | ------------- | -------------------------------------------- |
 | `ingester`         | —     | READ_WRITE    | CLI log ingestion (profile: `ingest`)        |
 | `agent`            | 8501  | READ_ONLY     | Streamlit AI hunting UI                      |
+| `config-viz`       | 8502  | READ_ONLY     | AWS Config resource graph (FastAPI + React)  |
 | `superset`         | 8088  | READ_ONLY     | Apache Superset BI dashboard                 |
 | `superset-init`    | —     | —             | One-shot Superset initialization             |
 | `superset-resync`  | —     | READ_ONLY     | Re-sync dataset metadata after re-ingest (profile: `resync`) |

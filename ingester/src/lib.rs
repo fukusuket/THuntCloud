@@ -2,6 +2,9 @@
 //!
 //! Provides the public API for ingesting AWS CloudTrail log files into DuckDB.
 
+pub mod config_db;
+pub mod config_import;
+pub mod config_parser;
 pub mod date_filter;
 pub mod db;
 pub mod enrich;
