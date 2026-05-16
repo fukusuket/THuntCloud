@@ -38,19 +38,19 @@ Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                       Docker Compose                             │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  ┌─────────┐ │
-│  │   ingester   │  │    agent     │  │config_viz│  │dashboard│ │
-│  │  (Rust)      │  │  (Streamlit) │  │(FastAPI+ │  │(Superset│ │
-│  │              │  │              │  │ React)   │  │        )│ │
-│  │ CloudTrail   │  │  AI Chat     │  │ Resource │  │ Visualiz│ │
-│  │ gz ingest    │  │  SQL gen/exec│  │  Graph   │  │         │ │
-│  │ Config import│  │  READ_ONLY   │  │ READ_ONLY│  │READ_ONLY│ │
-│  │ READ_WRITE   │  │              │  │          │  │         │ │
-│  └──────┬───────┘  └──────┬───────┘  └────┬─────┘  └────┬────┘ │
-│         └─────────────────┴───────────────┴──────────────┘      │
-│                                  │                               │
+│                       Docker Compose                            │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  ┌─────────┐  │
+│  │   ingester   │  │    agent     │  │config_viz│  │dashboard│  │
+│  │  (Rust)      │  │  (Streamlit) │  │(FastAPI+ │  │(Superset│  │
+│  │              │  │              │  │ React)   │  │        )│  │
+│  │ CloudTrail   │  │  AI Chat     │  │ Resource │  │ Visualiz│  │
+│  │ gz ingest    │  │  SQL gen/exec│  │  Graph   │  │         │  │
+│  │ Config import│  │  READ_ONLY   │  │ READ_ONLY│  │READ_ONLY│  │
+│  │ READ_WRITE   │  │              │  │          │  │         │  │
+│  └──────┬───────┘  └──────┬───────┘  └────┬─────┘  └────┬────┘  │
+│         └─────────────────┴───────────────┴─────────────┘       │
+│                                  │                              │
 │                         ┌────────▼─────┐                        │
 │                         │   DuckDB     │                        │
 │                         │ (Bind Mount) │                        │
