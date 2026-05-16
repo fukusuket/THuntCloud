@@ -283,9 +283,9 @@ Continue this cycle for all items in the test list.
 # tests/test_query.py
 
 def test_validate_accepts_select_query():
-    from agent.query import validate_sql
+    from query import validate_sql_blocklist
     sql = "SELECT event_name FROM cloudtrail_events LIMIT 10"
-    assert validate_sql(sql) is True
+    validate_sql_blocklist(sql)  # should not raise
 ```
 
 Run: `pytest tests/test_query.py::test_validate_accepts_select_query` → **RED** (ImportError)
@@ -293,27 +293,28 @@ Run: `pytest tests/test_query.py::test_validate_accepts_select_query` → **RED*
 #### Step 3: Green
 
 ```python
-# agent/query.py
+# query.py
 
-def validate_sql(sql: str) -> bool:
-    return True
+def validate_sql_blocklist(sql: str) -> None:
+    pass  # fake implementation — never raises
 ```
 
-**GREEN** ✓ (fake implementation — always returns True)
+**GREEN** ✓ (fake implementation — always passes)
 
 #### Step 4: Triangulate — Add a failing case
 
 ```python
 def test_validate_rejects_insert():
-    from agent.query import validate_sql
+    from query import QueryValidationError, validate_sql_blocklist
     sql = "INSERT INTO cloudtrail_events VALUES (...)"
-    assert validate_sql(sql) is False
+    with pytest.raises(QueryValidationError):
+        validate_sql_blocklist(sql)
 ```
 
 **RED** → Now we need a real implementation.
 
 ```python
-# agent/query.py
+# query.py
 import re
 
 FORBIDDEN_KEYWORDS = re.compile(
@@ -321,8 +322,15 @@ FORBIDDEN_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-def validate_sql(sql: str) -> bool:
-    return not bool(FORBIDDEN_KEYWORDS.search(sql))
+
+class QueryValidationError(Exception):
+    pass
+
+
+def validate_sql_blocklist(sql: str) -> None:
+    """Raise QueryValidationError if the SQL contains forbidden write keywords."""
+    if FORBIDDEN_KEYWORDS.search(sql):
+        raise QueryValidationError(f"SQL contains forbidden keyword: {sql[:80]}")
 ```
 
 **GREEN** ✓

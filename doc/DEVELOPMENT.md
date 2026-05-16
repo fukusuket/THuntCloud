@@ -88,7 +88,30 @@ ruff check .
 black --check .
 ```
 
-### 5. Docker Compose (Full Stack)
+### 5. config_viz (Python + Node) Setup
+
+```bash
+# Backend (FastAPI)
+cd config_viz
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt -r requirements-dev.txt
+
+# Run backend tests
+pytest
+
+# Frontend (React + Vite)
+cd config_viz/frontend
+npm install
+
+# Run frontend tests
+npm test
+
+# Production build → config_viz/static/
+npm run build
+```
+
+### 6. Docker Compose (Full Stack)
 
 ```bash
 cd docker
@@ -96,14 +119,18 @@ cd docker
 # Build all services
 docker compose build
 
-# Start agent + dashboard
+# Start agent + config-viz + dashboard
 docker compose up -d
 
-# Run ingester to load logs
+# Run ingester to load CloudTrail logs
 docker compose --profile ingest run --rm ingester ingest --path /data/logs
+
+# (Optional) Import AWS Config snapshots
+docker compose --profile ingest run --rm ingester config-import --path /data/config
 
 # View logs
 docker compose logs -f agent
+docker compose logs -f config-viz
 docker compose logs -f superset
 
 # Stop
@@ -163,6 +190,28 @@ pip install pytest-watch
 ptw                               # Auto-run tests on file change
 ```
 
+#### config_viz backend (Python)
+
+```bash
+cd config_viz
+source .venv/bin/activate
+
+pytest                            # Run all 34 backend tests
+pytest -v --tb=short
+ruff check .
+black --check .
+```
+
+#### config_viz frontend (TypeScript)
+
+```bash
+cd config_viz/frontend
+
+npm test                          # Run all 33 Vitest tests
+npm test -- --run                 # Single-pass (no watch)
+npm run build                     # Production build → ../static/
+```
+
 ## Directory Convention
 
 ```
@@ -172,31 +221,51 @@ THuntCloud/
 ├── ingester/
 │   ├── AGENTS.md              # Module-specific Copilot instructions
 │   ├── Cargo.toml             # Rust dependencies
-│   ├── src/                   # Source code
-│   │   ├── main.rs            # CLI entry point
-│   │   ├── lib.rs             # Library root
-│   │   ├── parser.rs          # CloudTrail JSON parsing
-│   │   ├── decompressor.rs    # gz decompression
-│   │   ├── db.rs              # DuckDB operations
-│   │   ├── ingest.rs          # Orchestration
-│   │   └── progress.rs        # Progress display
-│   └── tests/
-│       ├── integration_test.rs
-│       └── testdata/          # Sample CloudTrail files
+│   └── src/                   # Source code
+│       ├── main.rs            # CLI entry point
+│       ├── lib.rs             # Library root
+│       ├── parser.rs          # CloudTrail JSON parsing
+│       ├── db.rs              # DuckDB operations
+│       ├── ingest.rs          # Orchestration
+│       ├── config_parser.rs   # AWS Config snapshot parsing
+│       ├── config_db.rs       # Config table schema + inserts
+│       ├── config_import.rs   # Config import pipeline
+│       └── progress.rs        # Progress display
 ├── agent/
 │   ├── AGENTS.md              # Module-specific Copilot instructions
 │   ├── app.py                 # Streamlit entry point
+│   ├── handlers.py            # Stateful handler functions
 │   ├── llm.py                 # OpenAI integration
 │   ├── query.py               # DuckDB query execution
 │   ├── report.py              # Report generation
+│   ├── schema.py              # CloudTrail schema description
+│   ├── config.py              # Configuration (env vars)
+│   ├── builtin_hunts.yaml     # Pre-built hunt queries
+│   ├── prompts/               # Prompt templates (system_prompt.py, analysis_prompt.py)
 │   ├── requirements.txt       # Python dependencies
 │   ├── requirements-dev.txt   # Dev dependencies
-│   └── tests/                 # pytest tests
+│   └── tests/                 # pytest tests (134 tests)
+├── config_viz/
+│   ├── PLAN.md                # Phase A/B/C implementation plan
+│   ├── README.md              # Module documentation
+│   ├── Dockerfile             # Multi-stage: Node build → Python runtime
+│   ├── backend/               # FastAPI backend
+│   │   ├── main.py            # FastAPI app + 4 REST endpoints
+│   │   ├── db.py              # DuckDB READ_ONLY connection
+│   │   ├── query.py           # SQL queries + blocklist
+│   │   ├── requirements.txt
+│   │   └── scripts/
+│   │       └── extract_icons.py  # AWS icon download (build time)
+│   ├── frontend/              # React 18 + Vite SPA
+│   │   ├── package.json
+│   │   ├── vite.config.ts     # outDir: ../static
+│   │   └── src/               # Components, utils, tests, MSW mocks
+│   ├── static/                # Vite build output + icons/
+│   └── tests/                 # pytest backend tests (34 tests)
 ├── dashboard/                 # Superset config + pre-built dashboard assets
-│   ├── assets/                # Dashboard definitions and ZIP exports
-├── data/                      # Log data (git-ignored)
+│   └── assets/                # Dashboard definitions and ZIP exports
 ├── docker/
-│   └── docker-compose.yml     # Orchestration
+│   └── docker-compose.yml     # Orchestration (5 services + profiles)
 └── doc/                       # Documentation
 ```
 
@@ -211,19 +280,19 @@ The CI pipeline should enforce the following stages:
 │ clippy   │    │ cargo    │    │ docker   │
 │ rustfmt  │    │   test   │    │ compose  │
 │ ruff     │    │ pytest   │    │   build  │
-│ black    │    │          │    │          │
+│ black    │    │ npm test │    │          │
 └──────────┘    └──────────┘    └──────────┘
 ```
 
 ### Stage Details
 
-| Stage  | ingester (Rust)                   | agent (Python)              |
-| ------ | --------------------------------- | --------------------------- |
-| Lint   | `cargo clippy -- -D warnings`     | `ruff check .`              |
-| Format | `cargo fmt --check`               | `black --check .`           |
-| Test   | `cargo test`                      | `pytest`                    |
-| Build  | `cargo build --release`           | N/A (interpreted)           |
-| Docker | `docker build -t ingester .`      | `docker build -t agent .`   |
+| Stage  | ingester (Rust)                   | agent (Python)              | config_viz (Python + TS)         |
+| ------ | --------------------------------- | --------------------------- | -------------------------------- |
+| Lint   | `cargo clippy -- -D warnings`     | `ruff check .`              | `ruff check .` / (ESLint)        |
+| Format | `cargo fmt --check`               | `black --check .`           | `black --check .`                |
+| Test   | `cargo test`                      | `pytest`                    | `pytest` + `npm test`            |
+| Build  | `cargo build --release`           | N/A (interpreted)           | `npm run build`                  |
+| Docker | `docker build -t ingester .`      | `docker build -t agent .`   | `docker build -t config-viz .`   |
 
 ## Useful Commands
 
@@ -243,13 +312,16 @@ docker volume inspect threat-hunting-duckdb
 
 ## Environment Variables Reference
 
-| Variable              | Module    | Default          | Description                            |
-| --------------------- | --------- | ---------------- | -------------------------------------- |
-| `DUCKDB_PATH`         | all       | (required)       | Path to DuckDB file                    |
-| `DUCKDB_READONLY`     | agent     | `true`           | Force read-only mode                   |
-| `OPENAI_API_KEY`      | agent     | (required)       | OpenAI API key                         |
-| `OPENAI_MODEL`        | agent     | `gpt-5.4`       | Primary AI model                       |
-| `OPENAI_MODEL_LITE`   | agent     | `gpt-5.4-mini`  | Lightweight model                      |
-| `RUST_LOG`            | ingester  | `info`           | Rust log level                         |
-| `SUPERSET_SECRET_KEY` | dashboard | `change-me-...`  | Superset secret                        |
+| Variable              | Module       | Default          | Description                            |
+| --------------------- | ------------ | ---------------- | -------------------------------------- |
+| `DUCKDB_PATH`         | all          | (required)       | Path to DuckDB file                    |
+| `DUCKDB_READONLY`     | agent        | `true`           | Force read-only mode                   |
+| `OPENAI_API_KEY`      | agent        | (required)       | OpenAI API key                         |
+| `OPENAI_MODEL`        | agent        | `gpt-5.4`       | Primary AI model                       |
+| `OPENAI_MODEL_LITE`   | agent        | `gpt-5.4-mini`  | Lightweight model                      |
+| `RUST_LOG`            | ingester     | `info`           | Rust log level                         |
+| `RAYON_NUM_THREADS`   | ingester     | CPU count        | Limit rayon thread pool size           |
+| `SUPERSET_SECRET_KEY` | dashboard    | `change-me-...`  | Superset secret                        |
+| `DUCKDB_HOST_PATH`    | docker host  | `./data/db`      | Host-side bind-mount directory         |
+| `GEOIP_HOST_PATH`     | docker host  | `./data/geoip`   | Host-side GeoIP directory              |
 

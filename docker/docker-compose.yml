@@ -42,7 +42,8 @@ services:
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
-      - ./logs:/data/logs:ro                              # Source log directory (read-only bind)
+      - ./logs:/data/logs:ro                              # Source CloudTrail log directory (read-only)
+      - ${CONFIG_HOST_PATH:-./data/config-snapshots}:/data/config:ro  # AWS Config snapshot JSON files (read-only)
       - ${GEOIP_HOST_PATH:-./data/geoip}:/data/geoip:ro  # MaxMind GeoLite2 .mmdb files (read-only)
     environment:
       - DUCKDB_PATH=/data/db/threat_hunting.db
@@ -55,12 +56,14 @@ services:
       - GEOIP_ASN_PATH=${GEOIP_ASN_PATH:-}
     profiles:
       - ingest                        # Run only when explicitly invoked
-    # Usage (no GeoIP):
+    # Usage (CloudTrail — no GeoIP):
     #   docker compose --profile ingest run --rm ingester ingest --path /data/logs
-    # Usage (with GeoIP — place .mmdb files in docker/data/geoip/ first):
+    # Usage (CloudTrail — with GeoIP, place .mmdb files in docker/data/geoip/ first):
     #   docker compose --profile ingest run --rm ingester ingest \
     #     --path /data/logs --geoip-country /data/geoip
-    # Usage (enrich existing DB):
+    # Usage (AWS Config snapshots — place JSON files in docker/data/config/ first):
+    #   docker compose --profile ingest run --rm ingester config-import --path /data/config
+    # Usage (enrich existing DB with GeoIP):
     #   docker compose --profile ingest run --rm ingester enrich \
     #     --geoip-country /data/geoip
 
@@ -83,6 +86,25 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── config_viz (AWS Config resource graph) ──
+  config-viz:
+    build:
+      context: ../config_viz
+      dockerfile: Dockerfile
+    container_name: threat-hunting-config-viz
+    ports:
+      - "8502:8502"
+    volumes:
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro   # READ_ONLY
+    environment:
+      - DUCKDB_PATH=/data/db/threat_hunting.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/api/snapshots"]
       interval: 30s
       timeout: 10s
       retries: 3

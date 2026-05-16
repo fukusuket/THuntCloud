@@ -31,6 +31,7 @@ and pre-built preset queries.
 ```
 agent/
 ├── app.py                 # Streamlit entry point — UI layout, session state, event loop
+├── handlers.py            # Stateful handler functions (_handle_direct_sql, _handle_user_query, etc.)
 ├── llm.py                 # OpenAI API integration (SQL generation, analysis, SQL fix)
 ├── query.py               # DuckDB query execution, validation, date filter, row limit, retry
 ├── report.py              # Threat hunting report generation (Markdown + sensitive data redaction)
@@ -39,7 +40,8 @@ agent/
 ├── builtin_hunts.yaml     # Pre-built threat hunting queries (categorised)
 ├── prompts/
 │   ├── __init__.py
-│   └── system_prompt.py   # System prompt template for SQL generation
+│   ├── system_prompt.py   # System prompt template for SQL generation
+│   └── analysis_prompt.py # System prompt + user template for analysis
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── Dockerfile
@@ -51,53 +53,90 @@ agent/
     ├── test_schema.py
     ├── test_query.py
     ├── test_llm.py
+    ├── test_prompts.py
     ├── test_report.py
     └── test_app.py
 ```
 
 ## Implemented Tests
 
-### config.py
-1. `test_config_reads_duckdb_path_from_env` — Config loads `DUCKDB_PATH` from environment.
-2. `test_config_default_model_is_gpt_5_4` — Default model is `gpt-5.4`.
-3. `test_config_rejects_empty_api_key` — Raises `ValueError` if `OPENAI_API_KEY` is empty.
+134 tests across 8 test files. Key coverage areas per module:
 
-### schema.py
-4. `test_get_schema_description_returns_string` — Returns a human-readable schema description.
-5. `test_get_column_names_returns_list` — Returns the expected column name list.
+### config.py (`test_config.py` — 10 tests)
+- `test_get_duckdb_path_returns_env_var` — Config loads `DUCKDB_PATH` from environment.
+- `test_get_duckdb_path_returns_default_when_unset` — Default constant used when unset.
+- `test_get_duckdb_path_for_variant_full_returns_full_path` — `full` variant resolves full path.
+- `test_get_duckdb_path_for_variant_lite_returns_lite_path` — `lite` variant resolves lite path.
+- `test_get_duckdb_path_for_variant_lite_falls_back_to_full` — falls back to full when lite unset.
+- Plus 5 additional edge cases for empty env vars and lite-only paths.
 
-### query.py
-6. `test_connect_duckdb_readonly` — Opens DuckDB in read-only mode.
-7. `test_execute_select_query` — Executes `SELECT` and returns a `pd.DataFrame`.
-8. `test_execute_query_returns_empty_dataframe_for_no_results` — Empty result → empty DataFrame.
-9. `test_validate_query_with_explain` — `EXPLAIN <sql>` succeeds on valid SQL.
-10. `test_validate_query_rejects_write_statements` — `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`CREATE` rejected.
-11. `test_execute_query_timeout` — Queries exceeding `QUERY_TIMEOUT_SECONDS` raise a timeout error.
-12. `test_apply_date_filter_both_bounds` — `_ct_filtered` CTE injected with both start/end date.
-13. `test_apply_date_filter_start_only` — Only lower bound → single WHERE condition.
-14. `test_apply_date_filter_no_bounds` — No dates → original SQL unchanged.
-15. `test_apply_date_filter_extends_existing_with` — Existing WITH chain extended, no duplicate WITH.
-16. `test_apply_row_limit_adds_limit` — Queries without `LIMIT` are wrapped with `LIMIT N`.
-17. `test_apply_row_limit_replaces_existing_limit` — Existing `LIMIT` replaced by caller's value.
+### schema.py (`test_schema.py` — 2 tests)
+- `test_get_schema_description_returns_string` — Returns a human-readable schema description.
+- `test_get_column_names_returns_list` — Returns the expected column name list.
 
-### llm.py
-18. `test_build_system_prompt_includes_schema` — System prompt includes schema description.
-19. `test_generate_sql_returns_sql_string` — Mocked OpenAI response → SQL string returned.
-20. `test_generate_sql_strips_markdown_fences` — ` ```sql ... ``` ` wrappers stripped.
-21. `test_generate_sql_with_context` — Prior conversation turns injected as message pairs.
-22. `test_generate_analysis_returns_markdown` — Query results → Markdown analysis.
-23. `test_generate_sql_handles_api_error` — `OpenAIError` caught → user-friendly message.
-24. `test_fix_sql_with_llm_returns_corrected_sql` — Broken SQL + error → corrected SQL.
+### query.py (`test_query.py` — 17 tests)
+- `test_connect_duckdb_readonly` — Opens DuckDB in read-only mode.
+- `test_execute_select_query` — Executes `SELECT` and returns a `pd.DataFrame`.
+- `test_execute_query_returns_empty_dataframe_for_no_results` — Empty result → empty DataFrame.
+- `test_validate_query_with_explain` — `EXPLAIN <sql>` succeeds on valid SQL.
+- `test_validate_query_rejects_write_statements` — `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`CREATE` rejected.
+- `test_execute_query_timeout` — Long-running queries raise a timeout error.
+- `test_execute_query_uses_default_row_limit` — Default row limit applied automatically.
+- `test_execute_query_truncates_to_custom_row_limit` — Custom limit is honoured.
+- `test_execute_query_overrides_existing_sql_limit` — Existing `LIMIT` in SQL is replaced.
+- `test_execute_with_retry_succeeds_on_first_attempt` — No retry needed on clean SQL.
+- `test_execute_with_retry_calls_fix_sql_on_validation_error` — Calls `fix_sql_with_llm` once.
+- `test_execute_with_retry_raises_after_max_retries_exceeded` — Raises after max retries.
+- `test_execute_with_retry_does_not_retry_on_timeout` — Timeout errors are not retried.
+- `test_execute_with_retry_forwards_row_limit` — row_limit passed through retry path.
+- `test_default_row_limit_is_500` — `DEFAULT_ROW_LIMIT` constant equals 500.
+- Plus 2 additional execute_query_large_row_limit and forwarding tests.
 
-### report.py
-25. `test_generate_report_markdown` — Session produces Markdown report.
-26. `test_report_includes_timestamp` — Report header contains generation timestamp.
-27. `test_report_includes_all_queries` — All query/result/analysis triples included.
-28. `test_report_sanitizes_sensitive_data` — AWS ARNs and account IDs redacted.
+### llm.py (`test_llm.py` — 13 tests)
+- `test_build_system_prompt_includes_schema` — System prompt includes schema description.
+- `test_build_system_prompt_includes_duckdb_dialect` — DuckDB dialect note included.
+- `test_generate_sql_returns_sql_string` — Mocked OpenAI response → SQL string returned.
+- `test_generate_sql_strips_markdown_fences` — ` ```sql ... ``` ` wrappers stripped.
+- `test_generate_sql_with_context_injects_messages` — Prior conversation turns injected.
+- `test_generate_sql_context_none_is_backward_compatible` — `context=None` still works.
+- `test_generate_sql_context_max_items_truncated` — Context truncated to `MAX_CONTEXT_TURNS`.
+- `test_generate_sql_handles_api_error` — `OpenAIError` caught → user-friendly message.
+- `test_generate_analysis_returns_markdown` — Query results → Markdown analysis.
+- `test_generate_analysis_uses_analysis_system_prompt` — Uses `ANALYSIS_SYSTEM_PROMPT`.
+- `test_generate_analysis_user_message_contains_sql` — SQL included in user message.
+- `test_fix_sql_with_llm_returns_corrected_sql` — Broken SQL + error → corrected SQL.
+- `test_fix_sql_with_llm_strips_markdown_fences` — Markdown fences stripped from fix response.
+- `test_fix_sql_with_llm_handles_api_error` — API error during fix handled gracefully.
+- Plus 2 client-caching tests (`test_create_client_reuses_same_instance`, etc.).
 
-### app.py
-29. `test_session_state_initialization` — Session state has expected keys on startup.
-30. `test_model_options_include_gpt_5_5` — `MODEL_OPTIONS` constant includes `gpt-5.5`.
+### prompts/ (`test_prompts.py` — 11 tests)
+- `test_system_prompt_is_nonempty` / `test_system_prompt_contains_schema_placeholder`
+- `test_system_prompt_contains_duckdb_rule` / `test_system_prompt_contains_mitre_tactics`
+- `test_system_prompt_contains_no_write_rule` / `test_system_prompt_contains_json_extraction_guidance`
+- `test_system_prompt_contains_statistical_function_guidance`
+- `test_analysis_system_prompt_is_nonempty` / `test_analysis_system_prompt_fact_based_rule`
+- `test_analysis_user_template_has_sql_placeholder` / `test_analysis_user_template_renders_correctly`
+
+### report.py (`test_report.py` — 6 tests)
+- `test_generate_report_markdown` — Session produces Markdown report.
+- `test_report_includes_timestamp` — Report header contains generation timestamp.
+- `test_report_includes_all_queries` — All query/result/analysis triples included.
+- `test_report_sanitizes_sensitive_data` — AWS ARNs and account IDs redacted.
+- `test_report_entry_chart_config_defaults_to_none` — `chart_config` field defaults to `None`.
+- `test_report_entry_chart_config_stores_dict` — `chart_config` stores a dict correctly.
+
+### app.py (`test_app.py` — 50+ tests)
+- Session state initialisation and idempotency
+- Model options, built-in hunt YAML validation
+- Direct SQL execution (no API key path, date filter application)
+- Conversation context retention and `MAX_CONTEXT_TURNS` enforcement
+- SQL auto-correction retry loop (`execute_with_retry` integration)
+- No-API-key guidance banner rendering
+- Row limit session state defaults and enforcement
+- Chart rendering (bar, timeseries, auto modes)
+- Edit/rerun SQL handler
+- `ReportEntry.description` field storage
+- Query index in messages
 
 ## OpenAI API Mocking Strategy
 
