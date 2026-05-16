@@ -61,7 +61,7 @@ services:
     # Usage (CloudTrail — with GeoIP, place .mmdb files in docker/data/geoip/ first):
     #   docker compose --profile ingest run --rm ingester ingest \
     #     --path /data/logs --geoip-country /data/geoip
-    # Usage (AWS Config snapshots — place JSON files in docker/data/config/ first):
+    # Usage (AWS Config snapshots — place JSON files in docker/data/config-snapshots/ first):
     #   docker compose --profile ingest run --rm ingester config-import --path /data/config
     # Usage (enrich existing DB with GeoIP):
     #   docker compose --profile ingest run --rm ingester enrich \
