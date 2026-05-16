@@ -383,7 +383,7 @@ One row per `configurationItem` in a snapshot.
 |--------|------|-------------|
 | `resource_id` | VARCHAR (PK, part) | AWS resource ID |
 | `snapshot_id` | VARCHAR (PK, part) | Parent snapshot ID |
-| `resource_type` | VARCHAR | AWS resource type (e.g. `AWS::EC2::Instance`) |
+| `resource_type` | VARCHAR (PK, part) | AWS resource type (e.g. `AWS::EC2::Instance`) |
 | `aws_region` | VARCHAR | Region of the resource |
 | `resource_name` | VARCHAR | Human-readable resource name |
 | `configuration` | VARCHAR | Compact JSON of the `configuration` sub-object |
