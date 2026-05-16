@@ -76,7 +76,7 @@ Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`
 **Step 1.** Download CloudTrail logs from S3.
 
 ```bash
-aws s3 cp s3://<your-bucket>/<your-prefix> <local-output-dir>/ --recursive --include "*.json.gz"
+aws s3 cp s3://<your-bucket-prefix> <local-output-dir>/ --recursive --include "*.json.gz"
 ```
 
 **Step 2.** Clone the repository, ingest logs, and start all services.
