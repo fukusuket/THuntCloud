@@ -121,18 +121,6 @@ docker compose --profile ingest run --rm ingester ingest \
 
 ---
 
-## Common Commands
-
-All commands are run from the `docker/` directory.
-
-```bash
-docker compose down && docker compose up -d --build      # Rebuild & restart
-docker compose logs -f                                   # View logs
-docker compose --profile resync run --rm superset-resync # Fix blank dashboard after re-ingest
-```
-
----
-
 ## Modules
 
 | Module | Language | Role | README |
