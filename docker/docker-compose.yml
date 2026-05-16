@@ -38,7 +38,7 @@ services:
       #                                First build takes ~10–30 min; subsequent builds use cache.
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
-        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.9}
+        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.10}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE

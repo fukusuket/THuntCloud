@@ -2,7 +2,7 @@
 # binary from GitHub Releases and skip Rust compilation entirely.
 # Used by the `prebuilt-runtime` target below.
 # Leave empty (default) to compile from source with the `runtime` target.
-ARG INGESTER_VERSION="v0.1.9"
+ARG INGESTER_VERSION="v0.1.10"
 
 # ── Stage 1: Builder (compile from source) ────────────────────────────────────
 FROM rust:1.95-slim AS builder
