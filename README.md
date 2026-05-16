@@ -38,7 +38,7 @@ Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                       Docker Compose                                   │
+│                             Docker Compose                             │
 │                                                                        │
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  │
 │  │   ingester   │  │    agent     │  │  config_viz │  │  dashboard  │  │
