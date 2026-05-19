@@ -46,6 +46,7 @@ vi.mock("reactflow", () => ({
   useReactFlow: () => ({ fitView: vi.fn() }),
   MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
   BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
+  Panel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 function makeWrapper() {

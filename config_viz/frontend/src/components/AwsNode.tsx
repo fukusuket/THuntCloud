@@ -27,7 +27,7 @@ export function AwsNode({ id, data, selected }: AwsNodeProps) {
       data-testid="aws-node"
       className={[
         "relative flex items-center gap-2 px-3 py-2 rounded-md border bg-white shadow-sm",
-        "min-w-[140px] max-w-[200px] cursor-pointer select-none text-xs",
+        "min-w-[160px] max-w-[260px] cursor-pointer select-none text-xs",
         selected
           ? "border-blue-500 ring-2 ring-blue-300"
           : "border-gray-300 hover:border-blue-400",
@@ -58,7 +58,7 @@ export function AwsNode({ id, data, selected }: AwsNodeProps) {
           role="tooltip"
           className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
                      bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg
-                     whitespace-nowrap pointer-events-none"
+                     max-w-[260px] break-words pointer-events-none"
         >
           <div className="font-semibold">{id}</div>
           <div>{data.resource_name ?? "—"}</div>

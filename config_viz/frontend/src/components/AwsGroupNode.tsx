@@ -11,17 +11,17 @@ interface AwsGroupNodeProps {
   selected?: boolean;
 }
 
-// Tinted background and text shades keyed off the primary service color.
-// Borders come from {@link serviceColorOf} so they always match the MiniMap.
+// Tinted background and text shades keyed off the category primary color.
+// Keys match CATEGORY_COLOR values in serviceColors.ts.
 const SERVICE_SECONDARY: Record<string, { bg: string; text: string }> = {
-  "#FF9900": { bg: "#FFF8EE", text: "#7A4500" }, // amber: EC2 / Lambda / ECS / EKS / Logs
-  "#DD344C": { bg: "#FFF0F2", text: "#7A1020" }, // red: IAM / KMS / Secrets / WAF
-  "#3F8624": { bg: "#F0FAF0", text: "#1A4A0A" }, // green: S3 / Backup
-  "#527FFF": { bg: "#EDF2FF", text: "#1E3A8A" }, // blue: RDS / DynamoDB / Athena
-  "#E7157B": { bg: "#FDF0F7", text: "#7A0845" }, // magenta: CloudTrail / Config
-  "#EE3524": { bg: "#FEF0EE", text: "#7A1510" }, // coral: CodeDeploy / Glue
-  "#FF4F8B": { bg: "#FFF0F6", text: "#7A1545" }, // pink: SNS / SQS / Events
-  "#8C4FFF": { bg: "#F1ECFF", text: "#3A1E7A" }, // purple: ELB
+  "#FF9900": { bg: "#FFF8EE", text: "#7A4500" }, // Compute (amber)
+  "#3F8624": { bg: "#F0FAF0", text: "#1A4A0A" }, // Storage (green)
+  "#527FFF": { bg: "#EDF2FF", text: "#1E3A8A" }, // Database (blue)
+  "#8C4FFF": { bg: "#F1ECFF", text: "#3A1E7A" }, // Network (purple)
+  "#DD344C": { bg: "#FFF0F2", text: "#7A1020" }, // Security (red)
+  "#FF4F8B": { bg: "#FFF0F6", text: "#7A1545" }, // Integration (pink)
+  "#E7157B": { bg: "#FDF0F7", text: "#7A0845" }, // Management (magenta)
+  "#EE3524": { bg: "#FEF0EE", text: "#7A1510" }, // Developer (coral)
 };
 
 const DEFAULT_STYLE = { border: NEUTRAL_COLOR, bg: "#F9FAFB", text: "#374151" };

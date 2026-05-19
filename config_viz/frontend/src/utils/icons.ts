@@ -1,48 +1,11 @@
+import { SERVICE_PALETTE, NEUTRAL_COLOR } from "./serviceColors";
+
 /** Fallback icon URL for resource types with no specific icon mapping. */
 export const FALLBACK_ICON = "/icons/default.png";
 
-// ---------------------------------------------------------------------------
-// Service-level color palette (AWS brand colors)
-// Used to generate inline SVG icons when no specific PNG is available.
-// ---------------------------------------------------------------------------
-const SERVICE_COLORS: Record<string, string> = {
-  AppConfig: "#EE3524",
-  Athena: "#527FFF",
-  AutoScaling: "#FF9900",
-  Backup: "#3F8624",
-  Cassandra: "#527FFF",
-  CloudFormation: "#E7157B",
-  CloudFront: "#FF9900",
-  CloudTrail: "#E7157B",
-  CodeDeploy: "#EE3524",
-  Config: "#E7157B",
-  DataZone: "#527FFF",
-  DynamoDB: "#527FFF",
-  EC2: "#FF9900",
-  ECR: "#FF9900",
-  ECS: "#FF9900",
-  EKS: "#FF9900",
-  ElasticLoadBalancing: "#8C4FFF",
-  ElasticLoadBalancingV2: "#8C4FFF",
-  Events: "#FF4F8B",
-  Glue: "#EE3524",
-  IAM: "#DD344C",
-  KMS: "#DD344C",
-  Lambda: "#FF9900",
-  Logs: "#FF9900",
-  RDS: "#527FFF",
-  S3: "#3F8624",
-  SNS: "#FF4F8B",
-  SQS: "#FF4F8B",
-  Scheduler: "#FF4F8B",
-  SecretsManager: "#DD344C",
-  StepFunctions: "#FF4F8B",
-  WAFv2: "#DD344C",
-};
-
 /** Generate a colored SVG data URI for a service namespace. */
 function _serviceSvgDataUri(service: string): string {
-  const color = SERVICE_COLORS[service] ?? "#888888";
+  const color = SERVICE_PALETTE[service] ?? NEUTRAL_COLOR;
   const abbrev = service.length <= 3 ? service.toUpperCase() : service.substring(0, 3).toUpperCase();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="${color}"/><text x="16" y="21" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="10" font-weight="bold">${abbrev}</text></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;

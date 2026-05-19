@@ -5,6 +5,7 @@ import ReactFlow, {
   Controls,
   MarkerType,
   MiniMap,
+  Panel,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -16,8 +17,10 @@ import "reactflow/dist/style.css";
 
 import { MINIMAP_LEAF_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { getVisibleNodes, rewireEdges } from "../utils/collapse";
+import { SERVICE_CATEGORIES, NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { CollapseContext } from "./CollapseContext";
 import { RankDirContext } from "./RankDirContext";
+import { Legend, type LegendEntry } from "./Legend";
 
 // Phase A-1: shared visual constants for edge rendering.
 const EDGE_STROKE = "#9CA3AF";
@@ -236,6 +239,30 @@ export function GraphCanvas({
     setHighlightedId(null);
   }, []);
 
+  // Phase C-3: build legend entries from the unique categories present in the
+  // currently visible nodes so the legend only shows relevant services.
+  const legendEntries = useMemo((): LegendEntry[] => {
+    const seen = new Set<string>();
+    const result: LegendEntry[] = [];
+
+    for (const n of visibleApiNodes) {
+      const color = serviceColorOf(n.data.resource_type ?? "");
+      if (color === NEUTRAL_COLOR) continue;
+      if (seen.has(color)) continue;
+      seen.add(color);
+
+      // Find the category label for this colour.
+      const category =
+        Object.entries(SERVICE_CATEGORIES).find(([, svcs]) =>
+          svcs.some((s) => serviceColorOf(`AWS::${s}::X`) === color),
+        )?.[0] ?? "Other";
+
+      result.push({ label: category, color });
+    }
+
+    return result.sort((a, b) => a.label.localeCompare(b.label));
+  }, [visibleApiNodes]);
+
   return (
     <CollapseContext.Provider value={{ collapsedIds, toggleCollapse: onToggleCollapse }}>
     <RankDirContext.Provider value={rankdir}>
@@ -253,6 +280,9 @@ export function GraphCanvas({
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E5E7EB" />
           <Controls />
+          <Panel position="bottom-left">
+            <Legend entries={legendEntries} />
+          </Panel>
           <MiniMap
             nodeStrokeWidth={3}
             nodeColor={_minimapNodeColor}

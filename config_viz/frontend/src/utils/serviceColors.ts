@@ -1,45 +1,55 @@
 /**
- * Service-level color palette shared between group node borders, leaf icons,
- * and the MiniMap. Keep a single source of truth so MiniMap colors match
- * what users see on the canvas.
+ * Service-level color palette shared between group node borders, leaf-node
+ * SVG badges, and the MiniMap.  A single source of truth so every surface
+ * that colours an AWS service uses the same hex value.
  *
- * Colors follow the AWS brand palette per service category.
+ * Services are organised into logical AWS categories.  Within a category the
+ * hue is shared; future refinements can differentiate by lightness/saturation
+ * while keeping the category association obvious.
  */
 
-const SERVICE_PRIMARY: Record<string, string> = {
-  AppConfig: "#EE3524",
-  Athena: "#527FFF",
-  AutoScaling: "#FF9900",
-  Backup: "#3F8624",
-  Cassandra: "#527FFF",
-  CloudFormation: "#E7157B",
-  CloudFront: "#FF9900",
-  CloudTrail: "#E7157B",
-  CodeDeploy: "#EE3524",
-  Config: "#E7157B",
-  DataZone: "#527FFF",
-  DynamoDB: "#527FFF",
-  EC2: "#FF9900",
-  ECR: "#FF9900",
-  ECS: "#FF9900",
-  EKS: "#FF9900",
-  ElasticLoadBalancing: "#8C4FFF",
-  ElasticLoadBalancingV2: "#8C4FFF",
-  Events: "#FF4F8B",
-  Glue: "#EE3524",
-  IAM: "#DD344C",
-  KMS: "#DD344C",
-  Lambda: "#FF9900",
-  Logs: "#FF9900",
-  RDS: "#527FFF",
-  S3: "#3F8624",
-  SNS: "#FF4F8B",
-  SQS: "#FF4F8B",
-  Scheduler: "#FF4F8B",
-  SecretsManager: "#DD344C",
-  StepFunctions: "#FF4F8B",
-  WAFv2: "#DD344C",
+// ---------------------------------------------------------------------------
+// Category → service name mapping (source of truth for legend rendering)
+// ---------------------------------------------------------------------------
+
+export const SERVICE_CATEGORIES: Record<string, string[]> = {
+  Compute:     ["EC2", "Lambda", "ECS", "ECR", "EKS", "AutoScaling", "CloudFront"],
+  Storage:     ["S3", "Backup"],
+  Database:    ["RDS", "DynamoDB", "Cassandra", "Athena"],
+  Network:     ["ElasticLoadBalancing", "ElasticLoadBalancingV2"],
+  Security:    ["IAM", "KMS", "SecretsManager", "WAFv2"],
+  Integration: ["SNS", "SQS", "Events", "Scheduler", "StepFunctions"],
+  Management:  ["CloudFormation", "CloudTrail", "Config", "Logs"],
+  Developer:   ["CodeDeploy", "Glue", "AppConfig", "DataZone"],
 };
+
+// ---------------------------------------------------------------------------
+// Category hues (one hex per category)
+// ---------------------------------------------------------------------------
+
+const CATEGORY_COLOR: Record<string, string> = {
+  Compute:     "#FF9900",  // AWS orange
+  Storage:     "#3F8624",  // green
+  Database:    "#527FFF",  // blue
+  Network:     "#8C4FFF",  // purple
+  Security:    "#DD344C",  // red
+  Integration: "#FF4F8B",  // pink
+  Management:  "#E7157B",  // magenta
+  Developer:   "#EE3524",  // coral
+};
+
+// ---------------------------------------------------------------------------
+// Flat service → colour lookup (derived from the two tables above)
+// ---------------------------------------------------------------------------
+
+const SERVICE_PRIMARY: Record<string, string> = {};
+
+for (const [category, services] of Object.entries(SERVICE_CATEGORIES)) {
+  const color = CATEGORY_COLOR[category] ?? "#6B7280";
+  for (const svc of services) {
+    SERVICE_PRIMARY[svc] = color;
+  }
+}
 
 /** Neutral color used when a service has no mapped palette entry. */
 export const NEUTRAL_COLOR = "#6B7280";
@@ -63,10 +73,16 @@ function _extractService(resourceType: string): string {
 }
 
 /**
- * Return the primary hex color associated with a given AWS resource type.
+ * Return the primary hex colour associated with a given AWS resource type.
  * Falls back to {@link NEUTRAL_COLOR} when the service is unknown.
  */
 export function serviceColorOf(resourceType: string): string {
   const svc = _extractService(resourceType);
   return SERVICE_PRIMARY[svc] ?? NEUTRAL_COLOR;
 }
+
+/**
+ * Expose the flat lookup so icon generators can access it without re-deriving.
+ * Keys are service namespaces ("EC2", "IAM", …); values are hex colours.
+ */
+export { SERVICE_PRIMARY as SERVICE_PALETTE };

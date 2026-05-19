@@ -98,6 +98,9 @@ vi.mock("reactflow", () => ({
   useReactFlow: () => ({ fitView: fitViewSpy }),
   MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
   BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
+  Panel: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="rf-panel">{children}</div>
+  ),
 }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -448,6 +451,18 @@ describe("GraphCanvas", () => {
       );
       expect(screen.getByTestId("node-vpc-111")).toBeInTheDocument();
       expect(screen.getByTestId("node-ec2-222")).toBeInTheDocument();
+    });
+  });
+
+  // Phase C-3: the GraphCanvas includes a legend panel so users can decode
+  // the service colour coding without external documentation.
+  describe("legend panel (C-3)", () => {
+    it("renders a legend element inside the graph canvas", () => {
+      render(
+        <GraphCanvas nodes={nodes} edges={[]} rankdir="TB" onNodeClick={() => {}} />,
+        { wrapper },
+      );
+      expect(screen.getByTestId("graph-legend")).toBeInTheDocument();
     });
   });
 

@@ -59,6 +59,33 @@ describe("AwsNode", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
+  // Phase C-2: wider nodes and wrapping tooltips prevent content truncation on
+  // resources with long ARN-style IDs.
+  describe("label & tooltip width (C-2)", () => {
+    it("node container allows up to 260px width", () => {
+      render(<AwsNode id="ec2-456" data={data} />);
+      const node = screen.getByTestId("aws-node");
+      // max-w-[260px] must appear in the className
+      expect(node.className).toMatch(/max-w-\[260px\]/);
+    });
+
+    it("tooltip does not use whitespace-nowrap (allows line wrapping)", async () => {
+      const user = userEvent.setup();
+      render(<AwsNode id="ec2-456" data={data} />);
+      await user.hover(screen.getByTestId("aws-node"));
+      const tooltip = screen.getByRole("tooltip");
+      expect(tooltip.className).not.toMatch(/whitespace-nowrap/);
+    });
+
+    it("tooltip has a bounded max-width so it does not overflow the viewport", async () => {
+      const user = userEvent.setup();
+      render(<AwsNode id="ec2-456" data={data} />);
+      await user.hover(screen.getByTestId("aws-node"));
+      const tooltip = screen.getByRole("tooltip");
+      expect(tooltip.className).toMatch(/max-w/);
+    });
+  });
+
   // Phase A-2: handle positions follow the rank direction so connecting edges
   // don't have to fold back on themselves under LR layouts.
   describe("handle position by rankdir (A-2)", () => {
