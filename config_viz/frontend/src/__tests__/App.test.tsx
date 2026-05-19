@@ -44,6 +44,8 @@ vi.mock("reactflow", () => ({
   useNodesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useEdgesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useReactFlow: () => ({ fitView: vi.fn() }),
+  MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
+  BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
 }));
 
 function makeWrapper() {

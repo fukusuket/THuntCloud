@@ -66,5 +66,20 @@ describe("applyDagreLayout", () => {
     expect(result).toHaveLength(1);
     expect(typeof result[0].position.x).toBe("number");
   });
+
+  // Phase A-4: tuned spacing — connected LR siblings must sit far enough apart
+  // (NODE_W=200 + ranksep=80 ⇒ ≥ 240 px between left edges).
+  it("places two LR-connected leaf nodes at least 240px apart", () => {
+    const nodes: Node[] = [
+      { id: "a", type: "awsNode", position: { x: 0, y: 0 }, data: {} },
+      { id: "b", type: "awsNode", position: { x: 0, y: 0 }, data: {} },
+    ];
+    const edges: Edge[] = [{ id: "e", source: "a", target: "b" }];
+    const result = applyDagreLayout(nodes, edges, "LR");
+
+    const a = result.find((n) => n.id === "a")!;
+    const b = result.find((n) => n.id === "b")!;
+    expect(Math.abs(a.position.x - b.position.x)).toBeGreaterThanOrEqual(240);
+  });
 });
 

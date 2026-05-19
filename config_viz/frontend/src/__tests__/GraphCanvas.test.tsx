@@ -6,20 +6,47 @@ import type { ApiGraphNode, ApiGraphEdge } from "../types";
 
 // Mock reactflow to avoid canvas / ResizeObserver issues in jsdom
 const { mockReactFlow } = vi.hoisted(() => {
-  const mockReactFlow = vi.fn(({ nodes = [], edges = [] }: { nodes: unknown[]; edges: unknown[] }) => (
-    <div data-testid="react-flow">
-      {(nodes as Array<{ id: string; parentNode?: string }>).map((n) => (
-        <div
-          key={n.id}
-          data-testid={`node-${n.id}`}
-          data-parent-node={n.parentNode ?? ""}
-        />
-      ))}
-      {(edges as Array<{ id: string }>).map((e) => (
-        <div key={e.id} data-testid={`edge-${e.id}`} />
-      ))}
-    </div>
-  ));
+  const mockReactFlow = vi.fn(
+    ({
+      nodes = [],
+      edges = [],
+      children,
+    }: {
+      nodes: unknown[];
+      edges: unknown[];
+      children?: React.ReactNode;
+    }) => (
+      <div data-testid="react-flow">
+        {(nodes as Array<{ id: string; parentNode?: string }>).map((n) => (
+          <div
+            key={n.id}
+            data-testid={`node-${n.id}`}
+            data-parent-node={n.parentNode ?? ""}
+          />
+        ))}
+        {(
+          edges as Array<{
+            id: string;
+            type?: string;
+            label?: string;
+            markerEnd?: { type?: string };
+            style?: { stroke?: string; strokeWidth?: number };
+          }>
+        ).map((e) => (
+          <div
+            key={e.id}
+            data-testid={`edge-${e.id}`}
+            data-edge-type={e.type ?? ""}
+            data-edge-label={e.label ?? ""}
+            data-marker-end-type={e.markerEnd?.type ?? ""}
+            data-stroke={e.style?.stroke ?? ""}
+            data-stroke-width={e.style?.strokeWidth ?? ""}
+          />
+        ))}
+        {children}
+      </div>
+    ),
+  );
   return { mockReactFlow };
 });
 
@@ -28,14 +55,28 @@ vi.mock("reactflow", () => ({
   default: (props: unknown) => mockReactFlow(props as { nodes: unknown[]; edges: unknown[] }),
   ReactFlow: (props: unknown) => mockReactFlow(props as { nodes: unknown[]; edges: unknown[] }),
   ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  Background: () => null,
+  Background: (props: { variant?: string; gap?: number; color?: string }) => (
+    <div
+      data-testid="rf-background"
+      data-variant={props.variant ?? ""}
+      data-gap={props.gap ?? ""}
+      data-color={props.color ?? ""}
+    />
+  ),
   Controls: () => null,
-  MiniMap: () => null,
+  MiniMap: (props: { nodeColor?: unknown }) => (
+    <div
+      data-testid="rf-minimap"
+      data-has-node-color={typeof props.nodeColor === "function" ? "yes" : "no"}
+    />
+  ),
   Handle: () => null,
   Position: { Top: "top", Bottom: "bottom", Left: "left", Right: "right" },
   useNodesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useEdgesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useReactFlow: () => ({ fitView: vi.fn() }),
+  MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
+  BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
 }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -109,6 +150,61 @@ describe("GraphCanvas", () => {
     });
     const vpcNode = screen.getByTestId("node-vpc-123");
     expect(vpcNode).toHaveAttribute("data-parent-node", "");
+  });
+
+  // Phase A-1: edges use smoothstep routing with arrow markers and a visible
+  // stroke so dependency direction is readable at a glance.
+  describe("edge styling (A-1)", () => {
+    it("renders edges with smoothstep type", () => {
+      render(<GraphCanvas nodes={nodes} edges={edges} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByTestId("edge-e1")).toHaveAttribute("data-edge-type", "smoothstep");
+    });
+
+    it("renders edges with an arrow marker at the target end", () => {
+      render(<GraphCanvas nodes={nodes} edges={edges} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByTestId("edge-e1")).toHaveAttribute(
+        "data-marker-end-type",
+        "arrowclosed",
+      );
+    });
+
+    it("renders edges with a stroke color and width", () => {
+      render(<GraphCanvas nodes={nodes} edges={edges} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      const edge = screen.getByTestId("edge-e1");
+      expect(edge.getAttribute("data-stroke")).toMatch(/^#/);
+      expect(Number(edge.getAttribute("data-stroke-width"))).toBeGreaterThan(1);
+    });
+
+    it("preserves the original edge label", () => {
+      render(<GraphCanvas nodes={nodes} edges={edges} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByTestId("edge-e1")).toHaveAttribute("data-edge-label", "uses");
+    });
+  });
+
+  // Phase A-3: Background uses dots so it does not visually compete with the
+  // group node dashed borders, and the MiniMap colors nodes by service.
+  describe("background & minimap (A-3)", () => {
+    it("renders the dots background variant", () => {
+      render(<GraphCanvas nodes={nodes} edges={[]} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByTestId("rf-background")).toHaveAttribute("data-variant", "dots");
+    });
+
+    it("passes a nodeColor function to the MiniMap", () => {
+      render(<GraphCanvas nodes={nodes} edges={[]} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByTestId("rf-minimap")).toHaveAttribute("data-has-node-color", "yes");
+    });
   });
 });
 

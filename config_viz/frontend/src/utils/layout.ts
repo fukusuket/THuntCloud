@@ -2,11 +2,15 @@ import Dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "reactflow";
 import type { RankDir } from "../types";
 
-const NODE_W = 172;
-const NODE_H = 50;
-const PADDING = 24; // inner padding inside group nodes
-const MIN_GROUP_W = 220;
-const MIN_GROUP_H = 80;
+// Phase A-4: tuned for readability — wider nodes, larger gutters between ranks
+// and siblings, plus more breathing room inside group containers.
+const NODE_W = 200;
+const NODE_H = 56;
+const PADDING = 32; // inner padding inside group nodes
+const MIN_GROUP_W = 240;
+const MIN_GROUP_H = 96;
+const RANK_SEP = 80;
+const NODE_SEP = 56;
 
 function nodeDims(node: Node): { w: number; h: number } {
   if (node.type === "awsGroupNode") return { w: MIN_GROUP_W, h: MIN_GROUP_H };
@@ -30,7 +34,13 @@ function runFlatDagre(
 
   const g = new Dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir, ranksep: 60, nodesep: 40, marginx: PADDING, marginy: PADDING });
+  g.setGraph({
+    rankdir,
+    ranksep: RANK_SEP,
+    nodesep: NODE_SEP,
+    marginx: PADDING,
+    marginy: PADDING,
+  });
 
   const idSet = new Set(nodes.map((n) => n.id));
 

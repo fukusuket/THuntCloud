@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Handle, Position } from "reactflow";
 import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
+import { useRankDir } from "./RankDirContext";
 
 interface AwsNodeProps {
   id: string;
@@ -15,6 +16,9 @@ interface AwsNodeProps {
  */
 export function AwsNode({ id, data, selected }: AwsNodeProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const rankdir = useRankDir();
+  const targetPos = rankdir === "LR" ? Position.Left : Position.Top;
+  const sourcePos = rankdir === "LR" ? Position.Right : Position.Bottom;
 
   const label = data.resource_name ?? id;
 
@@ -31,7 +35,7 @@ export function AwsNode({ id, data, selected }: AwsNodeProps) {
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2" />
+      <Handle type="target" position={targetPos} className="!w-2 !h-2" />
 
       {/* Icon */}
       <img
@@ -46,7 +50,7 @@ export function AwsNode({ id, data, selected }: AwsNodeProps) {
       {/* Label */}
       <span className="truncate font-medium text-gray-800">{label}</span>
 
-      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2" />
+      <Handle type="source" position={sourcePos} className="!w-2 !h-2" />
 
       {/* Tooltip */}
       {showTooltip && (

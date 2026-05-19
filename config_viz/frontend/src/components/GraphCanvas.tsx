@@ -1,7 +1,9 @@
 import { useCallback, useEffect } from "react";
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Controls,
+  MarkerType,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -10,6 +12,23 @@ import ReactFlow, {
   type NodeMouseHandler,
 } from "reactflow";
 import "reactflow/dist/style.css";
+
+import { MINIMAP_LEAF_COLOR, serviceColorOf } from "../utils/serviceColors";
+import { RankDirContext } from "./RankDirContext";
+
+// Phase A-1: shared visual constants for edge rendering.
+const EDGE_STROKE = "#9CA3AF";
+const EDGE_STROKE_WIDTH = 1.5;
+
+// Phase A-3: paint group nodes with their service color on the MiniMap;
+// leaf nodes get a uniform light gray so groups remain the dominant signal.
+function _minimapNodeColor(node: Node): string {
+  if (node.type === "awsGroupNode") {
+    const rt = (node.data as { resource_type?: string } | undefined)?.resource_type ?? "";
+    return serviceColorOf(rt);
+  }
+  return MINIMAP_LEAF_COLOR;
+}
 
 import { applyDagreLayout } from "../utils/layout";
 import { AwsNode } from "./AwsNode";
@@ -81,6 +100,18 @@ export function GraphCanvas({ nodes: apiNodes, edges: apiEdges, rankdir, onNodeC
         target: e.target,
         label: e.label,
         animated: false,
+        type: "smoothstep",
+        style: { stroke: EDGE_STROKE, strokeWidth: EDGE_STROKE_WIDTH },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 14,
+          height: 14,
+          color: EDGE_STROKE,
+        },
+        labelStyle: { fill: "#4B5563", fontSize: 10 },
+        labelBgStyle: { fill: "#FFFFFF", fillOpacity: 0.85 },
+        labelBgPadding: [4, 2],
+        labelBgBorderRadius: 2,
       })),
     []
   );
@@ -109,22 +140,30 @@ export function GraphCanvas({ nodes: apiNodes, edges: apiEdges, rankdir, onNodeC
   );
 
   return (
-    <div className="w-full h-full" data-testid="graph-canvas">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        fitView
-        attributionPosition="bottom-right"
-      >
-        <Background />
-        <Controls />
-        <MiniMap nodeStrokeWidth={3} />
-      </ReactFlow>
-    </div>
+    <RankDirContext.Provider value={rankdir}>
+      <div className="w-full h-full" data-testid="graph-canvas">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          fitView
+          attributionPosition="bottom-right"
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E5E7EB" />
+          <Controls />
+          <MiniMap
+            nodeStrokeWidth={3}
+            nodeColor={_minimapNodeColor}
+            maskColor="rgba(31,41,55,0.6)"
+            pannable
+            zoomable
+          />
+        </ReactFlow>
+      </div>
+    </RankDirContext.Provider>
   );
 }
 

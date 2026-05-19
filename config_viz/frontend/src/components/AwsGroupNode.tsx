@@ -1,6 +1,8 @@
 import { Handle, Position } from "reactflow";
 import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
+import { NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
+import { useRankDir } from "./RankDirContext";
 
 interface AwsGroupNodeProps {
   id: string;
@@ -8,38 +10,26 @@ interface AwsGroupNodeProps {
   selected?: boolean;
 }
 
-// Map service namespace → tailwind-compatible border/bg colors
-const SERVICE_STYLES: Record<string, { border: string; bg: string; text: string }> = {
-  EC2:            { border: "#FF9900", bg: "#FFF8EE", text: "#7A4500" },
-  IAM:            { border: "#DD344C", bg: "#FFF0F2", text: "#7A1020" },
-  S3:             { border: "#3F8624", bg: "#F0FAF0", text: "#1A4A0A" },
-  Lambda:         { border: "#FF9900", bg: "#FFF8EE", text: "#7A4500" },
-  RDS:            { border: "#527FFF", bg: "#EDF2FF", text: "#1E3A8A" },
-  CloudFormation: { border: "#E7157B", bg: "#FDF0F7", text: "#7A0845" },
-  CloudTrail:     { border: "#E7157B", bg: "#FDF0F7", text: "#7A0845" },
-  Config:         { border: "#E7157B", bg: "#FDF0F7", text: "#7A0845" },
-  CodeDeploy:     { border: "#EE3524", bg: "#FEF0EE", text: "#7A1510" },
-  KMS:            { border: "#DD344C", bg: "#FFF0F2", text: "#7A1020" },
-  Events:         { border: "#FF4F8B", bg: "#FFF0F6", text: "#7A1545" },
-  Glue:           { border: "#EE3524", bg: "#FEF0EE", text: "#7A1510" },
-  Athena:         { border: "#527FFF", bg: "#EDF2FF", text: "#1E3A8A" },
-  Backup:         { border: "#3F8624", bg: "#F0FAF0", text: "#1A4A0A" },
-  Cassandra:      { border: "#527FFF", bg: "#EDF2FF", text: "#1E3A8A" },
-  AppConfig:      { border: "#EE3524", bg: "#FEF0EE", text: "#7A1510" },
-  Scheduler:      { border: "#FF4F8B", bg: "#FFF0F6", text: "#7A1545" },
+// Tinted background and text shades keyed off the primary service color.
+// Borders come from {@link serviceColorOf} so they always match the MiniMap.
+const SERVICE_SECONDARY: Record<string, { bg: string; text: string }> = {
+  "#FF9900": { bg: "#FFF8EE", text: "#7A4500" }, // amber: EC2 / Lambda / ECS / EKS / Logs
+  "#DD344C": { bg: "#FFF0F2", text: "#7A1020" }, // red: IAM / KMS / Secrets / WAF
+  "#3F8624": { bg: "#F0FAF0", text: "#1A4A0A" }, // green: S3 / Backup
+  "#527FFF": { bg: "#EDF2FF", text: "#1E3A8A" }, // blue: RDS / DynamoDB / Athena
+  "#E7157B": { bg: "#FDF0F7", text: "#7A0845" }, // magenta: CloudTrail / Config
+  "#EE3524": { bg: "#FEF0EE", text: "#7A1510" }, // coral: CodeDeploy / Glue
+  "#FF4F8B": { bg: "#FFF0F6", text: "#7A1545" }, // pink: SNS / SQS / Events
+  "#8C4FFF": { bg: "#F1ECFF", text: "#3A1E7A" }, // purple: ELB
 };
 
-const DEFAULT_STYLE = { border: "#6B7280", bg: "#F9FAFB", text: "#374151" };
+const DEFAULT_STYLE = { border: NEUTRAL_COLOR, bg: "#F9FAFB", text: "#374151" };
 
 function _getStyle(resourceType: string) {
-  if (resourceType.startsWith("__service__")) {
-    const svc = resourceType.replace("__service__", "");
-    return SERVICE_STYLES[svc] ?? DEFAULT_STYLE;
-  }
-  // VPC, Subnet → EC2 palette
-  const parts = resourceType.split("::");
-  const svc = parts.length >= 2 ? parts[1] : "";
-  return SERVICE_STYLES[svc] ?? DEFAULT_STYLE;
+  const border = serviceColorOf(resourceType);
+  if (border === NEUTRAL_COLOR) return DEFAULT_STYLE;
+  const secondary = SERVICE_SECONDARY[border];
+  return secondary ? { border, ...secondary } : DEFAULT_STYLE;
 }
 
 /**
@@ -51,6 +41,9 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
   const label = data.resource_name ?? id;
   const isServiceGroup = data.resource_type?.startsWith("__service__");
   const style = _getStyle(data.resource_type ?? "");
+  const rankdir = useRankDir();
+  const targetPos = rankdir === "LR" ? Position.Left : Position.Top;
+  const sourcePos = rankdir === "LR" ? Position.Right : Position.Bottom;
 
   return (
     <div
@@ -67,7 +60,7 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
         selected ? "ring-2 ring-blue-400" : "",
       ].join(" ")}
     >
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2 opacity-50" />
+      <Handle type="target" position={targetPos} className="!w-2 !h-2 opacity-50" />
 
       {/* Header */}
       <div
@@ -110,7 +103,7 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
         </div>
       )}
 
-      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 opacity-50" />
+      <Handle type="source" position={sourcePos} className="!w-2 !h-2 opacity-50" />
     </div>
   );
 }
