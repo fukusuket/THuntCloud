@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { AwsGroupNode } from "../components/AwsGroupNode";
 import { RankDirContext } from "../components/RankDirContext";
+import { CollapseContext } from "../components/CollapseContext";
 
 // Mock reactflow: Handle requires zustand provider context, which is unavailable in isolation
 vi.mock("reactflow", () => ({
@@ -62,6 +64,49 @@ describe("AwsGroupNode", () => {
     render(<AwsGroupNode {...props} selected />);
     const container = screen.getByTestId("aws-group-node");
     expect(container.className).toMatch(/selected|ring|border-blue/i);
+  });
+
+  // Phase B-3: each group node has a toggle button so users can fold large
+  // sections of the graph out of view.
+  describe("collapse toggle (B-3)", () => {
+    it("renders a collapse toggle button", () => {
+      render(<AwsGroupNode {...props} />);
+      expect(screen.getByRole("button", { name: /collapse|expand/i })).toBeInTheDocument();
+    });
+
+    it("shows an expand icon when the group is collapsed", () => {
+      render(
+        <CollapseContext.Provider
+          value={{ collapsedIds: new Set(["vpc-123"]), toggleCollapse: () => {} }}
+        >
+          <AwsGroupNode {...props} />
+        </CollapseContext.Provider>,
+      );
+      expect(screen.getByRole("button", { name: /expand/i })).toBeInTheDocument();
+    });
+
+    it("shows a collapse icon when the group is expanded", () => {
+      render(
+        <CollapseContext.Provider
+          value={{ collapsedIds: new Set(), toggleCollapse: () => {} }}
+        >
+          <AwsGroupNode {...props} />
+        </CollapseContext.Provider>,
+      );
+      expect(screen.getByRole("button", { name: /collapse/i })).toBeInTheDocument();
+    });
+
+    it("calls toggleCollapse with the group id when toggle is clicked", async () => {
+      const user = userEvent.setup();
+      const toggle = vi.fn();
+      render(
+        <CollapseContext.Provider value={{ collapsedIds: new Set(), toggleCollapse: toggle }}>
+          <AwsGroupNode {...props} />
+        </CollapseContext.Provider>,
+      );
+      await user.click(screen.getByRole("button", { name: /collapse|expand/i }));
+      expect(toggle).toHaveBeenCalledWith("vpc-123");
+    });
   });
 
   // Phase A-2: handle positions follow rankdir for cleaner edge routing.

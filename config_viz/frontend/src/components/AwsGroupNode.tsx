@@ -3,6 +3,7 @@ import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
 import { NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { useRankDir } from "./RankDirContext";
+import { useCollapse } from "./CollapseContext";
 
 interface AwsGroupNodeProps {
   id: string;
@@ -44,6 +45,8 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
   const rankdir = useRankDir();
   const targetPos = rankdir === "LR" ? Position.Left : Position.Top;
   const sourcePos = rankdir === "LR" ? Position.Right : Position.Bottom;
+  const { collapsedIds, toggleCollapse } = useCollapse();
+  const isCollapsed = collapsedIds.has(id);
 
   return (
     <div
@@ -95,6 +98,21 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
             {data.member_count}
           </span>
         )}
+
+        {/* Phase B-3: collapse / expand toggle */}
+        <button
+          aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+          onClick={(e) => {
+            // Stop the event reaching React Flow's drag/pan handler.
+            e.stopPropagation();
+            toggleCollapse(id);
+          }}
+          className="ml-auto shrink-0 w-4 h-4 flex items-center justify-center
+                     rounded text-[10px] hover:bg-black/10 transition-colors"
+          style={{ color: style.text }}
+        >
+          {isCollapsed ? "▶" : "▼"}
+        </button>
       </div>
 
       {!isServiceGroup && (

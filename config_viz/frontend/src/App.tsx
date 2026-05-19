@@ -17,6 +17,20 @@ export default function App() {
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string | undefined>(undefined);
   const [rankdir, setRankdir] = useState<RankDir>("TB");
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  const handleToggleCollapse = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Fetch graph data when a snapshot is selected (BF-02)
   const { data: graphData } = useQuery({
@@ -49,7 +63,9 @@ export default function App() {
         onSnapshotSelect={handleSnapshotSelect}
         onFilterChange={handleFilterChange}
         onRankdirChange={setRankdir}
+        onSearchChange={setSearchTerm}
         rankdir={rankdir}
+        searchTerm={searchTerm}
       />
 
       {/* Main graph area */}
@@ -69,6 +85,9 @@ export default function App() {
               edges={graphData.edges}
               rankdir={rankdir}
               onNodeClick={handleNodeClick}
+              searchTerm={searchTerm}
+              collapsedIds={collapsedIds}
+              onToggleCollapse={handleToggleCollapse}
             />
           </ReactFlowProvider>
         )}

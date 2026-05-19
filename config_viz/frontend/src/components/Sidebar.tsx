@@ -8,6 +8,8 @@ interface SidebarProps {
   onFilterChange: (resourceType: string | undefined) => void;
   onRankdirChange: (rankdir: RankDir) => void;
   rankdir: RankDir;
+  searchTerm?: string;
+  onSearchChange?: (term: string) => void;
 }
 
 /**
@@ -19,6 +21,8 @@ export function Sidebar({
   onFilterChange,
   onRankdirChange,
   rankdir,
+  searchTerm = "",
+  onSearchChange,
 }: SidebarProps) {
   const {
     data: snapshots = [],
@@ -40,6 +44,18 @@ export function Sidebar({
       <div className="p-4 border-b border-gray-200">
         <h1 className="text-lg font-bold text-gray-800">Config Viz</h1>
         <p className="text-xs text-gray-500 mt-0.5">AWS Resource Graph</p>
+      </div>
+
+      {/* Phase B-2: resource search */}
+      <div className="p-4 border-b border-gray-200">
+        <input
+          type="search"
+          role="searchbox"
+          placeholder="Search resources…"
+          value={searchTerm}
+          onChange={(e) => onSearchChange?.(e.target.value)}
+          className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-400"
+        />
       </div>
 
       {/* Layout toggle (BF-10) */}
