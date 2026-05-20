@@ -30,6 +30,8 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
+### AWS Config Resource Graph (FastAPI + React)
+<img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
 ---
 
 ## Architecture
