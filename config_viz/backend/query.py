@@ -92,6 +92,102 @@ def _build_parent_map(
     return m
 
 
+# Resource types that logically reside inside a VPC.
+# When one of these has no VPC ancestor in the containment hierarchy, the
+# inference step (_infer_vpc_for_residents) will try to find the VPC through
+# non-containment ("Is associated with") edges.
+_VPC_RESIDENT_TYPES: frozenset[str] = frozenset(
+    {
+        "AWS::EC2::Subnet",
+        "AWS::EC2::RouteTable",
+        "AWS::EC2::Instance",
+        "AWS::EC2::NatGateway",
+        "AWS::EC2::EIP",
+    }
+)
+
+
+def _infer_vpc_for_residents(
+    parent_map: dict[str, str],
+    edge_rows: list[tuple[str, str, str]],
+    rid_to_type: dict[str, str],
+) -> None:
+    """Mutate *parent_map* to place VPC-resident resources inside their VPC.
+
+    For each resource whose type is in ``_VPC_RESIDENT_TYPES`` and that has no
+    VPC ancestor in the current containment chain, walk non-containment
+    ("Is associated with", etc.) edges via BFS to find a neighbour that *does*
+    have a VPC ancestor, then assign the resource directly to that VPC.
+
+    This handles resources such as ``AWS::EC2::EIP`` which carry only
+    association edges (e.g. "Is associated with NAT Gateway") rather than
+    explicit containment edges in the AWS Config snapshot.
+
+    Args:
+        parent_map:  Mutable mapping of resource_id → parent_resource_id
+                     (already populated from containment edges).
+        edge_rows:   All edges for the snapshot (source_id, target_id, edge_type).
+        rid_to_type: resource_id → resource_type lookup.
+    """
+
+    def _vpc_ancestor(rid: str) -> str | None:
+        """Return the first VPC resource_id in *rid*'s parent chain, or None."""
+        seen: set[str] = set()
+        cur = rid
+        while cur and cur not in seen:
+            seen.add(cur)
+            parent = parent_map.get(cur)
+            if parent is None:
+                return None
+            if rid_to_type.get(parent) == "AWS::EC2::VPC":
+                return parent
+            cur = parent
+        return None
+
+    # Build a bidirectional adjacency map of non-containment edges so we can
+    # traverse "Is associated with" and similar relationships in both directions.
+    assoc: dict[str, set[str]] = {}
+    for src, tgt, etype in edge_rows:
+        n = etype.strip().lower()
+        if not n.startswith("contains") and not n.startswith("is contained in"):
+            assoc.setdefault(src, set()).add(tgt)
+            assoc.setdefault(tgt, set()).add(src)
+
+    for rid, rtype in rid_to_type.items():
+        if rtype not in _VPC_RESIDENT_TYPES:
+            continue
+        # Skip resources that already have a VPC ancestor.
+        if _vpc_ancestor(rid) is not None:
+            continue
+
+        # BFS on association edges to find a neighbour with a VPC ancestor.
+        visited: set[str] = {rid}
+        queue: list[str] = list(assoc.get(rid, set()))
+        found_vpc: str | None = None
+
+        while queue and found_vpc is None:
+            neighbor = queue.pop(0)
+            if neighbor in visited:
+                continue
+            visited.add(neighbor)
+
+            # Direct VPC?
+            if rid_to_type.get(neighbor) == "AWS::EC2::VPC":
+                found_vpc = neighbor
+                break
+
+            # Neighbour has a VPC ancestor through containment chain?
+            vpc = _vpc_ancestor(neighbor)
+            if vpc:
+                found_vpc = vpc
+                break
+
+            queue.extend(n for n in assoc.get(neighbor, set()) if n not in visited)
+
+        if found_vpc is not None:
+            parent_map[rid] = found_vpc
+
+
 # ---------------------------------------------------------------------------
 # Public query functions
 # ---------------------------------------------------------------------------
@@ -168,7 +264,6 @@ def get_graph(
 
     # 2. Build parent map and container set from ALL edges
     parent_map = _build_parent_map(all_edges)
-    container_ids: set[str] = set(parent_map.values())
 
     # 3. resource_id → first resource_type (for edge resolution)
     all_type_rows: list[tuple[str, str]] = conn.execute(
@@ -180,6 +275,12 @@ def get_graph(
     rid_to_first_type: dict[str, str] = {}
     for rid, rtype in all_type_rows:
         rid_to_first_type.setdefault(rid, rtype)
+
+    # Infer VPC membership for resources (e.g. EIP) that have no containment
+    # edge but are reachable from a VPC-resident resource via association edges.
+    _infer_vpc_for_residents(parent_map, all_edges, rid_to_first_type)
+
+    container_ids: set[str] = set(parent_map.values())
 
     # 4. Resources to display (with optional type filter)
     params: list[Any] = [snapshot_id]

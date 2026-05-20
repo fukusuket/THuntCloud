@@ -106,6 +106,54 @@ def tmp_db_seeded(tmp_path) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _seed_vpc_full(conn: duckdb.DuckDBPyConnection) -> None:
+    """Insert VPC-full snapshot: snap-003 with realistic VPC-resident resources.
+
+    Resources
+    ---------
+    vpc-200    AWS::EC2::VPC          (root — no parent)
+    subnet-200 AWS::EC2::Subnet       ("Is contained in Vpc" → vpc-200)
+    rtb-200    AWS::EC2::RouteTable   ("Is contained in Vpc" → vpc-200)
+    nat-200    AWS::EC2::NatGateway   ("Is contained in Subnet" → subnet-200)
+    i-200      AWS::EC2::Instance     ("Is contained in Subnet" → subnet-200)
+    eip-200    AWS::EC2::EIP          ("Is associated with" → nat-200, NO containment edge)
+
+    Design intent
+    -------------
+    eip-200 has NO containment edge at all.  The inference logic should walk
+    the association edge eip-200 → nat-200, find nat-200's VPC ancestor
+    (vpc-200 via subnet-200), and set eip-200.parent = vpc-200.
+    """
+    conn.execute("""
+        INSERT INTO config_snapshots VALUES
+            ('snap-003', '999988887777', 'ap-northeast-1',
+             TIMESTAMP '2026-05-10 00:00:00', '/data/snap3.json', 6)
+        """)
+    conn.execute("""
+        INSERT INTO config_resources VALUES
+            ('vpc-200',    'snap-003', 'AWS::EC2::VPC',
+             'ap-northeast-1', 'prod-vpc',     '{"vpcId":"vpc-200"}',         NULL),
+            ('subnet-200', 'snap-003', 'AWS::EC2::Subnet',
+             'ap-northeast-1', 'public-sub',   '{"subnetId":"subnet-200"}',   NULL),
+            ('rtb-200',    'snap-003', 'AWS::EC2::RouteTable',
+             'ap-northeast-1', 'main-rtb',     '{"routeTableId":"rtb-200"}',  NULL),
+            ('nat-200',    'snap-003', 'AWS::EC2::NatGateway',
+             'ap-northeast-1', 'prod-nat',     '{"natGatewayId":"nat-200"}',  NULL),
+            ('i-200',      'snap-003', 'AWS::EC2::Instance',
+             'ap-northeast-1', 'app-server',   '{"instanceType":"t3.small"}', NULL),
+            ('eip-200',    'snap-003', 'AWS::EC2::EIP',
+             'ap-northeast-1', 'prod-eip',     '{"allocationId":"eip-200"}',  NULL)
+        """)
+    conn.execute("""
+        INSERT INTO config_edges VALUES
+            ('snap-003', 'subnet-200', 'vpc-200',    'Is contained in Vpc'),
+            ('snap-003', 'rtb-200',    'vpc-200',    'Is contained in Vpc'),
+            ('snap-003', 'nat-200',    'subnet-200', 'Is contained in Subnet'),
+            ('snap-003', 'i-200',      'subnet-200', 'Is contained in Subnet'),
+            ('snap-003', 'eip-200',    'nat-200',    'Is associated with')
+        """)
+
+
 def _seed_hierarchy(conn: duckdb.DuckDBPyConnection) -> None:
     """Insert hierarchy snapshot: snap-002 with VPC → Subnet → EC2 containment.
 
@@ -171,12 +219,35 @@ def tmp_db_hierarchy(tmp_path) -> str:
 
 
 @pytest.fixture
+def tmp_db_vpc_full(tmp_path) -> str:
+    """Temporary DuckDB seeded with snap-003 (VPC + Subnet/RouteTable/NatGW/Instance/EIP)."""
+    path = str(tmp_path / "vpc_full.db")
+    conn = duckdb.connect(path)
+    _create_tables(conn)
+    _seed_vpc_full(conn)
+    conn.close()
+    return path
+
+
+@pytest.fixture
 def client_hierarchy(tmp_db_hierarchy):
     """TestClient backed by the hierarchy DB (snap-002, 4 resources, 3 edges)."""
     from backend.db import get_conn
     from backend.main import app
 
     app.dependency_overrides[get_conn] = _make_override(tmp_db_hierarchy)
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_vpc_full(tmp_db_vpc_full):
+    """TestClient backed by the vpc-full DB (snap-003, 6 resources including EIP)."""
+    from backend.db import get_conn
+    from backend.main import app
+
+    app.dependency_overrides[get_conn] = _make_override(tmp_db_vpc_full)
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()

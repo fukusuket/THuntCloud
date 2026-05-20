@@ -409,3 +409,87 @@ def test_ba14_hierarchy_depth_is_correct(client_hierarchy):
     assert nodes["vpc-001"]["parentId"] == "__svc__EC2"
     assert nodes["subnet-001"]["parentId"] == "vpc-001"
     assert nodes["i-001"]["parentId"] == "subnet-001"
+
+
+# ---------------------------------------------------------------------------
+# BA-15: VPC-resident resources – EIP (association-only) inferred into VPC;
+#        Subnet / RouteTable / NatGateway / Instance placed in VPC box.
+#
+# snap-003 fixture:
+#   vpc-200 ← subnet-200 (Is contained in Vpc)
+#   vpc-200 ← rtb-200    (Is contained in Vpc)
+#   subnet-200 ← nat-200 (Is contained in Subnet)
+#   subnet-200 ← i-200   (Is contained in Subnet)
+#   eip-200 → nat-200    (Is associated with — NO containment edge)
+# ---------------------------------------------------------------------------
+
+
+def test_ba15_subnet_parent_is_vpc(client_vpc_full):
+    """Subnet with 'Is contained in Vpc' edge must be a direct child of the VPC."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["subnet-200"]["parentId"] == "vpc-200"
+
+
+def test_ba15_route_table_parent_is_vpc(client_vpc_full):
+    """RouteTable with 'Is contained in Vpc' edge must be a direct child of the VPC."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["rtb-200"]["parentId"] == "vpc-200"
+
+
+def test_ba15_natgateway_parent_is_subnet(client_vpc_full):
+    """NatGateway with 'Is contained in Subnet' edge must be a child of the Subnet
+    (which is itself inside the VPC, so NatGateway is visually inside the VPC)."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["nat-200"]["parentId"] == "subnet-200"
+
+
+def test_ba15_instance_parent_is_subnet(client_vpc_full):
+    """EC2 Instance with 'Is contained in Subnet' edge must be a child of the Subnet."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["i-200"]["parentId"] == "subnet-200"
+
+
+def test_ba15_eip_inferred_into_vpc(client_vpc_full):
+    """EIP with only an association edge to NatGateway must be inferred into the VPC.
+
+    Chain: eip-200 --'Is associated with'--> nat-200 --'Is contained in'--> subnet-200
+           subnet-200 --'Is contained in Vpc'--> vpc-200
+    Expected: eip-200.parentId == 'vpc-200'
+    """
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert (
+        nodes["eip-200"]["parentId"] == "vpc-200"
+    ), "EIP must be inferred into VPC via association→NatGateway→Subnet→VPC chain"
+
+
+def test_ba15_eip_is_leaf_node(client_vpc_full):
+    """EIP is not a container; it must use type='awsNode'."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["eip-200"]["type"] == "awsNode"
+    assert nodes["eip-200"]["data"]["is_container"] is False
+
+
+def test_ba15_vpc_node_is_container(client_vpc_full):
+    """VPC must be flagged as a container (it has children)."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["vpc-200"]["data"]["is_container"] is True
+    assert nodes["vpc-200"]["type"] == "awsGroupNode"
+
+
+def test_ba15_association_edge_still_present(client_vpc_full):
+    """'Is associated with' edge (eip-200 → nat-200) must remain in the edge list."""
+    response = client_vpc_full.get("/api/snapshots/snap-003/graph")
+    data = response.json()
+    edge_pairs = {(e["source"], e["target"]) for e in data["edges"]}
+    assert ("eip-200", "nat-200") in edge_pairs, (
+        "association edge eip-200→nat-200 must be preserved in the edge list"
+    )
+
