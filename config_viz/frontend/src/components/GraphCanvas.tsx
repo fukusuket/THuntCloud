@@ -45,6 +45,68 @@ const nodeTypes = {
   awsGroupNode: AwsGroupNode,
 };
 
+/** Margin in pixels between the canvas edge and the graph bounding box. */
+const LEFT_MARGIN = 24;
+const NODE_W_DEFAULT = 200;
+const NODE_H_DEFAULT = 56;
+
+/**
+ * Null-rendered controller that MUST live inside <ReactFlow> so that
+ * useReactFlow() binds to the correct internal store instance.
+ *
+ * Whenever `laidNodes` changes it computes a left-aligned viewport:
+ *   - x: graph left edge is placed LEFT_MARGIN px from the canvas left edge
+ *   - y: graph top  edge is placed LEFT_MARGIN px from the canvas top  edge
+ *   - zoom: fitted so the full graph is visible
+ */
+function ViewportController({
+  laidNodes,
+  containerRef,
+}: {
+  laidNodes: Node[];
+  containerRef: React.RefObject<HTMLDivElement>;
+}) {
+  const { setViewport } = useReactFlow();
+
+  useEffect(() => {
+    // Only root nodes (no parentNode) occupy the global coordinate space.
+    const rootNodes = laidNodes.filter(
+      (n) => !(n as Node & { parentNode?: string }).parentNode,
+    );
+    if (rootNodes.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of rootNodes) {
+      const w = (n.style as { width?: number })?.width ?? NODE_W_DEFAULT;
+      const h = (n.style as { height?: number })?.height ?? NODE_H_DEFAULT;
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w);
+      maxY = Math.max(maxY, n.position.y + h);
+    }
+
+    const graphW = Math.max(maxX - minX, 1);
+    const graphH = Math.max(maxY - minY, 1);
+    const cW = containerRef.current?.offsetWidth ?? 1200;
+    const cH = containerRef.current?.offsetHeight ?? 800;
+
+    const zoom = Math.max(
+      0.1,
+      Math.min(
+        (cW - 2 * LEFT_MARGIN) / graphW,
+        (cH - 2 * LEFT_MARGIN) / graphH,
+      ),
+    );
+
+    setViewport(
+      { x: LEFT_MARGIN - minX * zoom, y: LEFT_MARGIN - minY * zoom, zoom },
+      { duration: 300 },
+    );
+  }, [laidNodes, setViewport, containerRef]);
+
+  return null;
+}
+
 interface GraphCanvasProps {
   nodes: ApiGraphNode[];
   edges: ApiGraphEdge[];
@@ -70,7 +132,7 @@ function topoSort(nodes: Node[]): Node[] {
     const node = byId.get(id);
     if (!node) return;
     const pn = (node as Node & { parentNode?: string }).parentNode;
-    if (pn) visit(pn); // ensure parent is output first
+    if (pn) visit(pn);
     result.push(node);
   }
 
@@ -92,11 +154,9 @@ export function GraphCanvas({
   collapsedIds = new Set<string>(),
   onToggleCollapse = () => {},
 }: GraphCanvasProps) {
-  const { fitView } = useReactFlow();
-  // Store fitView in a ref so the effect below does not re-run when the
-  // React Flow instance re-initialises between renders.
-  const fitViewRef = useRef(fitView);
-  fitViewRef.current = fitView;
+  // Ref to the container div — used by ViewportController for dimension reads.
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // Map API nodes to React Flow nodes (parentId -> parentNode), parents first
   const toRfNodes = useCallback(
     (src: ApiGraphNode[]): Node[] => {
@@ -167,18 +227,14 @@ export function GraphCanvas({
   const [edges, setEdges, onEdgesChange] = useEdgesState(toRfEdges(visibleApiEdges));
 
   // Re-layout whenever visible data or rankdir changes.
+  // ViewportController (rendered inside ReactFlow) reacts to `nodes` changes
+  // and applies the left-aligned viewport from the correct store context.
   useEffect(() => {
     const rfNodes = toRfNodes(visibleApiNodes);
     const rfEdges = toRfEdges(visibleApiEdges);
     setNodes(applyDagreLayout(rfNodes, rfEdges, rankdir));
     setEdges(rfEdges);
   }, [visibleApiNodes, visibleApiEdges, rankdir, toRfNodes, toRfEdges, setNodes, setEdges]);
-
-  // Phase B-4: re-fit the viewport after layout settles so the full graph
-  // stays visible after snapshot switches, filter changes, and rankdir toggles.
-  useEffect(() => {
-    fitViewRef.current({ padding: 0.2, duration: 300 });
-  }, [apiNodes, apiEdges, rankdir]);
 
   // Phase B-1: track which node the user last clicked so connected peers can
   // be emphasised and unrelated elements dimmed.
@@ -259,7 +315,6 @@ export function GraphCanvas({
       if (seen.has(color)) continue;
       seen.add(color);
 
-      // Find the category label for this colour.
       const category =
         Object.entries(SERVICE_CATEGORIES).find(([, svcs]) =>
           svcs.some((s) => serviceColorOf(`AWS::${s}::X`) === color),
@@ -274,7 +329,7 @@ export function GraphCanvas({
   return (
     <CollapseContext.Provider value={{ collapsedIds, toggleCollapse: onToggleCollapse }}>
     <RankDirContext.Provider value={rankdir}>
-      <div className="w-full h-full" data-testid="graph-canvas">
+      <div ref={containerRef} className="w-full h-full" data-testid="graph-canvas">
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}
@@ -283,9 +338,11 @@ export function GraphCanvas({
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
-          fitView
           attributionPosition="bottom-right"
         >
+          {/* ViewportController lives inside ReactFlow so useReactFlow()
+              binds to this canvas's store, not the outer ReactFlowProvider. */}
+          <ViewportController laidNodes={nodes} containerRef={containerRef} />
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E5E7EB" />
           <Controls />
           <Panel position="bottom-left">
@@ -304,4 +361,3 @@ export function GraphCanvas({
     </CollapseContext.Provider>
   );
 }
-

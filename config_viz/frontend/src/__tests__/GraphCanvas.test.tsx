@@ -5,8 +5,9 @@ import { GraphCanvas } from "../components/GraphCanvas";
 import type { ApiGraphNode, ApiGraphEdge } from "../types";
 
 // Mock reactflow to avoid canvas / ResizeObserver issues in jsdom
-const { mockReactFlow, fitViewSpy } = vi.hoisted(() => {
+const { mockReactFlow, fitViewSpy, setViewportSpy } = vi.hoisted(() => {
   const fitViewSpy = vi.fn();
+  const setViewportSpy = vi.fn();
   const mockReactFlow = vi.fn(
     ({
       nodes = [],
@@ -68,7 +69,7 @@ const { mockReactFlow, fitViewSpy } = vi.hoisted(() => {
       </div>
     ),
   );
-  return { mockReactFlow, fitViewSpy };
+  return { mockReactFlow, fitViewSpy, setViewportSpy };
 });
 
 vi.mock("reactflow", () => ({
@@ -95,7 +96,11 @@ vi.mock("reactflow", () => ({
   Position: { Top: "top", Bottom: "bottom", Left: "left", Right: "right" },
   useNodesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useEdgesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
-  useReactFlow: () => ({ fitView: fitViewSpy }),
+  useReactFlow: () => ({
+    fitView: fitViewSpy,
+    setViewport: setViewportSpy,
+    getViewport: vi.fn(() => ({ x: 0, y: 0, zoom: 1 })),
+  }),
   MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
   BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
   Panel: ({ children }: { children: React.ReactNode }) => (
@@ -113,6 +118,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe("GraphCanvas", () => {
   beforeEach(() => {
     fitViewSpy.mockClear();
+    setViewportSpy.mockClear();
   });
 
   // Empty-state: no nodes to render → show placeholder message instead of canvas
@@ -484,27 +490,28 @@ describe("GraphCanvas", () => {
     });
   });
 
-  // Phase B-4: fitView is called whenever the displayed data or layout direction
-  // changes so the graph stays fully visible after snapshot/filter switches.
-  describe("fitView on change (B-4)", () => {
-    it("calls fitView when rankdir changes", async () => {
+  // Phase B-4: setViewport is called (left-aligned) whenever displayed data or
+  // layout direction changes so the graph stays positioned after snapshot/filter
+  // switches.
+  describe("left-aligned viewport on change (B-4)", () => {
+    it("calls setViewport when rankdir changes", async () => {
       const { rerender } = render(
         <GraphCanvas nodes={nodes} edges={[]} rankdir="TB" onNodeClick={() => {}} />,
         { wrapper },
       );
-      fitViewSpy.mockClear();
+      setViewportSpy.mockClear();
       rerender(<GraphCanvas nodes={nodes} edges={[]} rankdir="LR" onNodeClick={() => {}} />);
-      await waitFor(() => expect(fitViewSpy).toHaveBeenCalled());
+      await waitFor(() => expect(setViewportSpy).toHaveBeenCalled());
     });
 
-    it("calls fitView when apiNodes change", async () => {
+    it("calls setViewport when apiNodes change", async () => {
       const { rerender } = render(
         <GraphCanvas nodes={nodes} edges={[]} rankdir="TB" onNodeClick={() => {}} />,
         { wrapper },
       );
-      fitViewSpy.mockClear();
+      setViewportSpy.mockClear();
       rerender(<GraphCanvas nodes={[nodes[0]]} edges={[]} rankdir="TB" onNodeClick={() => {}} />);
-      await waitFor(() => expect(fitViewSpy).toHaveBeenCalled());
+      await waitFor(() => expect(setViewportSpy).toHaveBeenCalled());
     });
   });
 });

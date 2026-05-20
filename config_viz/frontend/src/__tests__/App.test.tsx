@@ -43,7 +43,11 @@ vi.mock("reactflow", () => ({
   Position: { Top: "top", Bottom: "bottom", Left: "left", Right: "right" },
   useNodesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
   useEdgesState: (initial: unknown[]) => [initial, vi.fn(), vi.fn()],
-  useReactFlow: () => ({ fitView: vi.fn() }),
+  useReactFlow: () => ({
+    fitView: vi.fn(),
+    setViewport: vi.fn(),
+    getViewport: vi.fn(() => ({ x: 0, y: 0, zoom: 1 })),
+  }),
   MarkerType: { ArrowClosed: "arrowclosed", Arrow: "arrow" },
   BackgroundVariant: { Dots: "dots", Lines: "lines", Cross: "cross" },
   Panel: ({ children }: { children: React.ReactNode }) => <>{children}</>,

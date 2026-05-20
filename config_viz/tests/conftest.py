@@ -606,3 +606,67 @@ def client_ecs(tmp_db_ecs):
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# BA-23: S3 Bucket hierarchy (snap-009)
+# ---------------------------------------------------------------------------
+
+
+def _seed_s3_hierarchy(conn: duckdb.DuckDBPyConnection) -> None:
+    """Insert snap-009: S3 Bucket containing an AccessPoint via association edge.
+
+    Resources
+    ---------
+    s3-bucket-001  AWS::S3::Bucket
+    s3-ap-001      AWS::S3::AccessPoint  (no containment edge; only association)
+
+    Design intent
+    -------------
+    AWS Config does not emit a 'Contains' edge for S3 AccessPoints.  Instead it
+    emits 'Is associated with bucket' (or similar association).  The
+    _infer_s3_hierarchy() function must detect this and place the AccessPoint
+    inside its parent Bucket.
+    """
+    conn.execute("""
+        INSERT INTO config_snapshots VALUES
+            ('snap-009', '111122223333', 'ap-northeast-1',
+             TIMESTAMP '2026-05-20 00:00:00', '/data/snap9.json', 2)
+        """)
+    conn.execute("""
+        INSERT INTO config_resources VALUES
+            ('s3-bucket-001', 'snap-009', 'AWS::S3::Bucket',
+             'ap-northeast-1', 'my-bucket',
+             '{"bucketName":"my-bucket"}', NULL),
+            ('s3-ap-001',     'snap-009', 'AWS::S3::AccessPoint',
+             'ap-northeast-1', 'my-access-point',
+             '{"name":"my-access-point"}', NULL)
+        """)
+    conn.execute("""
+        INSERT INTO config_edges VALUES
+            ('snap-009', 's3-ap-001', 's3-bucket-001', 'Is associated with bucket')
+        """)
+
+
+@pytest.fixture
+def tmp_db_s3(tmp_path) -> str:
+    """Temporary DuckDB seeded with snap-009 (S3 Bucket + AccessPoint)."""
+    path = str(tmp_path / "s3.db")
+    conn = duckdb.connect(path)
+    _create_tables(conn)
+    _seed_s3_hierarchy(conn)
+    conn.close()
+    return path
+
+
+@pytest.fixture
+def client_s3(tmp_db_s3):
+    """TestClient backed by snap-009 (S3 Bucket hierachy)."""
+    from backend.db import get_conn
+    from backend.main import app
+
+    app.dependency_overrides[get_conn] = _make_override(tmp_db_s3)
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
+

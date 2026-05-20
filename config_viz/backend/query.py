@@ -136,6 +136,17 @@ _SUBNET_RESIDENT_TYPES: frozenset[str] = frozenset(
     }
 )
 
+# S3 resource types that logically reside inside an S3 Bucket.
+# When one of these has no parent yet, _infer_s3_hierarchy() will look for a
+# direct S3::Bucket neighbour via any edge (including association edges) and
+# assign that Bucket as the parent.
+_S3_CHILD_TYPES: frozenset[str] = frozenset(
+    {
+        "AWS::S3::AccessPoint",
+        "AWS::S3::MultiRegionAccessPoint",
+    }
+)
+
 
 def _infer_subnet_for_residents(
     parent_map: dict[str, str],
@@ -257,6 +268,44 @@ def _infer_vpc_for_residents(
             parent_map[rid] = found_vpc
 
 
+def _infer_s3_hierarchy(
+    parent_map: dict[str, str],
+    edge_rows: list[tuple[str, str, str]],
+    rid_to_type: dict[str, str],
+) -> None:
+    """Mutate *parent_map* to place S3 sub-resources inside their parent S3 Bucket.
+
+    For each resource whose type is in ``_S3_CHILD_TYPES`` and that has no parent
+    yet, look for a direct neighbour that is an ``AWS::S3::Bucket`` via any edge
+    (containment or association) and assign that Bucket as the parent.
+
+    AWS Config does not emit explicit containment edges for S3 AccessPoints; it
+    uses association edges such as "Is associated with bucket".  This function
+    bridges that gap so AccessPoints appear nested inside their Bucket in the graph.
+
+    Args:
+        parent_map:  Mutable mapping of resource_id → parent_resource_id.
+        edge_rows:   All edges for the snapshot (source_id, target_id, edge_type).
+        rid_to_type: resource_id → resource_type lookup.
+    """
+    # Build a bidirectional adjacency map across ALL edge types.
+    adj: dict[str, set[str]] = {}
+    for src, tgt, _etype in edge_rows:
+        adj.setdefault(src, set()).add(tgt)
+        adj.setdefault(tgt, set()).add(src)
+
+    for rid, rtype in rid_to_type.items():
+        if rtype not in _S3_CHILD_TYPES:
+            continue
+        if rid in parent_map:
+            continue  # already has a parent from containment edges
+        # Find a direct S3::Bucket neighbour.
+        for neighbor in adj.get(rid, set()):
+            if rid_to_type.get(neighbor) == "AWS::S3::Bucket":
+                parent_map[rid] = neighbor
+                break
+
+
 # ---------------------------------------------------------------------------
 # Public query functions
 # ---------------------------------------------------------------------------
@@ -353,6 +402,10 @@ def get_graph(
     # Infer VPC membership for resources (e.g. EIP) that have no containment
     # edge but are reachable from a VPC-resident resource via association edges.
     _infer_vpc_for_residents(parent_map, all_edges, rid_to_first_type)
+
+    # Infer S3 hierarchy: place S3 AccessPoints and similar sub-resources inside
+    # their parent S3 Bucket via any association edge.
+    _infer_s3_hierarchy(parent_map, all_edges, rid_to_first_type)
 
     container_ids: set[str] = set(parent_map.values())
 

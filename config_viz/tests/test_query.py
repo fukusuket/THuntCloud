@@ -716,3 +716,58 @@ def test_ba22_instance_depth_is_three(client_hierarchy):
     response = client_hierarchy.get("/api/snapshots/snap-002/graph")
     nodes = {n["id"]: n for n in response.json()["nodes"]}
     assert nodes["i-001"]["data"]["depth"] == 3
+
+
+# ---------------------------------------------------------------------------
+# BA-23: S3 Bucket hierarchy — S3::AccessPoint placed inside its parent Bucket
+#
+# snap-009 fixture:
+#   s3-bucket-001  AWS::S3::Bucket
+#   s3-ap-001      AWS::S3::AccessPoint  ("Is associated with bucket" → s3-bucket-001)
+#
+# Design intent
+# -------------
+# S3 AccessPoints have no containment edge in AWS Config snapshots; only an
+# association edge to the parent Bucket.  The _infer_s3_hierarchy() function
+# must treat AWS::S3::Bucket as a container and place sub-resources inside it
+# via association edges.
+# ---------------------------------------------------------------------------
+
+
+def test_ba23_s3_access_point_parent_is_bucket(client_s3):
+    """S3 AccessPoint with association edge to Bucket must have parentId == bucket_id."""
+    response = client_s3.get("/api/snapshots/snap-009/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["s3-ap-001"]["parentId"] == "s3-bucket-001"
+
+
+def test_ba23_s3_bucket_is_container(client_s3):
+    """S3 Bucket with a child AccessPoint must be flagged as container (awsGroupNode)."""
+    response = client_s3.get("/api/snapshots/snap-009/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["s3-bucket-001"]["data"]["is_container"] is True
+    assert nodes["s3-bucket-001"]["type"] == "awsGroupNode"
+
+
+def test_ba23_s3_bucket_inside_s3_service_group(client_s3):
+    """Root S3 Bucket must be nested inside the __svc__S3 service-group node."""
+    response = client_s3.get("/api/snapshots/snap-009/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["s3-bucket-001"]["parentId"] == "__svc__S3"
+    assert "__svc__S3" in nodes
+
+
+def test_ba23_s3_bucket_depth_is_one(client_s3):
+    """S3 Bucket (inside service group) must have depth == 1."""
+    response = client_s3.get("/api/snapshots/snap-009/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["s3-bucket-001"]["data"]["depth"] == 1
+
+
+def test_ba23_s3_access_point_depth_is_two(client_s3):
+    """S3 AccessPoint (inside Bucket inside service group) must have depth == 2."""
+    response = client_s3.get("/api/snapshots/snap-009/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["s3-ap-001"]["data"]["depth"] == 2
+
