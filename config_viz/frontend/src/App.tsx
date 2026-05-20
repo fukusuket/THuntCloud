@@ -78,6 +78,10 @@ export default function App() {
           <div className="flex h-full items-center justify-center text-gray-400 text-sm">
             Loading graph…
           </div>
+        ) : graphData.nodes.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-gray-400 text-sm">
+            No components to display.
+          </div>
         ) : (
           <ReactFlowProvider>
             <GraphCanvas

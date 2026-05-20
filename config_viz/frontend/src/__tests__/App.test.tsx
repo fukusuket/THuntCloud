@@ -63,6 +63,27 @@ function makeWrapper() {
 // BF-02: Selecting a snapshot triggers graph API call
 // BF-05: Clicking AwsNode opens DetailPanel
 describe("App", () => {
+  it("shows 'No components to display.' when graph has no nodes", async () => {
+    const { server } = await import("../mocks/server");
+    const { http, HttpResponse } = await import("msw");
+    server.use(
+      http.get("/api/snapshots/:id/graph", () =>
+        HttpResponse.json({ nodes: [], edges: [] }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    render(<App />, { wrapper: makeWrapper() });
+
+    await waitFor(() => screen.getByText("snap-001"));
+    await user.click(screen.getByText("snap-001"));
+
+    await waitFor(() => {
+      expect(screen.getByText("No components to display.")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("react-flow")).not.toBeInTheDocument();
+  });
+
   it("renders snapshot list and graph on snapshot selection (BF-02)", async () => {
     const user = userEvent.setup();
     render(<App />, { wrapper: makeWrapper() });
@@ -77,6 +98,19 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("react-flow")).toBeInTheDocument();
     });
+  });
+
+  it("closes the 'No components to display.' message when graph has nodes (BF-02)", async () => {
+    const user = userEvent.setup();
+    render(<App />, { wrapper: makeWrapper() });
+
+    await waitFor(() => screen.getByText("snap-001"));
+    await user.click(screen.getByText("snap-001"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("No components to display.")).not.toBeInTheDocument();
   });
 
   it("opens DetailPanel when a node is clicked (BF-05)", async () => {

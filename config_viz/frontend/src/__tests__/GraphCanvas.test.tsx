@@ -114,6 +114,24 @@ describe("GraphCanvas", () => {
   beforeEach(() => {
     fitViewSpy.mockClear();
   });
+
+  // Empty-state: no nodes to render → show placeholder message instead of canvas
+  describe("empty state", () => {
+    it("shows 'No components to display.' when nodes prop is empty", () => {
+      render(<GraphCanvas nodes={[]} edges={[]} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.getByText("No components to display.")).toBeInTheDocument();
+    });
+
+    it("does not render the ReactFlow canvas when nodes is empty", () => {
+      render(<GraphCanvas nodes={[]} edges={[]} rankdir="TB" onNodeClick={() => {}} />, {
+        wrapper,
+      });
+      expect(screen.queryByTestId("react-flow")).not.toBeInTheDocument();
+    });
+  });
+
   const nodes: ApiGraphNode[] = [
     {
       id: "vpc-123",

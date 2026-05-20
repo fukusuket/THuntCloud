@@ -15,9 +15,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { MINIMAP_LEAF_COLOR, serviceColorOf } from "../utils/serviceColors";
+import { MINIMAP_LEAF_COLOR, SERVICE_CATEGORIES, NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { getVisibleNodes, rewireEdges } from "../utils/collapse";
-import { SERVICE_CATEGORIES, NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { CollapseContext } from "./CollapseContext";
 import { RankDirContext } from "./RankDirContext";
 import { Legend, type LegendEntry } from "./Legend";
@@ -148,6 +147,15 @@ export function GraphCanvas({
     () => rewireEdges(apiEdges, collapsedIds, apiNodes),
     [apiEdges, collapsedIds, apiNodes],
   );
+
+  // Show empty state when there are no nodes to render.
+  if (apiNodes.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm" data-testid="graph-canvas">
+        No components to display.
+      </div>
+    );
+  }
 
   const layoutedNodes = applyDagreLayout(
     toRfNodes(visibleApiNodes),
