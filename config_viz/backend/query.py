@@ -44,6 +44,10 @@ _SERVICE_LABELS: dict[str, str] = {
     "CodeDeploy": "AWS CodeDeploy",
     "Config": "AWS Config",
     "EC2": "Amazon EC2",
+    "ECS": "Amazon ECS",
+    "EKS": "Amazon EKS",
+    "ElasticLoadBalancing": "Elastic Load Balancing",
+    "ElasticLoadBalancingV2": "Elastic Load Balancing v2",
     "Events": "Amazon EventBridge",
     "Glue": "AWS Glue",
     "IAM": "AWS IAM",
@@ -74,11 +78,15 @@ def _build_parent_map(
 ) -> dict[str, str]:
     """Build resource_id → parent_resource_id map from containment edges.
 
-    Matches any edge whose type *starts with* ``contains`` or
-    ``is contained in`` (case-insensitive).  This covers both the bare
-    ``"Contains"`` label and suffixed variants such as
-    ``"Contains Subnet"``, ``"Contains SecurityGroup"``,
-    ``"Is contained in Vpc"``, etc.
+    Matches any edge whose type *starts with* one of the following
+    (case-insensitive):
+
+    * ``contains`` — src contains tgt; tgt's parent is src.
+      Covers ``"Contains"``, ``"Contains Subnet"``, ``"Contains DBInstance"``, etc.
+    * ``is contained in`` — src is inside tgt; src's parent is tgt.
+      Covers ``"Is contained in Vpc"``, ``"Is contained in Subnet"``, etc.
+    * ``is member of`` — src belongs to tgt; src's parent is tgt.
+      Covers ``"Is member of AutoScalingGroup"`` and similar membership edges.
     """
     m: dict[str, str] = {}
     for src, tgt, etype in edge_rows:
@@ -88,6 +96,9 @@ def _build_parent_map(
             m[tgt] = src
         elif n.startswith("is contained in"):
             # src is contained in tgt → src's parent is tgt
+            m[src] = tgt
+        elif n.startswith("is member of"):
+            # src is a member of tgt → src's parent is tgt
             m[src] = tgt
     return m
 
@@ -100,11 +111,69 @@ _VPC_RESIDENT_TYPES: frozenset[str] = frozenset(
     {
         "AWS::EC2::Subnet",
         "AWS::EC2::RouteTable",
+        "AWS::EC2::NetworkAcl",
+        "AWS::EC2::NetworkInterface",
         "AWS::EC2::Instance",
         "AWS::EC2::NatGateway",
         "AWS::EC2::EIP",
+        "AWS::ElasticLoadBalancingV2::LoadBalancer",
+        "AWS::ElasticLoadBalancing::LoadBalancer",
+        "AWS::Lambda::Function",
+        "AWS::RDS::DBSubnetGroup",
+        "AWS::RDS::DBInstance",
     }
 )
+
+# Resource types that should be placed inside a specific Subnet when they have
+# only association (non-containment) edges pointing to a Subnet.
+# _infer_subnet_for_residents() runs BEFORE _infer_vpc_for_residents() so that
+# these resources land at the most granular container available.
+_SUBNET_RESIDENT_TYPES: frozenset[str] = frozenset(
+    {
+        "AWS::EC2::NetworkInterface",
+        "AWS::Lambda::Function",
+        "AWS::RDS::DBInstance",
+    }
+)
+
+
+def _infer_subnet_for_residents(
+    parent_map: dict[str, str],
+    edge_rows: list[tuple[str, str, str]],
+    rid_to_type: dict[str, str],
+) -> None:
+    """Mutate *parent_map* to place subnet-resident resources inside their Subnet.
+
+    For each resource whose type is in ``_SUBNET_RESIDENT_TYPES`` and that has
+    no parent yet, look for a direct neighbour that is an ``AWS::EC2::Subnet``
+    via non-containment (association) edges and assign that Subnet as the parent.
+
+    This runs **before** ``_infer_vpc_for_residents`` so that VPC inference can
+    later confirm a VPC ancestor through the newly assigned Subnet parent.
+
+    Args:
+        parent_map:  Mutable mapping of resource_id → parent_resource_id.
+        edge_rows:   All edges for the snapshot (source_id, target_id, edge_type).
+        rid_to_type: resource_id → resource_type lookup.
+    """
+    # Build bidirectional adjacency of non-containment edges.
+    assoc: dict[str, set[str]] = {}
+    for src, tgt, etype in edge_rows:
+        n = etype.strip().lower()
+        if not n.startswith("contains") and not n.startswith("is contained in"):
+            assoc.setdefault(src, set()).add(tgt)
+            assoc.setdefault(tgt, set()).add(src)
+
+    for rid, rtype in rid_to_type.items():
+        if rtype not in _SUBNET_RESIDENT_TYPES:
+            continue
+        if rid in parent_map:
+            continue  # already has a parent from containment edges
+        # Look for a direct Subnet neighbour via association edges.
+        for neighbor in assoc.get(rid, set()):
+            if rid_to_type.get(neighbor) == "AWS::EC2::Subnet":
+                parent_map[rid] = neighbor
+                break
 
 
 def _infer_vpc_for_residents(
@@ -276,6 +345,11 @@ def get_graph(
     for rid, rtype in all_type_rows:
         rid_to_first_type.setdefault(rid, rtype)
 
+    # Infer Subnet membership for resources that have only association edges to
+    # a Subnet (e.g. VPC-deployed Lambda, RDS DBInstance).  Runs before VPC
+    # inference so these resources land at the most specific container.
+    _infer_subnet_for_residents(parent_map, all_edges, rid_to_first_type)
+
     # Infer VPC membership for resources (e.g. EIP) that have no containment
     # edge but are reachable from a VPC-resident resource via association edges.
     _infer_vpc_for_residents(parent_map, all_edges, rid_to_first_type)
@@ -379,6 +453,23 @@ def get_graph(
                     "label": etype,
                 }
             )
+
+    # 8. Compute nesting depth for each node (0 = root / service-group level).
+    # Used by the frontend to apply depth-aware visual styling.
+    id_to_parent_id: dict[str, str | None] = {n["id"]: n["parentId"] for n in nodes}
+    depth_of: dict[str, int] = {}
+    for nid, pid in id_to_parent_id.items():
+        if pid is None:
+            depth_of[nid] = 0
+    changed = True
+    while changed:
+        changed = False
+        for nid, pid in id_to_parent_id.items():
+            if nid not in depth_of and pid is not None and pid in depth_of:
+                depth_of[nid] = depth_of[pid] + 1
+                changed = True
+    for node in nodes:
+        node["data"]["depth"] = depth_of.get(node["id"], 0)
 
     return {"nodes": nodes, "edges": edges}
 

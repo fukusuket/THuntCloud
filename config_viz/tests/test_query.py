@@ -489,7 +489,230 @@ def test_ba15_association_edge_still_present(client_vpc_full):
     response = client_vpc_full.get("/api/snapshots/snap-003/graph")
     data = response.json()
     edge_pairs = {(e["source"], e["target"]) for e in data["edges"]}
-    assert ("eip-200", "nat-200") in edge_pairs, (
+    assert (
+        "eip-200",
+        "nat-200",
+    ) in edge_pairs, (
         "association edge eip-200→nat-200 must be preserved in the edge list"
     )
 
+
+# ---------------------------------------------------------------------------
+# BA-16: Extended VPC-resident types — NetworkAcl, NetworkInterface, ALB
+#
+# snap-004 fixture:
+#   subnet-400 → vpc-400  (Is contained in Vpc)
+#   acl-400    → vpc-400  (Is contained in Vpc)
+#   eni-400    → subnet-400 (Is contained in Subnet)
+#   lambda-400 → subnet-400 (Is associated with — no containment)
+#   rds-400    → subnet-400 (Is associated with — no containment)
+#   alb-400    → vpc-400  (Is associated with — no containment)
+# ---------------------------------------------------------------------------
+
+
+def test_ba16_network_acl_parent_is_vpc(client_vpc_extended):
+    """NetworkAcl with 'Is contained in Vpc' edge must be a direct child of the VPC."""
+    response = client_vpc_extended.get("/api/snapshots/snap-004/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["acl-400"]["parentId"] == "vpc-400"
+
+
+def test_ba16_network_interface_parent_is_subnet(client_vpc_extended):
+    """NetworkInterface with 'Is contained in Subnet' edge must be a child of the Subnet."""
+    response = client_vpc_extended.get("/api/snapshots/snap-004/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["eni-400"]["parentId"] == "subnet-400"
+
+
+def test_ba16_alb_inferred_into_vpc(client_vpc_extended):
+    """ALB with only 'Is associated with' VPC edge must be inferred into the VPC
+    because AWS::ElasticLoadBalancingV2::LoadBalancer is in _VPC_RESIDENT_TYPES."""
+    response = client_vpc_extended.get("/api/snapshots/snap-004/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["alb-400"]["parentId"] == "vpc-400"
+
+
+# ---------------------------------------------------------------------------
+# BA-17: Subnet-level inference — Lambda and RDS placed inside Subnet
+#
+# Same snap-004 fixture — lambda-400 and rds-400 have only association edges
+# pointing to subnet-400.  After _infer_subnet_for_residents, they must land
+# directly inside the Subnet (not just anywhere inside the VPC).
+# ---------------------------------------------------------------------------
+
+
+def test_ba17_lambda_inferred_into_subnet(client_vpc_extended):
+    """Lambda with 'Is associated with' Subnet edge must be placed inside the Subnet."""
+    response = client_vpc_extended.get("/api/snapshots/snap-004/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert (
+        nodes["lambda-400"]["parentId"] == "subnet-400"
+    ), "Lambda must be inferred into its associated Subnet, not just the VPC"
+
+
+def test_ba17_rds_instance_inferred_into_subnet(client_vpc_extended):
+    """RDS DBInstance with 'Is associated with' Subnet edge must be placed inside the Subnet."""
+    response = client_vpc_extended.get("/api/snapshots/snap-004/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert (
+        nodes["rds-400"]["parentId"] == "subnet-400"
+    ), "RDS DBInstance must be inferred into its associated Subnet, not just the VPC"
+
+
+# ---------------------------------------------------------------------------
+# BA-18: Auto Scaling Group containment
+#
+# snap-005 fixture:
+#   i-500 → asg-500  (Is member of AutoScalingGroup)
+# ---------------------------------------------------------------------------
+
+
+def test_ba18_instance_parent_is_asg(client_asg):
+    """EC2 Instance with 'Is member of AutoScalingGroup' edge must be inside the ASG."""
+    response = client_asg.get("/api/snapshots/snap-005/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert (
+        nodes["i-500"]["parentId"] == "asg-500"
+    ), "'Is member of AutoScalingGroup' must be treated as a containment edge"
+
+
+def test_ba18_asg_node_is_container(client_asg):
+    """ASG must be flagged as a container (is_container=True, type=awsGroupNode)."""
+    response = client_asg.get("/api/snapshots/snap-005/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["asg-500"]["data"]["is_container"] is True
+    assert nodes["asg-500"]["type"] == "awsGroupNode"
+
+
+def test_ba18_asg_inside_autoscaling_service_group(client_asg):
+    """ASG must be nested inside the __svc__AutoScaling service-group node."""
+    response = client_asg.get("/api/snapshots/snap-005/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["asg-500"]["parentId"] == "__svc__AutoScaling"
+    assert "__svc__AutoScaling" in nodes
+
+
+# ---------------------------------------------------------------------------
+# BA-19: CloudFormation Stack grouping
+#
+# snap-006 fixture:
+#   stack-600 → i-600      (Contains)
+#   stack-600 → nstack-600 (Contains)
+# No prod code change needed — _build_parent_map handles 'Contains' generically.
+# ---------------------------------------------------------------------------
+
+
+def test_ba19_instance_parent_is_cfn_stack(client_cfn):
+    """EC2 Instance managed by a Stack must have parentId == stack_id."""
+    response = client_cfn.get("/api/snapshots/snap-006/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["i-600"]["parentId"] == "stack-600"
+
+
+def test_ba19_nested_stack_parent_is_parent_stack(client_cfn):
+    """Nested Stack must have parentId == parent stack_id."""
+    response = client_cfn.get("/api/snapshots/snap-006/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["nstack-600"]["parentId"] == "stack-600"
+
+
+def test_ba19_stack_node_is_container(client_cfn):
+    """CloudFormation Stack must be flagged as a container (is_container=True, type=awsGroupNode)."""
+    response = client_cfn.get("/api/snapshots/snap-006/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["stack-600"]["data"]["is_container"] is True
+    assert nodes["stack-600"]["type"] == "awsGroupNode"
+
+
+def test_ba19_stack_inside_cloudformation_service_group(client_cfn):
+    """Root stack must be nested inside the __svc__CloudFormation service-group node."""
+    response = client_cfn.get("/api/snapshots/snap-006/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["stack-600"]["parentId"] == "__svc__CloudFormation"
+    assert "__svc__CloudFormation" in nodes
+
+
+# ---------------------------------------------------------------------------
+# BA-20: RDS Cluster → DB Instance
+#
+# snap-007 fixture:
+#   cluster-700 → db-700  (Contains DBInstance)
+# No prod code change needed — 'Contains DBInstance' starts with 'contains'.
+# ---------------------------------------------------------------------------
+
+
+def test_ba20_db_instance_parent_is_cluster(client_rds_cluster):
+    """RDS DBInstance with 'Contains DBInstance' edge must have parentId == cluster_id."""
+    response = client_rds_cluster.get("/api/snapshots/snap-007/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["db-700"]["parentId"] == "cluster-700"
+
+
+def test_ba20_rds_cluster_node_is_container(client_rds_cluster):
+    """RDS Cluster must be flagged as a container (is_container=True, type=awsGroupNode)."""
+    response = client_rds_cluster.get("/api/snapshots/snap-007/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["cluster-700"]["data"]["is_container"] is True
+    assert nodes["cluster-700"]["type"] == "awsGroupNode"
+
+
+# ---------------------------------------------------------------------------
+# BA-21: ECS Cluster → ECS Service
+#
+# snap-008 fixture:
+#   ecs-800 → svc-800  (Contains)
+# No prod code change needed — handled by _build_parent_map.
+# ---------------------------------------------------------------------------
+
+
+def test_ba21_ecs_service_parent_is_cluster(client_ecs):
+    """ECS Service with 'Contains' edge from Cluster must have parentId == cluster_id."""
+    response = client_ecs.get("/api/snapshots/snap-008/graph")
+    assert response.status_code == 200
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["svc-800"]["parentId"] == "ecs-800"
+
+
+def test_ba21_ecs_cluster_node_is_container(client_ecs):
+    """ECS Cluster must be flagged as a container (is_container=True, type=awsGroupNode)."""
+    response = client_ecs.get("/api/snapshots/snap-008/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["ecs-800"]["data"]["is_container"] is True
+    assert nodes["ecs-800"]["type"] == "awsGroupNode"
+
+
+# ---------------------------------------------------------------------------
+# BA-22: Node depth field — every node exposes a numeric 'depth' in its data
+# ---------------------------------------------------------------------------
+
+
+def test_ba22_service_group_depth_is_zero(client_seeded):
+    """Service-group virtual nodes (root level) must have depth == 0."""
+    response = client_seeded.get("/api/snapshots/snap-001/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["__svc__EC2"]["data"]["depth"] == 0
+
+
+def test_ba22_vpc_depth_is_one(client_hierarchy):
+    """VPC nested inside its service-group must have depth == 1."""
+    response = client_hierarchy.get("/api/snapshots/snap-002/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["vpc-001"]["data"]["depth"] == 1
+
+
+def test_ba22_subnet_depth_is_two(client_hierarchy):
+    """Subnet nested inside VPC must have depth == 2."""
+    response = client_hierarchy.get("/api/snapshots/snap-002/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["subnet-001"]["data"]["depth"] == 2
+
+
+def test_ba22_instance_depth_is_three(client_hierarchy):
+    """EC2 Instance nested inside Subnet must have depth == 3."""
+    response = client_hierarchy.get("/api/snapshots/snap-002/graph")
+    nodes = {n["id"]: n for n in response.json()["nodes"]}
+    assert nodes["i-001"]["data"]["depth"] == 3

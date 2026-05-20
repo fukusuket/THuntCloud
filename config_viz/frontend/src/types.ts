@@ -17,6 +17,12 @@ export interface NodeData {
   is_container: boolean;
   /** Number of direct members — present only on service-group virtual nodes */
   member_count?: number;
+  /**
+   * Nesting depth in the containment hierarchy.
+   * 0 = service-group / top-level root; increments by 1 for each parent layer.
+   * Used by AwsGroupNode to apply depth-aware visual styling.
+   */
+  depth?: number;
 }
 
 /** A single node in the graph response */

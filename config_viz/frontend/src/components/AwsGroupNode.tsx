@@ -26,6 +26,19 @@ const SERVICE_SECONDARY: Record<string, { bg: string; text: string }> = {
 
 const DEFAULT_STYLE = { border: NEUTRAL_COLOR, bg: "#F9FAFB", text: "#374151" };
 
+/**
+ * Background tint applied on top of the service-color base per nesting depth.
+ * Index 0 = service-group (depth 0), index 1 = VPC (depth 1), etc.
+ * Each step adds a subtle dark overlay so deeply nested containers are visually
+ * distinct without clashing with the service colour palette.
+ */
+const DEPTH_BG_TINT = [
+  "transparent",        // 0: service-group — base colour only
+  "rgba(0,0,0,0.00)",   // 1: VPC
+  "rgba(0,0,0,0.04)",   // 2: Subnet
+  "rgba(0,0,0,0.08)",   // 3+: inner containers
+];
+
 function _getStyle(resourceType: string) {
   const border = serviceColorOf(resourceType);
   if (border === NEUTRAL_COLOR) return DEFAULT_STYLE;
@@ -48,12 +61,21 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
   const { collapsedIds, toggleCollapse } = useCollapse();
   const isCollapsed = collapsedIds.has(id);
 
+  // Depth-aware background: apply a subtle tint for deeper nesting levels.
+  const depth = (data as typeof data & { depth?: number }).depth ?? 0;
+  const depthTint = DEPTH_BG_TINT[Math.min(depth, DEPTH_BG_TINT.length - 1)];
+
   return (
     <div
       data-testid="aws-group-node"
+      data-depth={depth}
       style={{
         borderColor: selected ? "#3B82F6" : style.border,
-        backgroundColor: style.bg,
+        backgroundColor: depthTint === "transparent" ? style.bg : style.bg,
+        backgroundImage:
+          depthTint !== "transparent"
+            ? `linear-gradient(${depthTint}, ${depthTint})`
+            : undefined,
         width: "100%",
         height: "100%",
         minWidth: isServiceGroup ? 240 : 180,

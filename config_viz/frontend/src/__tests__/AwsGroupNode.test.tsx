@@ -121,6 +121,54 @@ describe("AwsGroupNode", () => {
     });
   });
 
+  // FE-HG-02: depth-based visual differentiation.
+  // Each nesting level must expose a data-depth attribute whose value equals
+  // the node's depth so CSS / tests can style containers differently.
+  describe("depth attribute (FE-HG-02)", () => {
+    it("renders data-depth=0 when depth is 0 (service-group level)", () => {
+      render(
+        <AwsGroupNode
+          {...props}
+          data={{ ...props.data, depth: 0 }}
+        />
+      );
+      expect(screen.getByTestId("aws-group-node").getAttribute("data-depth")).toBe("0");
+    });
+
+    it("renders data-depth=1 for VPC-level container (depth 1)", () => {
+      render(
+        <AwsGroupNode
+          {...props}
+          data={{ ...props.data, depth: 1 }}
+        />
+      );
+      expect(screen.getByTestId("aws-group-node").getAttribute("data-depth")).toBe("1");
+    });
+
+    it("renders data-depth=2 for Subnet-level container (depth 2)", () => {
+      render(
+        <AwsGroupNode
+          {...props}
+          data={{ ...props.data, depth: 2 }}
+        />
+      );
+      expect(screen.getByTestId("aws-group-node").getAttribute("data-depth")).toBe("2");
+    });
+
+    it("nodes at depth 1 and depth 2 have different data-depth values", () => {
+      const { unmount } = render(
+        <AwsGroupNode {...props} data={{ ...props.data, depth: 1 }} />
+      );
+      const d1 = screen.getByTestId("aws-group-node").getAttribute("data-depth");
+      unmount();
+
+      render(<AwsGroupNode {...props} data={{ ...props.data, depth: 2 }} />);
+      const d2 = screen.getByTestId("aws-group-node").getAttribute("data-depth");
+
+      expect(d1).not.toBe(d2);
+    });
+  });
+
   // Phase A-2: handle positions follow rankdir for cleaner edge routing.
   describe("handle position by rankdir (A-2)", () => {
     it("uses Top/Bottom handles for TB rankdir", () => {
