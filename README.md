@@ -93,7 +93,7 @@ cp -r <local-output-dir>/ THuntCloud/docker/logs/
 cd THuntCloud/docker
 
 # Ingest CloudTrail logs into DuckDB
-docker compose --profile ingest run --rm ingester ingest --path /data/logs
+docker compose --profile ingest run --rm ingester ingest --path /data/logs --strip-fields --strip-raw-event
 
 # (Optional) Ingest AWS Config snapshots.
 docker compose --profile ingest run --rm ingester config-import --path /data/config
