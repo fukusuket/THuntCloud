@@ -60,6 +60,18 @@ describe("AwsGroupNode", () => {
     expect(screen.getByTestId("aws-group-node")).toBeInTheDocument();
   });
 
+  // Fix: container div must fill its React Flow wrapper so that children
+  // nodes (Subnet, NetworkACL, etc.) rendered within the wrapper appear
+  // visually inside the VPC / group border.  Without width/height 100% the
+  // visual dashed rectangle stays at its minWidth/minHeight while dagre sets
+  // a much larger wrapper size, pushing children outside the border.
+  it("root div has width 100% and height 100% to fill the React Flow wrapper (VPC-in-VPC fix)", () => {
+    render(<AwsGroupNode {...props} />);
+    const container = screen.getByTestId("aws-group-node");
+    expect(container.style.width).toBe("100%");
+    expect(container.style.height).toBe("100%");
+  });
+
   it("highlights when selected", () => {
     render(<AwsGroupNode {...props} selected />);
     const container = screen.getByTestId("aws-group-node");

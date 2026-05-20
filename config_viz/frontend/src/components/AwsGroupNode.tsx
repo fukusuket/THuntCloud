@@ -54,8 +54,11 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
       style={{
         borderColor: selected ? "#3B82F6" : style.border,
         backgroundColor: style.bg,
+        width: "100%",
+        height: "100%",
         minWidth: isServiceGroup ? 240 : 180,
         minHeight: isServiceGroup ? 140 : 100,
+        boxSizing: "border-box",
       }}
       className={[
         "group-node relative rounded-lg border-2 border-dashed",
