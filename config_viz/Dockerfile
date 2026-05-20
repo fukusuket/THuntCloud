@@ -11,6 +11,21 @@
 # ── Stage 1: Build React frontend ─────────────────────────────────────────────
 FROM node:25-slim AS frontend-builder
 
+# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
+# No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
+# See docker/.env.example for instructions.
+# ──────────────────────────────────────────────────────────────────────────────
+ARG CUSTOM_CA_CERT_BASE64=""
+RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates \
+        && printf '%s' "$CUSTOM_CA_CERT_BASE64" | base64 -d \
+             > /usr/local/share/ca-certificates/custom-ca.crt \
+        && update-ca-certificates \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
 WORKDIR /app/frontend
 
 # Install dependencies first for layer caching
@@ -27,17 +42,21 @@ RUN npm run build
 FROM python:3.14-slim AS runtime
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# If you are behind a corporate proxy that performs TLS inspection,
-# uncomment the following lines and place your CA certificate file
-# (e.g. custom-ca.crt) in the same directory as this Dockerfile.
-#
-# COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-#     && update-ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-# ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+# No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
+# See docker/.env.example for instructions.
 # ──────────────────────────────────────────────────────────────────────────────
+ARG CUSTOM_CA_CERT_BASE64=""
+RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates \
+        && printf '%s' "$CUSTOM_CA_CERT_BASE64" | base64 -d \
+             > /usr/local/share/ca-certificates/custom-ca.crt \
+        && update-ca-certificates \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

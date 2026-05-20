@@ -39,6 +39,7 @@ services:
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
         INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.10}
+        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     container_name: threat-hunting-ingester
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
@@ -72,6 +73,8 @@ services:
     build:
       context: ../agent
       dockerfile: Dockerfile
+      args:
+        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     container_name: threat-hunting-agent
     ports:
       - "8501:8501"
@@ -95,6 +98,8 @@ services:
     build:
       context: ../config_viz
       dockerfile: Dockerfile
+      args:
+        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     container_name: threat-hunting-config-viz
     ports:
       - "8502:8502"
@@ -114,6 +119,8 @@ services:
     build:
       context: ../dashboard
       dockerfile: Dockerfile
+      args:
+        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     image: thuntcloud-dashboard:latest
     container_name: threat-hunting-dashboard
     ports:

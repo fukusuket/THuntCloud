@@ -3,18 +3,25 @@ FROM python:3.14-slim
 WORKDIR /app
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# If you are behind a corporate proxy that performs TLS inspection,
-# uncomment the following lines and place your CA certificate file
-# (e.g. custom-ca.crt) in the same directory as this Dockerfile.
-#
-# COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-#     && update-ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-# ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-# ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+# No edits needed here. To enable proxy support for all containers at once:
+#   1. Base64-encode your CA cert:
+#        macOS : CUSTOM_CA_CERT_BASE64=$(base64 -i /path/to/custom-ca.crt)
+#        Linux : CUSTOM_CA_CERT_BASE64=$(base64 -w0 /path/to/custom-ca.crt)
+#   2. Add the result to docker/.env:
+#        CUSTOM_CA_CERT_BASE64=<value>
 # ──────────────────────────────────────────────────────────────────────────────
+ARG CUSTOM_CA_CERT_BASE64=""
+RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates \
+        && printf '%s' "$CUSTOM_CA_CERT_BASE64" | base64 -d \
+             > /usr/local/share/ca-certificates/custom-ca.crt \
+        && update-ca-certificates \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt
 
 # Install curl for HEALTHCHECK and other runtime tools
 RUN apt-get update && apt-get install -y --no-install-recommends \

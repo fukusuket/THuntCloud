@@ -4,21 +4,27 @@
 # Leave empty (default) to compile from source with the `runtime` target.
 ARG INGESTER_VERSION="v0.1.10"
 
+# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
+# No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
+# See docker/.env.example for instructions.
+# This global ARG is redeclared in each stage that requires network access.
+ARG CUSTOM_CA_CERT_BASE64=""
+
 # ── Stage 1: Builder (compile from source) ────────────────────────────────────
 FROM rust:1.95-slim AS builder
 
-# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# If you are behind a corporate proxy that performs TLS inspection,
-# uncomment the following lines and place your CA certificate file
-# (e.g. custom-ca.crt) in the same directory as this Dockerfile.
-#
-# COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-#     && update-ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-# ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# ENV CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
-# ──────────────────────────────────────────────────────────────────────────────
+# Inherit global proxy CA setting for cargo crate downloads
+ARG CUSTOM_CA_CERT_BASE64
+RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates \
+        && printf '%s' "$CUSTOM_CA_CERT_BASE64" | base64 -d \
+             > /usr/local/share/ca-certificates/custom-ca.crt \
+        && update-ca-certificates \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
 # Install build dependencies required by duckdb (bundled feature compiles C++)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -49,15 +55,6 @@ RUN touch src/main.rs && cargo build --release --locked
 # ── Stage 2: Runtime (source build) ──────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
 
-# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# If you are behind a corporate proxy, uncomment the following lines.
-#
-# COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-#     && update-ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-# ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# ──────────────────────────────────────────────────────────────────────────────
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -79,10 +76,18 @@ CMD ["--help"]
 FROM debian:trixie-slim AS downloader
 ARG INGESTER_VERSION
 ARG TARGETARCH
+
+# Inherit global proxy CA setting for curl binary downloads
+ARG CUSTOM_CA_CERT_BASE64
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
+        printf '%s' "$CUSTOM_CA_CERT_BASE64" | base64 -d \
+            > /usr/local/share/ca-certificates/custom-ca.crt \
+        && update-ca-certificates; \
+    fi
 RUN test -n "$INGESTER_VERSION" || { echo "Error: INGESTER_VERSION build arg must be set"; exit 1; } \
     && case "$TARGETARCH" in \
         amd64) BINARY="ingester-x86_64-linux"  ;; \
@@ -105,15 +110,6 @@ RUN test -n "$INGESTER_VERSION" || { echo "Error: INGESTER_VERSION build arg mus
 #     docker compose build ingester
 FROM debian:trixie-slim AS prebuilt-runtime
 
-# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# If you are behind a corporate proxy, uncomment the following lines.
-#
-# COPY custom-ca.crt /usr/local/share/ca-certificates/custom-ca.crt
-# RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-#     && update-ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-# ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# ──────────────────────────────────────────────────────────────────────────────
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
