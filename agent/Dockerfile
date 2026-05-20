@@ -16,6 +16,11 @@ WORKDIR /app
 # ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Install curl for HEALTHCHECK and other runtime tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install runtime dependencies first for layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

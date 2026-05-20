@@ -9,7 +9,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Build React frontend ─────────────────────────────────────────────
-FROM node:20-slim AS frontend-builder
+FROM node:25-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -24,7 +24,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Python runtime ───────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
 # If you are behind a corporate proxy that performs TLS inspection,
