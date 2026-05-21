@@ -116,7 +116,7 @@ def _build_context_messages(context: list[dict], max_turns: int) -> list[dict]:
 def generate_sql(
     user_query: str,
     api_key: str,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     context: list[dict] | None = None,
 ) -> str:
     """Generate a DuckDB SQL query from a natural language question.
@@ -124,7 +124,7 @@ def generate_sql(
     Args:
         user_query: The natural language threat hunting question.
         api_key:    OpenAI API key.
-        model:      Model name to use for generation (default: gpt-5.4).
+        model:      Model name to use for generation (default: gpt-5.5).
         context:    Optional list of prior conversation turns. Each entry
                     must contain 'user_query', 'sql', and 'summary' keys.
                     When provided, the most recent MAX_CONTEXT_TURNS entries
@@ -159,7 +159,7 @@ def fix_sql_with_llm(
     broken_sql: str,
     error_message: str,
     api_key: str,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
 ) -> str:
     """Attempt to fix a SQL query that failed validation using the LLM.
 
@@ -170,7 +170,7 @@ def fix_sql_with_llm(
         broken_sql:    The SQL query that failed validation.
         error_message: The error message produced by the validation failure.
         api_key:       OpenAI API key.
-        model:         Model name to use (default: gpt-5.4).
+        model:         Model name to use (default: gpt-5.5).
 
     Returns:
         A corrected DuckDB SQL string. On API error, returns a string
@@ -204,7 +204,7 @@ def generate_analysis(
     sql: str,
     results: pd.DataFrame,
     api_key: str,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
 ) -> str:
     """Generate a fact-based summary for SQL query results.
 
@@ -216,7 +216,7 @@ def generate_analysis(
         sql:     The SQL query that produced the results.
         results: The query result as a pandas DataFrame.
         api_key: OpenAI API key.
-        model:   Model name to use (default: gpt-5.4).
+        model:   Model name to use (default: gpt-5.5).
 
     Returns:
         Markdown bullet-point summary. On API error, returns a user-friendly

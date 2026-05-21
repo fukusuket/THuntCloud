@@ -66,13 +66,13 @@ def test_session_state_query_history_default_is_empty_list():
 
 
 def test_session_state_model_default():
-    """model key must default to 'gpt-5.4'."""
+    """model key must default to 'gpt-5.5'."""
     mock_state = {}
     with patch("streamlit.session_state", mock_state):
         from app import _init_session_state
 
         _init_session_state()
-        assert mock_state["model"] == "gpt-5.4"
+        assert mock_state["model"] == "gpt-5.5"
 
 
 def test_model_options_include_gpt_5_5():

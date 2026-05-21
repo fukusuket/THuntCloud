@@ -56,7 +56,7 @@ SESSION_STATE_DEFAULTS: dict = {
     "last_results": None,  # pandas DataFrame or None
     "last_summary": "",  # fact-based summary from the last query
     "api_key": "",  # entered in sidebar (AGT-09)
-    "model": "gpt-5.4",  # selected model
+    "model": "gpt-5.5",  # selected model
     "date_start": None,  # date | None — lower bound for event_time filter
     "date_end": None,  # date | None — upper bound for event_time filter
     "row_limit": DEFAULT_ROW_LIMIT,  # maximum rows returned per query

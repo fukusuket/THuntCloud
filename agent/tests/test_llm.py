@@ -60,6 +60,39 @@ def test_build_system_prompt_includes_duckdb_dialect():
     assert "DuckDB" in prompt
 
 
+def test_generate_sql_default_model_is_gpt_5_5(mock_openai_client):
+    """generate_sql() must use gpt-5.5 as the default model."""
+    generate_sql("Show me all events", api_key="sk-test")
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-5.5"
+
+
+def test_fix_sql_default_model_is_gpt_5_5(mock_openai_client):
+    """fix_sql_with_llm() must use gpt-5.5 as the default model."""
+    fix_sql_with_llm(
+        broken_sql="bad sql",
+        error_message="syntax error",
+        api_key="sk-test",
+    )
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-5.5"
+
+
+def test_generate_analysis_default_model_is_gpt_5_5(mock_openai_client):
+    """generate_analysis() must use gpt-5.5 as the default model."""
+    df = pd.DataFrame({"event_name": ["CreateUser"], "cnt": [1]})
+    generate_analysis(
+        sql="SELECT event_name, COUNT(*) AS cnt FROM cloudtrail_events GROUP BY event_name",
+        results=df,
+        api_key="sk-test",
+    )
+
+    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "gpt-5.5"
+
+
 def test_generate_sql_returns_sql_string(mock_openai_client):
     """Given a mocked OpenAI response, generate_sql() returns a SQL string."""
     sql = generate_sql("Show me all CreateUser events", api_key="sk-test")
