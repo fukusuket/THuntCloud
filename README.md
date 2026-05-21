@@ -125,48 +125,7 @@ docker compose --profile ingest run --rm ingester ingest \
 
 ## Corporate Proxy / Custom CA Certificate
 
-If you are behind a **TLS-inspecting corporate proxy**, all container builds will fail when
-trying to pull packages from the internet (Cargo crates, npm packages, pip wheels, etc.).
-
-You only need to edit **one file** — no Dockerfile changes are required.
-
-**Step 1.** Base64-encode your corporate CA certificate (PEM format, single line, no line wrapping):
-
-```bash
-# macOS
-export CUSTOM_CA_CERT_BASE64=$(base64 -i /path/to/custom-ca.crt)
-
-# Linux
-export CUSTOM_CA_CERT_BASE64=$(base64 -w0 /path/to/custom-ca.crt)
-```
-
-**Step 2.** Add it to `docker/.env`:
-
-```bash
-echo "CUSTOM_CA_CERT_BASE64=${CUSTOM_CA_CERT_BASE64}" >> docker/.env
-```
-
-**Step 3.** Build as usual:
-
-```bash
-cd docker
-docker compose build
-```
-
-That's it. Docker Compose passes `CUSTOM_CA_CERT_BASE64` as a build argument to every
-service. Each Dockerfile installs the certificate inside the container at build time and
-configures the relevant tool (`cargo`, `pip`, `npm`, `requests`) to trust it automatically.
-
-| Tool | Environment variable set automatically |
-|------|----------------------------------------|
-| OpenSSL / system | `SSL_CERT_FILE` |
-| Python `requests` | `REQUESTS_CA_BUNDLE` |
-| `pip` | `PIP_CERT` |
-| Rust `cargo` | `CARGO_HTTP_CAINFO` |
-| Node.js | `NODE_EXTRA_CA_CERTS` |
-
-> **Note:** When `CUSTOM_CA_CERT_BASE64` is empty (the default), the conditional `RUN` block
-> in each Dockerfile is skipped entirely — there is no impact on non-proxy builds.
+If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md#6-corporate-proxy--custom-ca-certificate) for setup instructions.
 
 ---
 
@@ -183,51 +142,7 @@ configures the relevant tool (`cargo`, `pip`, `npm`, `requests`) to trust it aut
 
 ### End-to-End Sequence Diagram
 
-The diagram below shows the full lifecycle from log ingestion through to a
-completed AI-assisted threat hunting session.
-
-```mermaid
-sequenceDiagram
-    participant OPS  as Operator
-    participant ING  as ingester (Rust)
-    participant DB   as DuckDB (bind mount)
-    participant APP  as chat / Streamlit
-    participant OAI  as OpenAI API
-    participant SS   as dashboard / Superset
-    participant U    as Analyst (Browser)
-
-    Note over OPS,ING: Phase 1 — Ingest
-    OPS->>ING: docker compose run ingester ingest --path /data/logs
-    ING->>ING: walk & filter files (date, path glob)
-    ING->>ING: parallel parse (rayon) + SHA-256 dedup
-    ING->>DB: batch insert via DuckDB Appender (READ_WRITE)
-    ING->>DB: GeoIP enrich (optional)
-    ING-->>OPS: IngestStats printed
-
-    Note over OPS,SS: Phase 2 — Start services
-    OPS->>APP: docker compose up -d
-    OPS->>SS: docker compose up -d
-    APP->>DB: open READ_ONLY connection
-    SS->>DB: open READ_ONLY connection
-
-    Note over U,OAI: Phase 3 — AI-assisted hunting (chat)
-    U->>APP: natural language question
-    APP->>OAI: generate_sql(question, schema, history)
-    OAI-->>APP: SQL string
-    APP->>APP: apply_date_filter + apply_row_limit
-    APP->>APP: validate_query (blocklist + EXPLAIN)
-    APP->>DB: execute SQL (READ_ONLY)
-    DB-->>APP: result rows (DataFrame)
-    APP->>OAI: generate_analysis(sql, results)
-    OAI-->>APP: fact-based Markdown summary
-    APP-->>U: table + analysis + chat history
-
-    Note over U,SS: Phase 4 — BI dashboard (Superset)
-    U->>SS: open http://localhost:8088
-    SS->>DB: execute chart queries (READ_ONLY)
-    DB-->>SS: aggregated result sets
-    SS-->>U: interactive charts + filters
-```
+See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for the full lifecycle sequence diagram.
 
 ---
 

@@ -111,7 +111,52 @@ npm test
 npm run build
 ```
 
-### 6. Docker Compose (Full Stack)
+### 6. Corporate Proxy / Custom CA Certificate
+
+If you are behind a **TLS-inspecting corporate proxy**, all container builds will fail when
+trying to pull packages from the internet (Cargo crates, npm packages, pip wheels, etc.).
+
+You only need to edit **one file** — no Dockerfile changes are required.
+
+**Step 1.** Base64-encode your corporate CA certificate (PEM format, single line, no line wrapping):
+
+```bash
+# macOS
+export CUSTOM_CA_CERT_BASE64=$(base64 -i /path/to/custom-ca.crt)
+
+# Linux
+export CUSTOM_CA_CERT_BASE64=$(base64 -w0 /path/to/custom-ca.crt)
+```
+
+**Step 2.** Add it to `docker/.env`:
+
+```bash
+echo "CUSTOM_CA_CERT_BASE64=${CUSTOM_CA_CERT_BASE64}" >> docker/.env
+```
+
+**Step 3.** Build as usual:
+
+```bash
+cd docker
+docker compose build
+```
+
+That's it. Docker Compose passes `CUSTOM_CA_CERT_BASE64` as a build argument to every
+service. Each Dockerfile installs the certificate inside the container at build time and
+configures the relevant tool (`cargo`, `pip`, `npm`, `requests`) to trust it automatically.
+
+| Tool | Environment variable set automatically |
+|------|----------------------------------------|
+| OpenSSL / system | `SSL_CERT_FILE` |
+| Python `requests` | `REQUESTS_CA_BUNDLE` |
+| `pip` | `PIP_CERT` |
+| Rust `cargo` | `CARGO_HTTP_CAINFO` |
+| Node.js | `NODE_EXTRA_CA_CERTS` |
+
+> **Note:** When `CUSTOM_CA_CERT_BASE64` is empty (the default), the conditional `RUN` block
+> in each Dockerfile is skipped entirely — there is no impact on non-proxy builds.
+
+### 7. Docker Compose (Full Stack)
 
 ```bash
 cd docker
