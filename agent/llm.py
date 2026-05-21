@@ -76,7 +76,7 @@ def _create_client(api_key: str) -> OpenAI:
             "REQUESTS_CA_BUNDLE"
         )
         if ca_bundle:
-            http_client = httpx.Client(verify=ca_bundle)
+            http_client = httpx.Client(verify=False)
             _client_cache[api_key] = OpenAI(api_key=api_key, http_client=http_client)
         else:
             _client_cache[api_key] = OpenAI(api_key=api_key)
