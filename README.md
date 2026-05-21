@@ -66,7 +66,7 @@ Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`
 | Requirement                           | Details                                            |
 |---------------------------------------|----------------------------------------------------|
 | **Docker**                            | Docker Desktop or Docker Engine + Compose v2       |
-| **Resources**                         | 16 GB RAM minimum, SSD recommended                 |
+| **Resources**                         | 8 GB RAM minimum, SSD recommended                  |
 | **CloudTrail logs**                   | `.json` or `.json.gz` files exported from AWS      |
 | *(Optional)* **AWS Config snapshots** | `.json` or `.json.gz` files for AWS resource graph |
 | *(Optional)* **OpenAI API key**       | Required for AI query generation                   |
