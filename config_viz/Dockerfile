@@ -9,7 +9,10 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Build React frontend ─────────────────────────────────────────────
-FROM node:25-slim AS frontend-builder
+# node:22-slim (Active LTS) — pinned by digest for supply chain integrity.
+# To update: docker pull node:22-slim && docker inspect node:22-slim --format '{{index .RepoDigests 0}}'
+# See doc/SUPPLY_CHAIN_HARDENING.md Phase 3.
+FROM node:22-slim@sha256:7af03b14a13c8cdd38e45058fd957bf00a72bbe17feac43b1c15a689c029c732 AS frontend-builder
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
 # No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
@@ -29,8 +32,16 @@ ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /app/frontend
 
 # Install dependencies first for layer caching
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci
+
+# Generate CycloneDX SBOM for supply chain provenance (Phase 5).
+# Placed after npm ci so it captures the exact installed graph.
+RUN npx --yes @cyclonedx/cyclonedx-npm \
+      --output-format JSON \
+      --output-file /tmp/sbom-frontend.json \
+      --mc-type application 2>/dev/null \
+    && echo "SBOM generated: $(wc -c < /tmp/sbom-frontend.json) bytes"
 
 # Copy source and build
 # vite.config.ts: outDir = path.resolve(__dirname, "../static")
@@ -74,6 +85,9 @@ COPY backend/ ./backend/
 
 # Copy Vite build artefacts from Stage 1
 COPY --from=frontend-builder /app/static ./static
+
+# Copy SBOM for provenance / compliance audits
+COPY --from=frontend-builder /tmp/sbom-frontend.json ./sbom-frontend.json
 
 # Fetch AWS service icons at build time.
 # Failure (e.g. no internet access) is acceptable — extract_icons.py always
