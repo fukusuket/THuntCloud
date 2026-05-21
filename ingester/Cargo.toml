@@ -1,6 +1,6 @@
 [package]
 name = "ingester"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2024"
 license = "AGPL-3.0-only"
 
@@ -24,3 +24,4 @@ maxminddb          = "0.28"
 [dev-dependencies]
 tempfile           = "3.27"
 predicates         = "3.1"
+assert_cmd         = "2.0"
