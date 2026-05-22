@@ -60,6 +60,4 @@ export interface ResourceDetail {
   tags: Record<string, unknown> | null;
 }
 
-/** Layout direction for dagre */
-export type RankDir = "TB" | "LR";
 

@@ -13,7 +13,6 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 // BF-01: Sidebar fetches snapshot list from GET /api/snapshots and renders it
 // BF-07: Changing resource type filter triggers graph API re-fetch  (via onFilterChange)
-// BF-10: TB/LR layout toggle calls onRankdirChange with correct rankdir
 describe("Sidebar", () => {
   it("fetches and renders snapshot list (BF-01)", async () => {
     render(
@@ -21,8 +20,6 @@ describe("Sidebar", () => {
         selectedSnapshotId={null}
         onSnapshotSelect={() => {}}
         onFilterChange={() => {}}
-        onRankdirChange={() => {}}
-        rankdir="TB"
       />,
       { wrapper }
     );
@@ -46,8 +43,6 @@ describe("Sidebar", () => {
         selectedSnapshotId={null}
         onSnapshotSelect={onSelect}
         onFilterChange={() => {}}
-        onRankdirChange={() => {}}
-        rankdir="TB"
       />,
       { wrapper }
     );
@@ -66,8 +61,6 @@ describe("Sidebar", () => {
         selectedSnapshotId="snap-001"
         onSnapshotSelect={() => {}}
         onFilterChange={onFilterChange}
-        onRankdirChange={() => {}}
-        rankdir="TB"
       />,
       { wrapper }
     );
@@ -81,46 +74,6 @@ describe("Sidebar", () => {
     expect(onFilterChange).toHaveBeenCalledWith("AWS::EC2::Instance");
   });
 
-  it("calls onRankdirChange with LR when LR button is clicked (BF-10)", async () => {
-    const user = userEvent.setup();
-    const onRankdirChange = vi.fn();
-
-    render(
-      <Sidebar
-        selectedSnapshotId={null}
-        onSnapshotSelect={() => {}}
-        onFilterChange={() => {}}
-        onRankdirChange={onRankdirChange}
-        rankdir="TB"
-      />,
-      { wrapper }
-    );
-
-    const lrBtn = screen.getByRole("button", { name: /LR/i });
-    await user.click(lrBtn);
-    expect(onRankdirChange).toHaveBeenCalledWith("LR");
-  });
-
-  it("calls onRankdirChange with TB when TB button is clicked (BF-10)", async () => {
-    const user = userEvent.setup();
-    const onRankdirChange = vi.fn();
-
-    render(
-      <Sidebar
-        selectedSnapshotId={null}
-        onSnapshotSelect={() => {}}
-        onFilterChange={() => {}}
-        onRankdirChange={onRankdirChange}
-        rankdir="LR"
-      />,
-      { wrapper }
-    );
-
-    const tbBtn = screen.getByRole("button", { name: /TB/i });
-    await user.click(tbBtn);
-    expect(onRankdirChange).toHaveBeenCalledWith("TB");
-  });
-
   // Phase B-2: search input lets users find resources by name or ID without
   // scrolling the entire graph.
   describe("search box (B-2)", () => {
@@ -130,9 +83,7 @@ describe("Sidebar", () => {
           selectedSnapshotId={null}
           onSnapshotSelect={() => {}}
           onFilterChange={() => {}}
-          onRankdirChange={() => {}}
           onSearchChange={() => {}}
-          rankdir="TB"
           searchTerm=""
         />,
         { wrapper },
@@ -149,9 +100,7 @@ describe("Sidebar", () => {
           selectedSnapshotId={null}
           onSnapshotSelect={() => {}}
           onFilterChange={() => {}}
-          onRankdirChange={() => {}}
           onSearchChange={onSearchChange}
-          rankdir="TB"
           searchTerm=""
         />,
         { wrapper },
@@ -165,5 +114,3 @@ describe("Sidebar", () => {
     });
   });
 });
-
-

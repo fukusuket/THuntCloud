@@ -2,7 +2,6 @@ import { Handle, Position } from "reactflow";
 import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
 import { NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
-import { useRankDir } from "./RankDirContext";
 import { useCollapse } from "./CollapseContext";
 
 interface AwsGroupNodeProps {
@@ -55,9 +54,6 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
   const label = data.resource_name ?? id;
   const isServiceGroup = data.resource_type?.startsWith("__service__");
   const style = _getStyle(data.resource_type ?? "");
-  const rankdir = useRankDir();
-  const targetPos = rankdir === "LR" ? Position.Left : Position.Top;
-  const sourcePos = rankdir === "LR" ? Position.Right : Position.Bottom;
   const { collapsedIds, toggleCollapse } = useCollapse();
   const isCollapsed = collapsedIds.has(id);
 
@@ -88,7 +84,7 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
         selected ? "ring-2 ring-blue-400" : "",
       ].join(" ")}
     >
-      <Handle type="target" position={targetPos} className="!w-2 !h-2 opacity-50" />
+      <Handle type="target" position={Position.Top} className="!w-2 !h-2 opacity-50" />
 
       {/* Header */}
       <div
@@ -146,7 +142,7 @@ export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
         </div>
       )}
 
-      <Handle type="source" position={sourcePos} className="!w-2 !h-2 opacity-50" />
+      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 opacity-50" />
     </div>
   );
 }

@@ -42,20 +42,6 @@ describe("applyDagreLayout", () => {
     }
   });
 
-  it("accepts rankdir LR and still assigns positions", () => {
-    const nodes: Node[] = [
-      { id: "x", position: { x: 0, y: 0 }, data: {} },
-      { id: "y", position: { x: 0, y: 0 }, data: {} },
-    ];
-    const edges: Edge[] = [{ id: "e1", source: "x", target: "y" }];
-    const result = applyDagreLayout(nodes, edges, "LR");
-
-    expect(result).toHaveLength(2);
-    for (const n of result) {
-      expect(typeof n.position.x).toBe("number");
-      expect(typeof n.position.y).toBe("number");
-    }
-  });
 
   it("returns original node when dagre has no computed position", () => {
     // Edge without corresponding nodes should not crash
@@ -114,19 +100,6 @@ describe("applyDagreLayout", () => {
     expect(acl.position.y + 56).toBeLessThanOrEqual(vpcH);
   });
 
-  // Phase A-4: tuned spacing — connected LR siblings must sit far enough apart
-  it("places two LR-connected leaf nodes at least 240px apart", () => {
-    const nodes: Node[] = [
-      { id: "a", type: "awsNode", position: { x: 0, y: 0 }, data: {} },
-      { id: "b", type: "awsNode", position: { x: 0, y: 0 }, data: {} },
-    ];
-    const edges: Edge[] = [{ id: "e", source: "a", target: "b" }];
-    const result = applyDagreLayout(nodes, edges, "LR");
-
-    const a = result.find((n) => n.id === "a")!;
-    const b = result.find((n) => n.id === "b")!;
-    expect(Math.abs(a.position.x - b.position.x)).toBeGreaterThanOrEqual(240);
-  });
 
   // FE-HG-01: 4-level compound graph (service → VPC → Subnet → Instance × 2).
   // Verifies that deep nesting does not break layout and children fit inside

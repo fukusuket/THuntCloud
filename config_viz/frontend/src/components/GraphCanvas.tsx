@@ -18,7 +18,6 @@ import "reactflow/dist/style.css";
 import { MINIMAP_LEAF_COLOR, SERVICE_CATEGORIES, NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { getVisibleNodes, rewireEdges } from "../utils/collapse";
 import { CollapseContext } from "./CollapseContext";
-import { RankDirContext } from "./RankDirContext";
 import { Legend, type LegendEntry } from "./Legend";
 
 // Phase A-1: shared visual constants for edge rendering.
@@ -38,7 +37,7 @@ function _minimapNodeColor(node: Node): string {
 import { applyDagreLayout } from "../utils/layout";
 import { AwsNode } from "./AwsNode";
 import { AwsGroupNode } from "./AwsGroupNode";
-import type { ApiGraphNode, ApiGraphEdge, RankDir } from "../types";
+import type { ApiGraphNode, ApiGraphEdge } from "../types";
 
 const nodeTypes = {
   awsNode: AwsNode,
@@ -110,7 +109,6 @@ function ViewportController({
 interface GraphCanvasProps {
   nodes: ApiGraphNode[];
   edges: ApiGraphEdge[];
-  rankdir: RankDir;
   onNodeClick: (resourceId: string) => void;
   searchTerm?: string;
   collapsedIds?: Set<string>;
@@ -148,7 +146,6 @@ function topoSort(nodes: Node[]): Node[] {
 export function GraphCanvas({
   nodes: apiNodes,
   edges: apiEdges,
-  rankdir,
   onNodeClick,
   searchTerm = "",
   collapsedIds = new Set<string>(),
@@ -220,21 +217,20 @@ export function GraphCanvas({
   const layoutedNodes = applyDagreLayout(
     toRfNodes(visibleApiNodes),
     toRfEdges(visibleApiEdges),
-    rankdir,
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(toRfEdges(visibleApiEdges));
 
-  // Re-layout whenever visible data or rankdir changes.
+  // Re-layout whenever visible data changes.
   // ViewportController (rendered inside ReactFlow) reacts to `nodes` changes
   // and applies the left-aligned viewport from the correct store context.
   useEffect(() => {
     const rfNodes = toRfNodes(visibleApiNodes);
     const rfEdges = toRfEdges(visibleApiEdges);
-    setNodes(applyDagreLayout(rfNodes, rfEdges, rankdir));
+    setNodes(applyDagreLayout(rfNodes, rfEdges));
     setEdges(rfEdges);
-  }, [visibleApiNodes, visibleApiEdges, rankdir, toRfNodes, toRfEdges, setNodes, setEdges]);
+  }, [visibleApiNodes, visibleApiEdges, toRfNodes, toRfEdges, setNodes, setEdges]);
 
   // Phase B-1: track which node the user last clicked so connected peers can
   // be emphasised and unrelated elements dimmed.
@@ -328,7 +324,6 @@ export function GraphCanvas({
 
   return (
     <CollapseContext.Provider value={{ collapsedIds, toggleCollapse: onToggleCollapse }}>
-    <RankDirContext.Provider value={rankdir}>
       <div ref={containerRef} className="w-full h-full" data-testid="graph-canvas">
         <ReactFlow
           nodes={displayNodes}
@@ -357,7 +352,6 @@ export function GraphCanvas({
           />
         </ReactFlow>
       </div>
-    </RankDirContext.Provider>
     </CollapseContext.Provider>
   );
 }

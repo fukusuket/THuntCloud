@@ -5,17 +5,15 @@ import { fetchGraph } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { DetailPanel } from "./components/DetailPanel";
-import type { RankDir } from "./types";
 
 /**
  * Root application component.
- * Manages global state: selected snapshot, resource type filter, layout direction,
+ * Manages global state: selected snapshot, resource type filter,
  * and currently selected node for the detail panel.
  */
 export default function App() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [resourceTypeFilter, setResourceTypeFilter] = useState<string | undefined>(undefined);
-  const [rankdir, setRankdir] = useState<RankDir>("TB");
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -57,14 +55,12 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-100 font-sans">
-      {/* Sidebar: snapshot list + filters + layout toggle */}
+      {/* Sidebar: snapshot list + filters */}
       <Sidebar
         selectedSnapshotId={selectedSnapshotId}
         onSnapshotSelect={handleSnapshotSelect}
         onFilterChange={handleFilterChange}
-        onRankdirChange={setRankdir}
         onSearchChange={setSearchTerm}
-        rankdir={rankdir}
         searchTerm={searchTerm}
       />
 
@@ -87,7 +83,6 @@ export default function App() {
             <GraphCanvas
               nodes={graphData.nodes}
               edges={graphData.edges}
-              rankdir={rankdir}
               onNodeClick={handleNodeClick}
               searchTerm={searchTerm}
               collapsedIds={collapsedIds}

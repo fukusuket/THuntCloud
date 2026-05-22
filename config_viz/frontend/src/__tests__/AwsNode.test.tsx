@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AwsNode } from "../components/AwsNode";
-import { RankDirContext } from "../components/RankDirContext";
 
 // Mock reactflow: Handle requires zustand provider context, which is unavailable in isolation
 vi.mock("reactflow", () => ({
@@ -86,37 +85,9 @@ describe("AwsNode", () => {
     });
   });
 
-  // Phase A-2: handle positions follow the rank direction so connecting edges
-  // don't have to fold back on themselves under LR layouts.
-  describe("handle position by rankdir (A-2)", () => {
-    it("uses Top/Bottom handles for TB rankdir", () => {
-      render(
-        <RankDirContext.Provider value="TB">
-          <AwsNode id="ec2-456" data={data} />
-        </RankDirContext.Provider>,
-      );
-      expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
-      expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
-    });
-
-    it("uses Left/Right handles for LR rankdir", () => {
-      render(
-        <RankDirContext.Provider value="LR">
-          <AwsNode id="ec2-456" data={data} />
-        </RankDirContext.Provider>,
-      );
-      expect(screen.getByTestId("handle-target-left")).toBeInTheDocument();
-      expect(screen.getByTestId("handle-source-right")).toBeInTheDocument();
-    });
-
-    it("defaults to Top/Bottom when no context is provided", () => {
-      render(<AwsNode id="ec2-456" data={data} />);
-      expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
-      expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
-    });
+  it("uses Top/Bottom handles (TB layout)", () => {
+    render(<AwsNode id="ec2-456" data={data} />);
+    expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
+    expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
   });
 });
-
-
-
-

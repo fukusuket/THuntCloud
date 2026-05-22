@@ -1,26 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchSnapshots, fetchResourceTypes } from "../api";
-import type { RankDir } from "../types";
 
 interface SidebarProps {
   selectedSnapshotId: string | null;
   onSnapshotSelect: (snapshotId: string) => void;
   onFilterChange: (resourceType: string | undefined) => void;
-  onRankdirChange: (rankdir: RankDir) => void;
-  rankdir: RankDir;
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
 }
 
 /**
- * Left sidebar: snapshot list, resource type filter, and layout direction toggle.
+ * Left sidebar: snapshot list, resource type filter, and search box.
  */
 export function Sidebar({
   selectedSnapshotId,
   onSnapshotSelect,
   onFilterChange,
-  onRankdirChange,
-  rankdir,
   searchTerm = "",
   onSearchChange,
 }: SidebarProps) {
@@ -56,35 +51,6 @@ export function Sidebar({
           onChange={(e) => onSearchChange?.(e.target.value)}
           className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-400"
         />
-      </div>
-
-      {/* Layout toggle (BF-10) */}
-      <div className="p-4 border-b border-gray-200">
-        <p className="text-xs font-medium text-gray-600 mb-2">Layout Direction</p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => onRankdirChange("TB")}
-            className={[
-              "flex-1 py-1 text-xs rounded border",
-              rankdir === "TB"
-                ? "bg-blue-500 text-white border-blue-500"
-                : "bg-white text-gray-700 border-gray-300 hover:border-blue-400",
-            ].join(" ")}
-          >
-            TB
-          </button>
-          <button
-            onClick={() => onRankdirChange("LR")}
-            className={[
-              "flex-1 py-1 text-xs rounded border",
-              rankdir === "LR"
-                ? "bg-blue-500 text-white border-blue-500"
-                : "bg-white text-gray-700 border-gray-300 hover:border-blue-400",
-            ].join(" ")}
-          >
-            LR
-          </button>
-        </div>
       </div>
 
       {/* Resource type filter (BF-07) */}

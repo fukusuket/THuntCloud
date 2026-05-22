@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AwsGroupNode } from "../components/AwsGroupNode";
-import { RankDirContext } from "../components/RankDirContext";
 import { CollapseContext } from "../components/CollapseContext";
 
 // Mock reactflow: Handle requires zustand provider context, which is unavailable in isolation
@@ -169,28 +168,12 @@ describe("AwsGroupNode", () => {
     });
   });
 
-  // Phase A-2: handle positions follow rankdir for cleaner edge routing.
-  describe("handle position by rankdir (A-2)", () => {
-    it("uses Top/Bottom handles for TB rankdir", () => {
-      render(
-        <RankDirContext.Provider value="TB">
-          <AwsGroupNode {...props} />
-        </RankDirContext.Provider>,
-      );
-      expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
-      expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
-    });
-
-    it("uses Left/Right handles for LR rankdir", () => {
-      render(
-        <RankDirContext.Provider value="LR">
-          <AwsGroupNode {...props} />
-        </RankDirContext.Provider>,
-      );
-      expect(screen.getByTestId("handle-target-left")).toBeInTheDocument();
-      expect(screen.getByTestId("handle-source-right")).toBeInTheDocument();
-    });
+  // Phase A-2: handle positions are always Top/Bottom after removing the
+  // layout direction toggle.
+  it("uses Top/Bottom handles (TB layout)", () => {
+    render(<AwsGroupNode {...props} />);
+    expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
+    expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
   });
 });
-
 

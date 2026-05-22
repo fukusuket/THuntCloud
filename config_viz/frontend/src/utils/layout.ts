@@ -1,6 +1,5 @@
 import Dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "reactflow";
-import type { RankDir } from "../types";
 
 // Phase A-4: tuned for readability — wider nodes, larger gutters between ranks
 // and siblings, plus more breathing room inside group containers.
@@ -27,7 +26,7 @@ function nodeDims(node: Node): { w: number; h: number } {
 function runFlatDagre(
   nodes: Node[],
   edges: Edge[],
-  rankdir: RankDir,
+  rankdir: "TB" | "LR",
   sizeOverrides: Map<string, { w: number; h: number }>
 ): { positions: Map<string, { x: number; y: number }>; totalW: number; totalH: number } {
   if (nodes.length === 0) return { positions: new Map(), totalW: 0, totalH: 0 };
@@ -103,13 +102,11 @@ function runFlatDagre(
  *
  * @param nodes   - React Flow node array (may include `parentNode`)
  * @param edges   - React Flow edge array
- * @param rankdir - "TB" (top→bottom) or "LR" (left→right)
  * @returns New node array with updated `position` (and `style` for groups)
  */
 export function applyDagreLayout(
   nodes: Node[],
   edges: Edge[],
-  rankdir: RankDir = "TB"
 ): Node[] {
   if (nodes.length === 0) return nodes;
 
@@ -149,14 +146,14 @@ export function applyDagreLayout(
       }
     }
 
-    // Lay out the children flat inside this group
+    // Lay out the children flat inside this group (always top-to-bottom)
     const childEdges = edges.filter(
       (e) => children.some((c) => c.id === e.source) && children.some((c) => c.id === e.target)
     );
     const { positions, totalW, totalH } = runFlatDagre(
       children,
       childEdges,
-      rankdir,
+      "TB",
       computedSizes
     );
 
