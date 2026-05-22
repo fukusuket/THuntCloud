@@ -31,6 +31,30 @@ from report import ReportEntry
 logger = logging.getLogger(__name__)
 
 
+def _format_row_info(
+    results: pd.DataFrame, row_limit: int, extended: bool = False
+) -> str:
+    """Format a row-count summary string for a query result.
+
+    Args:
+        results:   The query result DataFrame.
+        row_limit: The effective row cap applied to the query.
+        extended:  When True, append a hint to add LIMIT for more control.
+
+    Returns:
+        A human-readable string such as ``"42 row(s)"`` or
+        ``"500 row(s) _(truncated to 500)_"``.
+    """
+    truncated = len(results) >= row_limit
+    suffix = ""
+    if truncated:
+        if extended:
+            suffix = f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
+        else:
+            suffix = f" _(truncated to {row_limit:,})_"
+    return f"{len(results)} row(s){suffix}"
+
+
 def _handle_direct_sql(
     sql: str,
     db_path: str,
@@ -83,11 +107,7 @@ def _handle_direct_sql(
     if error_message:
         assistant_content = error_message
     else:
-        row_limit = st.session_state.row_limit
-        truncated = len(results) >= row_limit
-        row_info = f"{len(results)} row(s)" + (
-            f" _(truncated to {row_limit:,})_" if truncated else ""
-        )
+        row_info = _format_row_info(results, st.session_state.row_limit)
         assistant_content = f"**Direct SQL query executed.** **Results:** {row_info}"
 
     st.session_state.messages.append(
@@ -153,13 +173,7 @@ def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
         )
         return
 
-    row_count = len(results)
-    truncated = row_count >= row_limit
-    row_info = f"{row_count} row(s)" + (
-        f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
-        if truncated
-        else ""
-    )
+    row_info = _format_row_info(results, row_limit, extended=True)
 
     summary = ""
     if api_key:
@@ -307,19 +321,13 @@ def _handle_user_query(user_input: str, db_path: str) -> None:
     if error_message:
         assistant_content = error_message
     else:
-        row_limit = st.session_state.row_limit
-        truncated = len(results) >= row_limit
-        row_summary = f"{len(results)} row(s)" + (
-            f" _(truncated to {row_limit:,} — add LIMIT to your SQL for more control)_"
-            if truncated
-            else ""
-        )
+        row_info = _format_row_info(results, st.session_state.row_limit, extended=True)
         retry_notice = (
             "\n\n⚠️ _SQL was auto-corrected by the AI assistant._"
             if final_sql != original_sql
             else ""
         )
-        assistant_content = f"**Results:** {row_summary}" + retry_notice
+        assistant_content = f"**Results:** {row_info}" + retry_notice
 
     st.session_state.messages.append(
         {"role": "assistant", "content": assistant_content}

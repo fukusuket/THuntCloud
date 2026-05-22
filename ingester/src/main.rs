@@ -261,39 +261,31 @@ fn run() -> Result<()> {
                 FieldFilter::default()
             };
 
-            let stats = if city_path.is_some() || country_path.is_some() {
-                let enricher = GeoipEnricher::open(&GeoipConfig {
-                    city_db_path: city_path,
-                    country_db_path: country_path,
-                    asn_db_path: asn_path,
-                })
-                .context("Failed to open GeoIP database")?;
-                ingest(
-                    &path,
-                    &conn,
-                    IngestOptions {
-                        show_progress: !no_progress,
-                        date_filter,
-                        path_filter,
-                        geoip: Some(&enricher),
-                        field_filter,
-                        strip_raw_event,
-                    },
-                )?
+            let enricher: Option<GeoipEnricher> = if city_path.is_some() || country_path.is_some() {
+                Some(
+                    GeoipEnricher::open(&GeoipConfig {
+                        city_db_path: city_path,
+                        country_db_path: country_path,
+                        asn_db_path: asn_path,
+                    })
+                    .context("Failed to open GeoIP database")?,
+                )
             } else {
-                ingest(
-                    &path,
-                    &conn,
-                    IngestOptions {
-                        show_progress: !no_progress,
-                        date_filter,
-                        path_filter,
-                        geoip: None,
-                        field_filter,
-                        strip_raw_event,
-                    },
-                )?
+                None
             };
+
+            let stats = ingest(
+                &path,
+                &conn,
+                IngestOptions {
+                    show_progress: !no_progress,
+                    date_filter,
+                    path_filter,
+                    geoip: enricher.as_ref(),
+                    field_filter,
+                    strip_raw_event,
+                },
+            )?;
 
             println!(
                 "Ingestion complete: files_processed={} records_inserted={} errors={} elapsed_secs={:.2}",
