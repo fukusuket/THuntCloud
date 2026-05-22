@@ -114,6 +114,8 @@ pytest                        # all tests
 pytest --cov=. --cov-report=term-missing
 ruff check .                  # lint
 black .                       # format
+```
+
 ```bash
 # Python backend (config_viz/)
 pytest                        # all tests (34 backend tests)
@@ -137,6 +139,8 @@ Use `json_extract_string(column, '$.field')` for ad-hoc queries.
 Column layout: **core (17) → geo (7) → extended (24)**.
 Geo and extended columns are added via `ALTER TABLE ADD COLUMN IF NOT EXISTS` so existing
 databases are migrated transparently on the next ingest run.
+
+```sql
 CREATE TABLE IF NOT EXISTS cloudtrail_events (
     -- Core columns (17)
     event_time               TIMESTAMP,
