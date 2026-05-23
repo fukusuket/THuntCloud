@@ -61,7 +61,6 @@ FILE_MAP = {
     "charts/fs_source_ip.yaml":                       "charts/First_Last_Seen_Source_IP.yaml",
     "charts/fs_event_name.yaml":                      "charts/First_Last_Seen_API_Call.yaml",
     "charts/fs_user_agent.yaml":                      "charts/First_Last_Seen_User_Agent.yaml",
-    "charts/activity_heatmap.yaml":                   "charts/Activity_Heatmap.yaml",
     "charts/dormant_reactivated.yaml":                "charts/Dormant_Accounts_Reactivated.yaml",
     "charts/velocity_spikes.yaml":                    "charts/Event_Velocity_Spikes.yaml",
     # Tab 6 — High-Risk API Monitor charts (HRM-39 to HRM-46)

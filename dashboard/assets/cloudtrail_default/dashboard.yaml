@@ -243,7 +243,7 @@ position:
       - ROW-ta-1
       - ROW-ta-2
       - ROW-ta-3
-      - ROW-ta-4
+      - ROW-ta-5
       - ROW-ta-6
       - ROW-ta-7
     meta:
@@ -269,14 +269,13 @@ position:
     id: ROW-ta-3
     children:
       - CHART-fs-event-name
-      - CHART-fs-user-agent
     meta:
       background: BACKGROUND_TRANSPARENT
-  ROW-ta-4:
+  ROW-ta-5:
     type: ROW
-    id: ROW-ta-4
+    id: ROW-ta-5
     children:
-      - CHART-activity-heatmap
+      - CHART-fs-user-agent
     meta:
       background: BACKGROUND_TRANSPARENT
   ROW-ta-6:
@@ -600,7 +599,7 @@ position:
     meta:
       chartId: 33
       uuid: 33c4d5e6-f7a8-9012-cdef-012345678903
-      width: 6
+      width: 12
       height: 50
       sliceName: First / Last Seen per API Call
   CHART-fs-user-agent:
@@ -610,19 +609,9 @@ position:
     meta:
       chartId: 34
       uuid: 34d5e6f7-a8b9-0123-def0-123456789004
-      width: 6
-      height: 50
-      sliceName: First / Last Seen per User Agent
-  CHART-activity-heatmap:
-    type: CHART
-    id: CHART-activity-heatmap
-    children: []
-    meta:
-      chartId: 35
-      uuid: 35e6f7a8-b9c0-1234-ef01-234567890105
       width: 12
       height: 50
-      sliceName: Activity Heatmap (Hour vs Day-of-Week)
+      sliceName: First / Last Seen per User Agent
   CHART-dormant-reactivated:
     type: CHART
     id: CHART-dormant-reactivated
@@ -1151,9 +1140,6 @@ metadata:
     - slice_name: First / Last Seen per User Agent
       viz_type: table
       description: DSH-34 - User agents ordered by first appearance for tool introduction detection.
-    - slice_name: Activity Heatmap (Hour vs Day-of-Week)
-      viz_type: table
-      description: DSH-35 - Event counts by hour-of-day and day-of-week for off-hours detection.
     - slice_name: Dormant Accounts Reactivated
       viz_type: table
       description: DSH-37 - Identities with long inactivity gaps that resumed activity.
