@@ -231,12 +231,12 @@ A BI dashboard for visualizing logs stored in DuckDB. Powered by Apache Superset
 
 ### 7.2 Hardware Requirements
 
-| Item | Minimum | Recommended |
-|------|---------|-------------|
-| Memory | 16 GB | 32 GB |
-| Storage | 100 GB free | 500 GB free (SSD recommended) |
-| CPU | 4 cores | 8+ cores |
-| OS | Docker-compatible Linux / macOS | Ubuntu 22.04 / macOS 13+ |
+| Item | Minimum                        | Recommended                   |
+|------|--------------------------------|-------------------------------|
+| Memory | 8 GB                           | 16 GB                         |
+| Storage | 10 GB free                     | 100 GB free (SSD recommended) |
+| CPU | 4 cores                        | 8+ cores                      |
+| OS | Docker-compatible Linux / macOS | Ubuntu 24.04 / macOS 13+      |
 
 ---
 
