@@ -34,33 +34,6 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 <img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
 ---
 
-## Architecture
-
-Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                             Docker Compose                             │
-│                                                                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │   ingester   │  │    agent     │  │  config_viz │  │  dashboard  │  │
-│  │  (Rust)      │  │  (Streamlit) │  │  (FastAPI+  │  │  (Superset) │  │
-│  │              │  │              │  │   React)    │  │             │  │
-│  │ CloudTrail   │  │  AI Chat     │  │   Resource  │  │  Visualiz   │  │
-│  │ AWS Config   │  │  SQL gen/exec│  │    Graph    │  │             │  │
-│  │ ingest       │  │  READ_ONLY   │  │   READ_ONLY │  │   READ_ONLY │  │
-│  │ READ_WRITE   │  │              │  │             │  │             │  │
-│  └──────┬───────┘  └──────┬───────┘  └────┬────────┘  └─────┬───────┘  │
-│         └─────────────────┴───────────────┴─────────────────┘          │
-│                                │                                       │
-│                         ┌──────▼───────┐                               │
-│                         │   DuckDB     │                               │
-│                         │ (Bind Mount) │                               │
-│                         │   (SSD)      │                               │
-│                         └──────────────┘                               │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
 ## Prerequisites
 
 | Requirement                           | Details                                            |
@@ -137,6 +110,34 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | `agent` | Python 3.12+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
 | `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
+
+
+## Architecture
+
+Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                             Docker Compose                             │
+│                                                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │   ingester   │  │    agent     │  │  config_viz │  │  dashboard  │  │
+│  │  (Rust)      │  │  (Streamlit) │  │  (FastAPI+  │  │  (Superset) │  │
+│  │              │  │              │  │   React)    │  │             │  │
+│  │ CloudTrail   │  │  AI Chat     │  │   Resource  │  │  Visualiz   │  │
+│  │ AWS Config   │  │  SQL gen/exec│  │    Graph    │  │             │  │
+│  │ ingest       │  │  READ_ONLY   │  │   READ_ONLY │  │   READ_ONLY │  │
+│  │ READ_WRITE   │  │              │  │             │  │             │  │
+│  └──────┬───────┘  └──────┬───────┘  └────┬────────┘  └─────┬───────┘  │
+│         └─────────────────┴───────────────┴─────────────────┘          │
+│                                │                                       │
+│                         ┌──────▼───────┐                               │
+│                         │   DuckDB     │                               │
+│                         │ (Bind Mount) │                               │
+│                         │   (SSD)      │                               │
+│                         └──────────────┘                               │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
