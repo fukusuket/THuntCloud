@@ -198,6 +198,106 @@
     LIMIT 100
 
 - category: "\U0001f511 Identity & Access"
+  label: "\U0001f6a7 IAM Permission Boundary Changes"
+  description: "Detects permission boundary put/delete events. Removing a permission boundary immediately expands a principal's effective permissions, enabling privilege escalation."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all IAM permission boundary changes: PutUserPermissionsBoundary,
+    DeleteUserPermissionsBoundary, PutRolePermissionsBoundary, and
+    DeleteRolePermissionsBoundary. Permission boundaries cap the maximum
+    permissions of an IAM entity. Removing one immediately escalates the
+    effective permissions to whatever the attached policies allow.
+    Show target user/role, new boundary ARN, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.userName')            AS target_user,
+        json_extract_string(request_parameters, '$.roleName')            AS target_role,
+        json_extract_string(request_parameters, '$.permissionsBoundary') AS permissions_boundary,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'iam.amazonaws.com'
+      AND event_name IN (
+          'PutUserPermissionsBoundary',    'DeleteUserPermissionsBoundary',
+          'PutRolePermissionsBoundary',    'DeleteRolePermissionsBoundary'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f194 IAM Identity Center (SSO) Events"
+  description: "Detects AWS IAM Identity Center management actions. Attackers abuse SSO to create backdoor permission sets or assign accounts to attacker-controlled users."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS IAM Identity Center (SSO) management events from
+    sso.amazonaws.com, sso-directory.amazonaws.com, and
+    identitystore.amazonaws.com. Key threats: CreatePermissionSet (new admin
+    access), CreateAccountAssignment (assigning accounts to attacker users),
+    AttachManagedPolicyToPermissionSet, and DeleteAccountAssignment.
+    Show event name, caller, target account, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        aws_region,
+        source_ip_address,
+        request_parameters,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN (
+        'sso.amazonaws.com',
+        'sso-directory.amazonaws.com',
+        'identitystore.amazonaws.com',
+        'sso-oauth.amazonaws.com'
+    )
+    ORDER BY event_time DESC
+    LIMIT 200
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f517 SAML / OIDC Provider Updates"
+  description: "Detects SAML/OIDC identity provider changes. Updating a SAML provider with attacker-controlled metadata creates a persistent authentication backdoor."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all SAML and OIDC provider management events: CreateSAMLProvider,
+    UpdateSAMLProvider, DeleteSAMLProvider, CreateOIDCProvider,
+    UpdateOIDCProviderThumbprint, DeleteOIDCProvider,
+    AddClientIDToOIDCProvider, and RemoveClientIDFromOIDCProvider.
+    Updating a SAML provider with attacker-controlled IdP metadata allows
+    the attacker to authenticate as any federated user permanently.
+    Show provider ARN, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.sAMLProviderArn') AS saml_provider_arn,
+        json_extract_string(request_parameters, '$.url')             AS oidc_url,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'iam.amazonaws.com'
+      AND event_name IN (
+          'CreateSAMLProvider',          'UpdateSAMLProvider',          'DeleteSAMLProvider',
+          'CreateOIDCProvider',          'UpdateOIDCProviderThumbprint', 'DeleteOIDCProvider',
+          'AddClientIDToOIDCProvider',   'RemoveClientIDFromOIDCProvider'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
   label: "\U0001f511 STS Federation Token Issuance"
   description: "Detects GetFederationToken and GetSessionToken calls. Attackers use these to convert long-lived keys into persistent temporary credentials."
   chart:
@@ -679,6 +779,97 @@
     LIMIT 100
 
 - category: "\U0001faa3 Data & Storage"
+  label: "\U0001fab3 S3 Bucket Policy / ACL Changes"
+  description: "Detects S3 bucket policy and ACL modifications. These can make a bucket publicly readable or grant access to attacker-controlled accounts."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all S3 bucket permission changes: PutBucketPolicy, DeleteBucketPolicy,
+    PutBucketAcl, PutBucketCors, PutBucketWebsite, and DeleteBucketWebsite.
+    These modifications can expose bucket contents publicly or to attackers.
+    PutBucketPolicy with Principal='*' is especially critical.
+    Show bucket name, caller, source IP, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.bucketName') AS bucket_name,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 's3.amazonaws.com'
+      AND event_name IN (
+          'PutBucketPolicy',   'DeleteBucketPolicy',
+          'PutBucketAcl',      'PutBucketCors',
+          'PutBucketWebsite',  'DeleteBucketWebsite'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4c2 S3 Versioning / Logging Disabled"
+  description: "Detects S3 versioning suspension and server access logging disable. Disabling versioning enables data destruction; disabling logging erases the access evidence trail."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find PutBucketVersioning events where versioning was Suspended, and
+    PutBucketLogging events where logging was disabled (empty BucketLoggingStatus).
+    Disabling versioning allows permanent deletion of objects, while disabling
+    server-access logging removes the evidence trail for subsequent exfiltration.
+    Show bucket name, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.bucketName') AS bucket_name,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 's3.amazonaws.com'
+      AND event_name IN ('PutBucketVersioning', 'PutBucketLogging')
+      AND (
+          request_parameters LIKE '%Suspended%'
+          OR request_parameters LIKE '%"BucketLoggingStatus":{}%'
+          OR request_parameters LIKE '%"LoggingEnabled":{}%'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f501 S3 Cross-Account Replication"
+  description: "Detects PutBucketReplication and DeleteBucketReplication. Cross-account replication silently copies all new objects to an attacker-controlled bucket."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all PutBucketReplication and DeleteBucketReplication events.
+    An attacker who configures replication to an external account receives
+    a continuous stream of new objects in real time without generating
+    additional GetObject events. Show source bucket, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.bucketName') AS bucket_name,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 's3.amazonaws.com'
+      AND event_name IN ('PutBucketReplication', 'DeleteBucketReplication')
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
   label: "\U0001f4be RDS Snapshot Cross-Account Share"
   description: "Detects RDS/Aurora snapshots shared to external AWS accounts. Classic data exfiltration via snapshot sharing."
   chart:
@@ -824,6 +1015,99 @@
 # ===========================================================================
 # Network & Infrastructure
 # ===========================================================================
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f5dd\ufe0f EC2 Key Pair Creation"
+  description: "Detects CreateKeyPair and ImportKeyPair events. Attackers create or import SSH keys as a persistence mechanism to maintain instance access."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all CreateKeyPair and ImportKeyPair events. Attackers create new EC2
+    SSH key pairs or import their own public key to maintain persistent access
+    to EC2 instances, even after password/credential rotation.
+    Show key name, caller identity, source IP, and region.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.keyName')          AS key_name,
+        json_extract_string(response_elements,  '$.keyFingerprint')   AS key_fingerprint,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_name IN ('CreateKeyPair', 'ImportKeyPair')
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f9f1 Network ACL Changes"
+  description: "Detects Network ACL entry creation, deletion, and replacement. NACLs override security groups and can open entire subnets to attackers."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Network ACL modification events: CreateNetworkAclEntry,
+    DeleteNetworkAclEntry, ReplaceNetworkAclEntry, CreateNetworkAcl,
+    DeleteNetworkAcl, and ReplaceNetworkAclAssociation.
+    NACLs are stateless and apply at the subnet level — attackers use them
+    to bypass security group restrictions. Show NACL ID, rule number,
+    protocol, action, CIDR block, caller, and region.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.networkAclId') AS nacl_id,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'CreateNetworkAcl',          'DeleteNetworkAcl',
+          'CreateNetworkAclEntry',     'DeleteNetworkAclEntry',
+          'ReplaceNetworkAclEntry',    'ReplaceNetworkAclAssociation'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f6e3\ufe0f Route Table Changes"
+  description: "Detects route table modifications. Adding or replacing routes can redirect traffic to attacker-controlled hosts (MitM, traffic hijacking)."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all route table modification events: CreateRoute, DeleteRoute,
+    ReplaceRoute, CreateRouteTable, DeleteRouteTable, AssociateRouteTable,
+    DisassociateRouteTable, and ReplaceRouteTableAssociation.
+    Attackers modify routes to redirect traffic to malicious gateways for
+    interception or to establish C2 paths. Show route table ID, destination
+    CIDR, gateway, caller, and region.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.routeTableId')         AS route_table_id,
+        json_extract_string(request_parameters, '$.destinationCidrBlock') AS destination_cidr,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'CreateRoute',             'DeleteRoute',
+          'ReplaceRoute',            'CreateRouteTable',
+          'DeleteRouteTable',        'AssociateRouteTable',
+          'DisassociateRouteTable',  'ReplaceRouteTableAssociation'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
 
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f30a VPC Flow Log Changes"
@@ -1250,6 +1534,40 @@
 # ===========================================================================
 # Compute & Serverless
 # ===========================================================================
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f464 EC2 Instance Profile Changes"
+  description: "Detects IAM instance profile association and replacement. Attaching a privileged profile grants the instance elevated permissions for lateral movement."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all EC2 instance profile modification events:
+    AssociateIamInstanceProfile, DisassociateIamInstanceProfile, and
+    ReplaceIamInstanceProfileAssociation.  Attaching a highly-privileged
+    IAM instance profile to a running EC2 instance grants its processes full
+    access to AWS APIs, enabling lateral movement without explicit credentials.
+    Show instance ID, new profile ARN, caller, and region.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.instanceId')      AS instance_id,
+        json_extract_string(request_parameters, '$.iamInstanceProfile') AS iam_profile,
+        json_extract_string(request_parameters, '$.associationId')   AS association_id,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'AssociateIamInstanceProfile',
+          'DisassociateIamInstanceProfile',
+          'ReplaceIamInstanceProfileAssociation'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
 
 - category: "\u26a1 Compute & Serverless"
   label: "\U0001f5a5\ufe0f SSM Session / Run Command"

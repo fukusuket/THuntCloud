@@ -3,6 +3,7 @@
 Validates that every chart YAML in cloudtrail_default/charts/ conforms to
 the structure required by the Superset v1 dashboard import format.
 """
+
 import os
 import re
 import sys
@@ -14,19 +15,31 @@ CHARTS_DIR = os.path.join(
     os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "charts"
 )
 DATASET_YAML_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "assets", "cloudtrail_default", "datasets",
-    "cloudtrail_events.yaml"
+    os.path.dirname(__file__),
+    "..",
+    "assets",
+    "cloudtrail_default",
+    "datasets",
+    "cloudtrail_events.yaml",
 )
-REGISTER_DATASET_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "init"
+REGISTER_DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "init")
+REQUIRED_CHART_FIELDS = {
+    "uuid",
+    "version",
+    "dataset_uuid",
+    "slice_name",
+    "viz_type",
+    "params",
+}
+UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
-REQUIRED_CHART_FIELDS = {"uuid", "version", "dataset_uuid", "slice_name", "viz_type", "params"}
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 DATASET_UUID = "d8444b4a-ac55-4710-a777-a5b940bebabe"
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def load_all_charts() -> list[tuple[str, dict]]:
     """Return (filename, parsed_yaml) for every .yaml in charts/."""
@@ -43,6 +56,7 @@ def load_all_charts() -> list[tuple[str, dict]]:
 # ---------------------------------------------------------------------------
 # Parametric tests — run once per chart file
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("fname, chart", load_all_charts())
 def test_chart_has_required_fields(fname: str, chart: dict) -> None:
@@ -80,15 +94,29 @@ def test_chart_params_not_empty(fname: str, chart: dict) -> None:
 # Valid aggregator names accepted by React Pivottable (used in Superset pivot_table_v2).
 # Superset throws "this.props.aggregatorsFactory(...)[this.props.aggregatorName] is not a
 # function" when this value is not an exact case-sensitive match.
-_VALID_AGGREGATE_FUNCTIONS: frozenset[str] = frozenset({
-    "Count", "Count Unique Values", "List Unique Values",
-    "Sum", "Integer Sum", "Average", "Median",
-    "Sample Variance", "Sample Standard Deviation",
-    "Minimum", "Maximum", "First", "Last",
-    "Sum as Fraction of Total", "Sum as Fraction of Rows",
-    "Sum as Fraction of Columns", "Count as Fraction of Total",
-    "Count as Fraction of Rows", "Count as Fraction of Columns",
-})
+_VALID_AGGREGATE_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "Count",
+        "Count Unique Values",
+        "List Unique Values",
+        "Sum",
+        "Integer Sum",
+        "Average",
+        "Median",
+        "Sample Variance",
+        "Sample Standard Deviation",
+        "Minimum",
+        "Maximum",
+        "First",
+        "Last",
+        "Sum as Fraction of Total",
+        "Sum as Fraction of Rows",
+        "Sum as Fraction of Columns",
+        "Count as Fraction of Total",
+        "Count as Fraction of Rows",
+        "Count as Fraction of Columns",
+    }
+)
 
 
 def test_pivot_table_aggregate_function_valid() -> None:
@@ -123,6 +151,7 @@ def test_all_chart_uuids_unique() -> None:
 # Sprint-1 mandatory charts
 # ---------------------------------------------------------------------------
 
+
 def _find_chart_by_filename(fragment: str) -> tuple[str, dict] | None:
     for fname, chart in load_all_charts():
         if fragment in fname.lower():
@@ -152,6 +181,7 @@ def test_dsh28_mfa_less_login_trend_exists() -> None:
 # Sprint-2 charts
 # ---------------------------------------------------------------------------
 
+
 def test_dsh19_login_heatmap_exists() -> None:
     """DSH-19: login_heatmap.yaml must exist."""
     result = _find_chart_by_filename("login_heatmap")
@@ -180,6 +210,7 @@ def test_dsh21_throttling_spikes_exists() -> None:
 # Sprint-3 charts
 # ---------------------------------------------------------------------------
 
+
 def test_dsh23_secrets_access_anomaly_exists() -> None:
     """DSH-23: secrets_access_anomaly.yaml must exist."""
     assert _find_chart_by_filename("secrets_access_anomaly") is not None
@@ -204,6 +235,7 @@ def test_dsh30_priv_esc_timeline_exists() -> None:
 # Sprint-4 charts
 # ---------------------------------------------------------------------------
 
+
 def test_dsh25_s3_protection_changes_exists() -> None:
     """DSH-25: s3_protection_changes.yaml must exist."""
     assert _find_chart_by_filename("s3_protection_changes") is not None
@@ -222,6 +254,7 @@ def test_dsh29_route53_dns_changes_exists() -> None:
 # ---------------------------------------------------------------------------
 # Sprint-5 charts — High-Risk API Monitor (Tab 6)
 # ---------------------------------------------------------------------------
+
 
 def test_hrm_timeseries_exists() -> None:
     """HRM-39: hrm_timeseries.yaml must exist with echarts_timeseries_bar."""
@@ -322,5 +355,9 @@ def test_register_dataset_has_core_columns() -> None:
 
     # CORE_COLUMNS is a list of tuples: (col_name, col_type, verbose_name, groupby, filterable, is_dttm)
     core_col_names = {c[0] for c in CORE_COLUMNS}
-    assert "user_identity_arn" in core_col_names, "CORE_COLUMNS is missing user_identity_arn"
-    assert "source_ip_address" in core_col_names, "CORE_COLUMNS is missing source_ip_address"
+    assert (
+        "user_identity_arn" in core_col_names
+    ), "CORE_COLUMNS is missing user_identity_arn"
+    assert (
+        "source_ip_address" in core_col_names
+    ), "CORE_COLUMNS is missing source_ip_address"

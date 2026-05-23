@@ -163,4 +163,5 @@ This project exists thanks to these wonderful projects and datasets :)
 - [DuckDB](https://duckdb.org/) — embedded analytical database
 - [SIEM on Amazon OpenSearch Service](https://github.com/aws-samples/siem-on-amazon-opensearch-service) — SIEM-like CloudTrail analytics reference implementation
 - [AWS CloudTrail Lake query samples](https://github.com/aws-samples/cloud-trail-lake-query-samples) — CloudTrail Lake query examples
+- [AWS Incident Response](https://github.com/easttimor/aws-incident-response/) - AWS incident response playbooks and tools
 - [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) — GeoIP databases

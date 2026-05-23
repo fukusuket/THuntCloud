@@ -4,6 +4,7 @@
 Run from the project root:
     python3 dashboard/assets/generate_dashboard_yaml.py
 """
+
 import os
 
 DEST = os.path.join(
@@ -1062,4 +1063,3 @@ with open(DEST, "w", encoding="utf-8") as fh:
     fh.write(CONTENT)
 
 print(f"Written {DEST} ({CONTENT.count(chr(10))} lines)")
-

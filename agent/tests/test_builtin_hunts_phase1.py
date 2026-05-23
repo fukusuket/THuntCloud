@@ -25,7 +25,6 @@ import duckdb
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -238,9 +237,9 @@ def test_g02_rds_snapshot_share_detects_modify_attribute(phase1_db: str):
     sql = get_builtin_sql("\U0001f4be RDS Snapshot Cross-Account Share")
     rows = _run_sql(phase1_db, sql)
     names = [r["event_name"] for r in rows]
-    assert "ModifyDBSnapshotAttribute" in names, (
-        f"ModifyDBSnapshotAttribute not detected. Got: {names}"
-    )
+    assert (
+        "ModifyDBSnapshotAttribute" in names
+    ), f"ModifyDBSnapshotAttribute not detected. Got: {names}"
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +285,9 @@ def test_g04_ec2_snapshot_detects_modify_snapshot_attribute(phase1_db: str):
     sql = get_builtin_sql("\U0001f4f8 EC2 Public Snapshot / AMI Sharing")
     rows = _run_sql(phase1_db, sql)
     names = [r["event_name"] for r in rows]
-    assert "ModifySnapshotAttribute" in names, (
-        f"ModifySnapshotAttribute not detected. Got: {names}"
-    )
+    assert (
+        "ModifySnapshotAttribute" in names
+    ), f"ModifySnapshotAttribute not detected. Got: {names}"
 
 
 def test_g04_ec2_snapshot_detects_modify_image_attribute(phase1_db: str):
@@ -334,9 +333,9 @@ def test_g06_sts_detects_get_federation_token(phase1_db: str):
     sql = get_builtin_sql("\U0001f511 STS Federation Token Issuance")
     rows = _run_sql(phase1_db, sql)
     names = [r["event_name"] for r in rows]
-    assert "GetFederationToken" in names, (
-        f"GetFederationToken not detected. Got: {names}"
-    )
+    assert (
+        "GetFederationToken" in names
+    ), f"GetFederationToken not detected. Got: {names}"
 
 
 def test_g06_sts_detects_get_session_token(phase1_db: str):
@@ -363,9 +362,9 @@ def test_g07_iam_trust_policy_detects_update_assume_role(phase1_db: str):
     sql = get_builtin_sql("\U0001f504 IAM Role Trust Policy Changes")
     rows = _run_sql(phase1_db, sql)
     names = [r["event_name"] for r in rows]
-    assert "UpdateAssumeRolePolicy" in names, (
-        f"UpdateAssumeRolePolicy not detected. Got: {names}"
-    )
+    assert (
+        "UpdateAssumeRolePolicy" in names
+    ), f"UpdateAssumeRolePolicy not detected. Got: {names}"
 
 
 def test_g07_iam_trust_policy_shows_role_name(phase1_db: str):
@@ -373,7 +372,9 @@ def test_g07_iam_trust_policy_shows_role_name(phase1_db: str):
     sql = get_builtin_sql("\U0001f504 IAM Role Trust Policy Changes")
     rows = _run_sql(phase1_db, sql)
     assert len(rows) >= 1
-    assert "role_name" in rows[0], f"Expected 'role_name' column. Got: {list(rows[0].keys())}"
+    assert (
+        "role_name" in rows[0]
+    ), f"Expected 'role_name' column. Got: {list(rows[0].keys())}"
     assert rows[0]["role_name"] == "AdminRole"
 
 
@@ -393,9 +394,9 @@ def test_g08_config_detects_stop_configuration_recorder(phase1_db: str):
     sql = get_builtin_sql("\u2699\ufe0f AWS Config Tampering")
     rows = _run_sql(phase1_db, sql)
     names = [r["event_name"] for r in rows]
-    assert "StopConfigurationRecorder" in names, (
-        f"StopConfigurationRecorder not detected. Got: {names}"
-    )
+    assert (
+        "StopConfigurationRecorder" in names
+    ), f"StopConfigurationRecorder not detected. Got: {names}"
 
 
 def test_g08_config_detects_delete_config_rule(phase1_db: str):
@@ -441,5 +442,3 @@ def test_phase1_sql_is_valid_duckdb_syntax(phase1_db: str, label: str):
         pytest.fail(f"EXPLAIN failed for '{label}': {exc}")
     finally:
         conn.close()
-
-

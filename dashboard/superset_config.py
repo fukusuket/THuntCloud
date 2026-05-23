@@ -33,4 +33,3 @@ FEATURE_FLAGS = {
     # Enable drag-and-drop chart layout in dashboard editor.
     "ENABLE_EXPLORE_DRAG_AND_DROP": True,
 }
-

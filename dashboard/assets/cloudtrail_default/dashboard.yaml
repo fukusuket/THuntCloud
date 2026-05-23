@@ -2,7 +2,7 @@
 # 6-tab layout: Identity & Access | Threat Detection |
 # Data & Infrastructure | GeoIP Intelligence | Temporal Analysis |
 # High-Risk API Monitor.
-# 50 charts total (40 original + 5 Phase-1 DSH-39 to DSH-43 + 5 HRM).
+# 53 charts total (50 Phase-1 + 3 Phase-2 DSH-44 to DSH-46).
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
@@ -52,6 +52,7 @@ position:
       - ROW-ia-3
       - ROW-ia-4
       - ROW-ia-5
+      - ROW-ia-6
     meta:
       text: "\U0001f511 Identity & Access"
       defaultText: "Tab 1"
@@ -93,6 +94,14 @@ position:
       - CHART-priv-esc-timeline
     meta:
       background: BACKGROUND_TRANSPARENT
+  # Phase-2 new row: SSO events (DSH-44)
+  ROW-ia-6:
+    type: ROW
+    id: ROW-ia-6
+    children:
+      - CHART-sso-events
+    meta:
+      background: BACKGROUND_TRANSPARENT
 
   # Tab 2 — Threat Detection
   TAB-threat:
@@ -106,6 +115,7 @@ position:
       - ROW-td-5
       - ROW-td-6
       - ROW-td-7
+      - ROW-td-8
     meta:
       text: "\U0001f3af Threat Detection"
       defaultText: "Tab 2"
@@ -164,6 +174,14 @@ position:
       - CHART-config-tampering
     meta:
       background: BACKGROUND_TRANSPARENT
+  # Phase-2 new row: Network-layer changes (DSH-46)
+  ROW-td-8:
+    type: ROW
+    id: ROW-td-8
+    children:
+      - CHART-nacl-route
+    meta:
+      background: BACKGROUND_TRANSPARENT
 
   # Tab 3 — Data & Infrastructure
   TAB-data:
@@ -177,6 +195,7 @@ position:
       - ROW-di-5
       - ROW-di-6
       - ROW-di-7
+      - ROW-di-8
     meta:
       text: "\U0001f5c4 Data & Infrastructure"
       defaultText: "Tab 3"
@@ -232,6 +251,14 @@ position:
     children:
       - CHART-rds-snapshot-share
       - CHART-ec2-public-snapshot
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-2 new row: S3 permission changes (DSH-45)
+  ROW-di-8:
+    type: ROW
+    id: ROW-di-8
+    children:
+      - CHART-s3-policy-changes
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -833,6 +860,40 @@ position:
       width: 6
       height: 75
       sliceName: AWS Config Tampering
+
+  # Phase-2 new charts (DSH-44 to DSH-46)
+  CHART-sso-events:
+    type: CHART
+    id: CHART-sso-events
+    children: []
+    meta:
+      chartId: 51
+      uuid: 44f5a6b7-c8d9-0123-4567-440000000044
+      width: 12
+      height: 75
+      sliceName: IAM Identity Center (SSO) Events
+
+  CHART-s3-policy-changes:
+    type: CHART
+    id: CHART-s3-policy-changes
+    children: []
+    meta:
+      chartId: 52
+      uuid: 45a6b7c8-d9e0-1234-5678-450000000045
+      width: 12
+      height: 75
+      sliceName: S3 Bucket Policy / ACL Changes
+
+  CHART-nacl-route:
+    type: CHART
+    id: CHART-nacl-route
+    children: []
+    meta:
+      chartId: 53
+      uuid: 46b7c8d9-e0f1-2345-6789-460000000046
+      width: 12
+      height: 75
+      sliceName: Network ACL / Route Table Changes
 
 metadata:
   native_filter_configuration:

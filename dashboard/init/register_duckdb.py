@@ -43,26 +43,30 @@ def main() -> None:
         from superset.extensions import db  # noqa: PLC0415
         from superset.models.core import Database  # noqa: PLC0415
 
-        existing = (
-            db.session.query(Database).filter_by(database_name=DB_NAME).first()
-        )
+        existing = db.session.query(Database).filter_by(database_name=DB_NAME).first()
         if existing:
             # Fix URI if it was registered with the bad ?read_only=true param.
             if "?read_only" in existing.sqlalchemy_uri:
                 existing.sqlalchemy_uri = SQLALCHEMY_URI
                 import json as _json  # noqa: PLC0415
-                existing.extra = _json.dumps({
-                    "metadata_params": {},
-                    "engine_params": {"connect_args": {"read_only": True}},
-                    "schemas_allowed_for_file_upload": [],
-                })
+
+                existing.extra = _json.dumps(
+                    {
+                        "metadata_params": {},
+                        "engine_params": {"connect_args": {"read_only": True}},
+                        "schemas_allowed_for_file_upload": [],
+                    }
+                )
                 db.session.commit()
-                print(f"    Database '{DB_NAME}' URI updated (removed bad ?read_only param).")
+                print(
+                    f"    Database '{DB_NAME}' URI updated (removed bad ?read_only param)."
+                )
             else:
                 print(f"    Database '{DB_NAME}' already registered — skipping.")
             return
 
         import json as _json  # noqa: PLC0415
+
         database = Database(
             database_name=DB_NAME,
             sqlalchemy_uri=SQLALCHEMY_URI,
@@ -71,11 +75,13 @@ def main() -> None:
             allow_ctas=False,
             allow_cvas=False,
             allow_dml=False,
-            extra=_json.dumps({
-                "metadata_params": {},
-                "engine_params": {"connect_args": {"read_only": True}},
-                "schemas_allowed_for_file_upload": [],
-            }),
+            extra=_json.dumps(
+                {
+                    "metadata_params": {},
+                    "engine_params": {"connect_args": {"read_only": True}},
+                    "schemas_allowed_for_file_upload": [],
+                }
+            ),
         )
         db.session.add(database)
         db.session.commit()

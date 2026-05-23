@@ -52,9 +52,7 @@ def main() -> None:
         from superset.models.core import Database  # noqa: PLC0415
 
         # Look up the target database connection.
-        database = (
-            db.session.query(Database).filter_by(database_name=DB_NAME).first()
-        )
+        database = db.session.query(Database).filter_by(database_name=DB_NAME).first()
         if not database:
             print(f"    ERROR: Database '{DB_NAME}' not found.")
             print("    Run register_duckdb.py first.")
@@ -68,7 +66,9 @@ def main() -> None:
         )
         if existing:
             if FORCE_RESYNC:
-                print(f"    Dataset '{TABLE_NAME}' already registered — forcing metadata re-sync...")
+                print(
+                    f"    Dataset '{TABLE_NAME}' already registered — forcing metadata re-sync..."
+                )
                 _sync_metadata(existing)
                 _register_core_columns(existing)
                 _register_metrics(existing)
@@ -80,6 +80,7 @@ def main() -> None:
 
         # Create the dataset with a fixed UUID so the dashboard ZIP can reference it.
         import uuid as _uuid  # noqa: PLC0415
+
         dataset = SqlaTable(
             table_name=TABLE_NAME,
             database_id=database.id,
@@ -127,18 +128,33 @@ def _sync_metadata(dataset: "SqlaTable") -> None:
         print("      docker compose --profile resync run --rm superset-resync")
 
 
-
 # Custom metrics used by the pre-built dashboard charts.
 CUSTOM_METRICS = [
     ("event_count", "COUNT(*)", "Total event count"),
     ("call_count", "COUNT(*)", "API call count"),
     ("total_events", "COUNT(*)", "Total events per entity"),
-    ("write_events", "COUNT(CASE WHEN read_only = false THEN 1 END)", "Write (mutating) events"),
-    ("error_events", "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)", "Events with error code"),
-    ("error_count", "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)", "Error event count"),
+    (
+        "write_events",
+        "COUNT(CASE WHEN read_only = false THEN 1 END)",
+        "Write (mutating) events",
+    ),
+    (
+        "error_events",
+        "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)",
+        "Events with error code",
+    ),
+    (
+        "error_count",
+        "COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END)",
+        "Error event count",
+    ),
     ("request_count", "COUNT(*)", "Request count per source IP"),
     ("unique_identities", "COUNT(DISTINCT user_identity_arn)", "Unique IAM identities"),
-    ("write_requests", "COUNT(CASE WHEN read_only = false THEN 1 END)", "Write requests per source IP"),
+    (
+        "write_requests",
+        "COUNT(CASE WHEN read_only = false THEN 1 END)",
+        "Write requests per source IP",
+    ),
 ]
 
 
@@ -177,23 +193,23 @@ def _register_metrics(dataset: "SqlaTable") -> None:
 # because no columns exist in the DB.
 # Tuple: (col_name, col_type, verbose_name, groupby, filterable, is_dttm)
 CORE_COLUMNS = [
-    ("event_time",               "TIMESTAMP", "Event Time",          True,  True,  True),
-    ("event_name",               "VARCHAR",   "Event Name",          True,  True,  False),
-    ("event_source",             "VARCHAR",   "Event Source",        True,  True,  False),
-    ("aws_region",               "VARCHAR",   "AWS Region",          True,  True,  False),
-    ("source_ip_address",        "VARCHAR",   "Source IP Address",   True,  True,  False),
-    ("user_agent",               "VARCHAR",   "User Agent",          False, True,  False),
-    ("user_identity_type",       "VARCHAR",   "Identity Type",       True,  True,  False),
-    ("user_identity_arn",        "VARCHAR",   "Identity ARN",        True,  True,  False),
-    ("user_identity_account_id", "VARCHAR",   "Account ID",          True,  True,  False),
-    ("request_parameters",       "VARCHAR",   "Request Parameters",  False, False, False),
-    ("response_elements",        "VARCHAR",   "Response Elements",   False, False, False),
-    ("error_code",               "VARCHAR",   "Error Code",          True,  True,  False),
-    ("error_message",            "VARCHAR",   "Error Message",       False, True,  False),
-    ("read_only",                "BOOLEAN",   "Read Only",           True,  True,  False),
-    ("event_type",               "VARCHAR",   "Event Type",          True,  True,  False),
-    ("recipient_account_id",     "VARCHAR",   "Recipient Account ID",True,  True,  False),
-    ("raw_event",                "VARCHAR",   "Raw Event",           False, False, False),
+    ("event_time", "TIMESTAMP", "Event Time", True, True, True),
+    ("event_name", "VARCHAR", "Event Name", True, True, False),
+    ("event_source", "VARCHAR", "Event Source", True, True, False),
+    ("aws_region", "VARCHAR", "AWS Region", True, True, False),
+    ("source_ip_address", "VARCHAR", "Source IP Address", True, True, False),
+    ("user_agent", "VARCHAR", "User Agent", False, True, False),
+    ("user_identity_type", "VARCHAR", "Identity Type", True, True, False),
+    ("user_identity_arn", "VARCHAR", "Identity ARN", True, True, False),
+    ("user_identity_account_id", "VARCHAR", "Account ID", True, True, False),
+    ("request_parameters", "VARCHAR", "Request Parameters", False, False, False),
+    ("response_elements", "VARCHAR", "Response Elements", False, False, False),
+    ("error_code", "VARCHAR", "Error Code", True, True, False),
+    ("error_message", "VARCHAR", "Error Message", False, True, False),
+    ("read_only", "BOOLEAN", "Read Only", True, True, False),
+    ("event_type", "VARCHAR", "Event Type", True, True, False),
+    ("recipient_account_id", "VARCHAR", "Recipient Account ID", True, True, False),
+    ("raw_event", "VARCHAR", "Raw Event", False, False, False),
 ]
 
 
@@ -240,13 +256,13 @@ def _register_core_columns(dataset: "SqlaTable") -> None:
 # reference geo_* columns can be imported and rendered regardless of whether
 # GeoIP enrichment has been performed.
 GEO_COLUMNS = [
-    ("geo_country_code", "VARCHAR",  "Country Code",     True,  True),
-    ("geo_country_name", "VARCHAR",  "Country Name",     True,  True),
-    ("geo_city",         "VARCHAR",  "City",             True,  True),
-    ("geo_latitude",     "FLOAT",    "Latitude",         False, False),
-    ("geo_longitude",    "FLOAT",    "Longitude",        False, False),
-    ("geo_asn",          "INTEGER",  "ASN",              False, False),
-    ("geo_org",          "VARCHAR",  "ASN Organization", True,  True),
+    ("geo_country_code", "VARCHAR", "Country Code", True, True),
+    ("geo_country_name", "VARCHAR", "Country Name", True, True),
+    ("geo_city", "VARCHAR", "City", True, True),
+    ("geo_latitude", "FLOAT", "Latitude", False, False),
+    ("geo_longitude", "FLOAT", "Longitude", False, False),
+    ("geo_asn", "INTEGER", "ASN", False, False),
+    ("geo_org", "VARCHAR", "ASN Organization", True, True),
 ]
 
 
@@ -289,5 +305,3 @@ def _register_geo_columns(dataset: "SqlaTable") -> None:
 if __name__ == "__main__":
     main()
     sys.exit(0)
-
-

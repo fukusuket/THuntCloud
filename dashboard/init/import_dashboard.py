@@ -166,21 +166,23 @@ def _generate_query_contexts() -> None:
         query_context = {
             "datasource": {"id": c.datasource_id, "type": "table"},
             "force": False,
-            "queries": [{
-                "filters": [],
-                "extras": {"having": "", "where": ""},
-                "applied_time_extras": {},
-                "columns": columns,
-                "metrics": metrics,
-                "orderby": orderby,
-                "row_limit": params.get("row_limit", 10000),
-                "series_limit": 0,
-                "order_desc": params.get("order_desc", True),
-                "url_params": {},
-                "custom_params": {},
-                "custom_form_data": {},
-                "adhoc_filters": adhoc_filters,
-            }],
+            "queries": [
+                {
+                    "filters": [],
+                    "extras": {"having": "", "where": ""},
+                    "applied_time_extras": {},
+                    "columns": columns,
+                    "metrics": metrics,
+                    "orderby": orderby,
+                    "row_limit": params.get("row_limit", 10000),
+                    "series_limit": 0,
+                    "order_desc": params.get("order_desc", True),
+                    "url_params": {},
+                    "custom_params": {},
+                    "custom_form_data": {},
+                    "adhoc_filters": adhoc_filters,
+                }
+            ],
             "form_data": params,
             "result_format": "json",
             "result_type": "full",
@@ -195,4 +197,3 @@ def _generate_query_contexts() -> None:
 
 if __name__ == "__main__":
     main()
-

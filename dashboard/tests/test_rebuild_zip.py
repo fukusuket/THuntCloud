@@ -1,5 +1,6 @@
 """Tests for rebuild_zip.py — verifies that the output ZIP has correct structure
 and contains all chart YAML files listed in FILE_MAP."""
+
 import os
 import subprocess
 import sys
@@ -43,9 +44,9 @@ def test_rebuild_zip_runs_without_error() -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"rebuild_zip.py failed (rc={result.returncode}):\n{result.stderr}\n{result.stdout}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"rebuild_zip.py failed (rc={result.returncode}):\n{result.stderr}\n{result.stdout}"
 
 
 def test_zip_contains_required_files() -> None:
@@ -63,9 +64,9 @@ def test_zip_has_no_missing_sources() -> None:
         capture_output=True,
         text=True,
     )
-    assert "MISSING:" not in result.stdout, (
-        f"rebuild_zip.py reports missing source files:\n{result.stdout}"
-    )
+    assert (
+        "MISSING:" not in result.stdout
+    ), f"rebuild_zip.py reports missing source files:\n{result.stdout}"
 
 
 @pytest.mark.parametrize("fragment", NEW_CHART_FRAGMENTS)
@@ -78,4 +79,3 @@ def test_zip_contains_new_chart(fragment: str) -> None:
         f"New chart '{fragment}' not found in ZIP charts/ entries.\n"
         f"Available: {sorted(chart_names)}"
     )
-
