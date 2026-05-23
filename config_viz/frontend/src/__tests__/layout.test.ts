@@ -1,16 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { applyDagreLayout } from "../utils/layout";
+import { applyElkLayout } from "../utils/layout";
 import type { Node, Edge } from "reactflow";
 
-// BF-08: applyDagreLayout assigns position to all nodes (compound graph support)
-describe("applyDagreLayout", () => {
-  it("assigns numeric position to all nodes", () => {
+describe("applyElkLayout", () => {
+  it("assigns numeric position to all nodes", async () => {
     const nodes: Node[] = [
       { id: "a", position: { x: 0, y: 0 }, data: {} },
       { id: "b", position: { x: 0, y: 0 }, data: {} },
     ];
     const edges: Edge[] = [{ id: "e1", source: "a", target: "b" }];
-    const result = applyDagreLayout(nodes, edges);
+    const result = await applyElkLayout(nodes, edges);
 
     expect(result).toHaveLength(2);
     for (const n of result) {
@@ -21,7 +20,7 @@ describe("applyDagreLayout", () => {
     }
   });
 
-  it("handles compound graph — child has parentNode set", () => {
+  it("handles compound graph — child has parentNode set", async () => {
     const nodes: Node[] = [
       { id: "vpc", type: "awsGroupNode", position: { x: 0, y: 0 }, data: {} },
       {
@@ -32,8 +31,7 @@ describe("applyDagreLayout", () => {
         parentNode: "vpc",
       },
     ];
-    const edges: Edge[] = [];
-    const result = applyDagreLayout(nodes, edges);
+    const result = await applyElkLayout(nodes, []);
 
     expect(result).toHaveLength(2);
     for (const n of result) {
@@ -42,19 +40,15 @@ describe("applyDagreLayout", () => {
     }
   });
 
-
-  it("returns original node when dagre has no computed position", () => {
-    // Edge without corresponding nodes should not crash
+  it("returns node with valid position for solo node (no edges)", async () => {
     const nodes: Node[] = [{ id: "solo", position: { x: 42, y: 99 }, data: {} }];
-    const edges: Edge[] = [];
-    const result = applyDagreLayout(nodes, edges);
+    const result = await applyElkLayout(nodes, []);
 
     expect(result).toHaveLength(1);
     expect(typeof result[0].position.x).toBe("number");
   });
 
-  // Three-level compound graph: service-group → VPC → Subnet/NetworkACL
-  it("three-level compound: VPC gets style.width/height large enough to contain Subnet and ACL", () => {
+  it("three-level compound: VPC gets style.width/height large enough to contain Subnet and ACL", async () => {
     const nodes: Node[] = [
       { id: "__svc__EC2", type: "awsGroupNode", position: { x: 0, y: 0 }, data: {} },
       {
@@ -83,7 +77,7 @@ describe("applyDagreLayout", () => {
       },
     ] as Node[];
 
-    const result = applyDagreLayout(nodes, []);
+    const result = await applyElkLayout(nodes, []);
     const vpc = result.find((n) => n.id === "vpc-001")!;
     const subnet = result.find((n) => n.id === "subnet-001")!;
     const acl = result.find((n) => n.id === "acl-001")!;
@@ -93,18 +87,13 @@ describe("applyDagreLayout", () => {
 
     expect(vpcW).toBeGreaterThan(0);
     expect(vpcH).toBeGreaterThan(0);
-
     expect(subnet.position.x + 200).toBeLessThanOrEqual(vpcW);
     expect(subnet.position.y + 56).toBeLessThanOrEqual(vpcH);
     expect(acl.position.x + 200).toBeLessThanOrEqual(vpcW);
     expect(acl.position.y + 56).toBeLessThanOrEqual(vpcH);
   });
 
-
-  // FE-HG-01: 4-level compound graph (service → VPC → Subnet → Instance × 2).
-  // Verifies that deep nesting does not break layout and children fit inside
-  // their immediate parent (Subnet) container box.
-  it("four-level compound: layout is valid and instances fit inside Subnet", () => {
+  it("four-level compound: layout is valid and instances fit inside Subnet", async () => {
     const nodes: Node[] = [
       { id: "__svc__EC2", type: "awsGroupNode", position: { x: 0, y: 0 }, data: {} },
       {
@@ -141,7 +130,7 @@ describe("applyDagreLayout", () => {
       },
     ] as Node[];
 
-    const result = applyDagreLayout(nodes, []);
+    const result = await applyElkLayout(nodes, []);
 
     expect(result).toHaveLength(5);
     for (const n of result) {
@@ -151,14 +140,12 @@ describe("applyDagreLayout", () => {
       expect(isNaN(n.position.y)).toBe(false);
     }
 
-    // Subnet must receive explicit dimensions from the layout engine.
     const subnet = result.find((n) => n.id === "subnet-001")!;
     const subnetW = (subnet.style as { width?: number })?.width ?? 0;
     const subnetH = (subnet.style as { height?: number })?.height ?? 0;
     expect(subnetW).toBeGreaterThan(0);
     expect(subnetH).toBeGreaterThan(0);
 
-    // Children (NODE_W=200, NODE_H=56) must fit within the Subnet box.
     const i001 = result.find((n) => n.id === "i-001")!;
     const i002 = result.find((n) => n.id === "i-002")!;
     expect(i001.position.x + 200).toBeLessThanOrEqual(subnetW);

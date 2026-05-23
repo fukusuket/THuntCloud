@@ -19,13 +19,14 @@ import { MINIMAP_LEAF_COLOR, SERVICE_CATEGORIES, NEUTRAL_COLOR, serviceColorOf }
 import { getVisibleNodes, rewireEdges } from "../utils/collapse";
 import { CollapseContext } from "./CollapseContext";
 import { Legend, type LegendEntry } from "./Legend";
+import { applyElkLayout } from "../utils/layout";
+import { AwsNode } from "./AwsNode";
+import { AwsGroupNode } from "./AwsGroupNode";
+import type { ApiGraphNode, ApiGraphEdge } from "../types";
 
-// Phase A-1: shared visual constants for edge rendering.
 const EDGE_STROKE = "#9CA3AF";
 const EDGE_STROKE_WIDTH = 1.5;
 
-// Phase A-3: paint group nodes with their service color on the MiniMap;
-// leaf nodes get a uniform light gray so groups remain the dominant signal.
 function _minimapNodeColor(node: Node): string {
   if (node.type === "awsGroupNode") {
     const rt = (node.data as { resource_type?: string } | undefined)?.resource_type ?? "";
@@ -34,41 +35,27 @@ function _minimapNodeColor(node: Node): string {
   return MINIMAP_LEAF_COLOR;
 }
 
-import { applyDagreLayout } from "../utils/layout";
-import { AwsNode } from "./AwsNode";
-import { AwsGroupNode } from "./AwsGroupNode";
-import type { ApiGraphNode, ApiGraphEdge } from "../types";
-
 const nodeTypes = {
   awsNode: AwsNode,
   awsGroupNode: AwsGroupNode,
 };
 
-/** Margin in pixels between the canvas edge and the graph bounding box. */
 const LEFT_MARGIN = 24;
 const NODE_W_DEFAULT = 200;
 const NODE_H_DEFAULT = 56;
 
-/**
- * Null-rendered controller that MUST live inside <ReactFlow> so that
- * useReactFlow() binds to the correct internal store instance.
- *
- * Whenever `laidNodes` changes it computes a left-aligned viewport:
- *   - x: graph left edge is placed LEFT_MARGIN px from the canvas left edge
- *   - y: graph top  edge is placed LEFT_MARGIN px from the canvas top  edge
- *   - zoom: fitted so the full graph is visible
- */
 function ViewportController({
   laidNodes,
   containerRef,
+  rankdir,
 }: {
   laidNodes: Node[];
   containerRef: React.RefObject<HTMLDivElement>;
+  rankdir: "TB" | "LR";
 }) {
   const { setViewport } = useReactFlow();
 
   useEffect(() => {
-    // Only root nodes (no parentNode) occupy the global coordinate space.
     const rootNodes = laidNodes.filter(
       (n) => !(n as Node & { parentNode?: string }).parentNode,
     );
@@ -101,7 +88,7 @@ function ViewportController({
       { x: LEFT_MARGIN - minX * zoom, y: LEFT_MARGIN - minY * zoom, zoom },
       { duration: 300 },
     );
-  }, [laidNodes, setViewport, containerRef]);
+  }, [laidNodes, setViewport, containerRef, rankdir]);
 
   return null;
 }
@@ -109,16 +96,13 @@ function ViewportController({
 interface GraphCanvasProps {
   nodes: ApiGraphNode[];
   edges: ApiGraphEdge[];
+  rankdir: "TB" | "LR";
   onNodeClick: (resourceId: string) => void;
   searchTerm?: string;
   collapsedIds?: Set<string>;
   onToggleCollapse?: (id: string) => void;
 }
 
-/**
- * Topologically sort nodes so parents always precede children.
- * React Flow requires this when `parentNode` / `extent: "parent"` are used.
- */
 function topoSort(nodes: Node[]): Node[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const visited = new Set<string>();
@@ -138,23 +122,17 @@ function topoSort(nodes: Node[]): Node[] {
   return result;
 }
 
-/**
- * Renders the AWS resource graph using React Flow.
- * Maps API nodes (parentId) → React Flow nodes (parentNode).
- * Applies dagre auto-layout before rendering.
- */
 export function GraphCanvas({
   nodes: apiNodes,
   edges: apiEdges,
+  rankdir,
   onNodeClick,
   searchTerm = "",
   collapsedIds = new Set<string>(),
   onToggleCollapse = () => {},
 }: GraphCanvasProps) {
-  // Ref to the container div — used by ViewportController for dimension reads.
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Map API nodes to React Flow nodes (parentId -> parentNode), parents first
   const toRfNodes = useCallback(
     (src: ApiGraphNode[]): Node[] => {
       const mapped = src.map((n) => ({
@@ -167,7 +145,7 @@ export function GraphCanvas({
       }));
       return topoSort(mapped);
     },
-    []
+    [],
   );
 
   const toRfEdges = useCallback(
@@ -191,11 +169,9 @@ export function GraphCanvas({
         labelBgPadding: [4, 2],
         labelBgBorderRadius: 2,
       })),
-    []
+    [],
   );
 
-  // Phase B-3: filter out descendants of collapsed groups before layout so
-  // dagre does not allocate space for invisible nodes.
   const visibleApiNodes = useMemo(
     () => getVisibleNodes(apiNodes, collapsedIds),
     [apiNodes, collapsedIds],
@@ -205,7 +181,6 @@ export function GraphCanvas({
     [apiEdges, collapsedIds, apiNodes],
   );
 
-  // Show empty state when there are no nodes to render.
   if (apiNodes.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm" data-testid="graph-canvas">
@@ -214,32 +189,26 @@ export function GraphCanvas({
     );
   }
 
-  const layoutedNodes = applyDagreLayout(
-    toRfNodes(visibleApiNodes),
-    toRfEdges(visibleApiEdges),
-  );
+  const rfNodes = toRfNodes(visibleApiNodes);
+  const rfEdges = toRfEdges(visibleApiEdges);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(toRfEdges(visibleApiEdges));
+  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
 
-  // Re-layout whenever visible data changes.
-  // ViewportController (rendered inside ReactFlow) reacts to `nodes` changes
-  // and applies the left-aligned viewport from the correct store context.
+  // Re-layout whenever visible data or direction changes.
   useEffect(() => {
-    const rfNodes = toRfNodes(visibleApiNodes);
-    const rfEdges = toRfEdges(visibleApiEdges);
-    setNodes(applyDagreLayout(rfNodes, rfEdges));
-    setEdges(rfEdges);
-  }, [visibleApiNodes, visibleApiEdges, toRfNodes, toRfEdges, setNodes, setEdges]);
+    const n = toRfNodes(visibleApiNodes);
+    const e = toRfEdges(visibleApiEdges);
+    applyElkLayout(n, e, rankdir).then((laid) => {
+      setNodes(laid);
+      setEdges(e);
+    });
+  }, [visibleApiNodes, visibleApiEdges, rankdir, toRfNodes, toRfEdges, setNodes, setEdges]);
 
-  // Phase B-1: track which node the user last clicked so connected peers can
-  // be emphasised and unrelated elements dimmed.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const displayNodes = useMemo(() => {
     const term = searchTerm.toLowerCase();
-
-    // B-1: build the set of nodes connected to the highlighted node.
     const connected = highlightedId ? new Set<string>([highlightedId]) : null;
     if (connected) {
       for (const e of edges) {
@@ -250,13 +219,9 @@ export function GraphCanvas({
 
     return nodes.map((n) => {
       let updated: typeof n = n;
-
-      // B-1: dim unconnected nodes when something is highlighted.
       if (connected && !connected.has(n.id)) {
         updated = { ...updated, style: { ...((updated.style as object) ?? {}), opacity: 0.25 } };
       }
-
-      // B-2: mark nodes that match the search term.
       if (term) {
         const d = n.data as { resource_id?: string; resource_name?: string | null };
         const matches =
@@ -269,7 +234,6 @@ export function GraphCanvas({
           };
         }
       }
-
       return updated;
     });
   }, [nodes, edges, highlightedId, searchTerm]);
@@ -287,38 +251,31 @@ export function GraphCanvas({
     (_event, node) => {
       setHighlightedId(node.id);
       const resourceId = (node.data as { resource_id: string }).resource_id;
-      // Only open the detail panel for real resources, not virtual group headers.
       if (!resourceId.startsWith("__svc__")) {
         onNodeClick(resourceId);
       }
     },
-    [onNodeClick]
+    [onNodeClick],
   );
 
   const handlePaneClick = useCallback(() => {
     setHighlightedId(null);
   }, []);
 
-  // Phase C-3: build legend entries from the unique categories present in the
-  // currently visible nodes so the legend only shows relevant services.
   const legendEntries = useMemo((): LegendEntry[] => {
     const seen = new Set<string>();
     const result: LegendEntry[] = [];
-
     for (const n of visibleApiNodes) {
       const color = serviceColorOf(n.data.resource_type ?? "");
       if (color === NEUTRAL_COLOR) continue;
       if (seen.has(color)) continue;
       seen.add(color);
-
       const category =
         Object.entries(SERVICE_CATEGORIES).find(([, svcs]) =>
           svcs.some((s) => serviceColorOf(`AWS::${s}::X`) === color),
         )?.[0] ?? "Other";
-
       result.push({ label: category, color });
     }
-
     return result.sort((a, b) => a.label.localeCompare(b.label));
   }, [visibleApiNodes]);
 
@@ -335,9 +292,7 @@ export function GraphCanvas({
           onPaneClick={handlePaneClick}
           attributionPosition="bottom-right"
         >
-          {/* ViewportController lives inside ReactFlow so useReactFlow()
-              binds to this canvas's store, not the outer ReactFlowProvider. */}
-          <ViewportController laidNodes={nodes} containerRef={containerRef} />
+          <ViewportController laidNodes={nodes} containerRef={containerRef} rankdir={rankdir} />
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E5E7EB" />
           <Controls />
           <Panel position="bottom-left">

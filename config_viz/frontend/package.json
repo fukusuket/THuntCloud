@@ -13,7 +13,7 @@
     "lint": "eslint src --ext ts,tsx"
   },
   "dependencies": {
-    "@dagrejs/dagre": "1.1.8",
+    "elkjs": "0.11.1",
     "@tanstack/react-query": "5.100.10",
     "react": "18.3.1",
     "react-dom": "18.3.1",

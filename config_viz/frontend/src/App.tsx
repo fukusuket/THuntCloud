@@ -83,6 +83,7 @@ export default function App() {
             <GraphCanvas
               nodes={graphData.nodes}
               edges={graphData.edges}
+              rankdir="TB"
               onNodeClick={handleNodeClick}
               searchTerm={searchTerm}
               collapsedIds={collapsedIds}

@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { GraphCanvas } from "../components/GraphCanvas";
 import type { ApiGraphNode, ApiGraphEdge } from "../types";
 
+// Mock applyElkLayout — returns nodes as-is to avoid ELK async work in component tests
+vi.mock("../utils/layout", () => ({
+  applyElkLayout: async (nodes: unknown[]) => nodes,
+}));
+
 // Mock reactflow to avoid canvas / ResizeObserver issues in jsdom
 const { mockReactFlow, fitViewSpy, setViewportSpy } = vi.hoisted(() => {
   const fitViewSpy = vi.fn();

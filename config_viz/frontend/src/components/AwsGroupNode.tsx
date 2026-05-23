@@ -3,6 +3,7 @@ import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
 import { NEUTRAL_COLOR, serviceColorOf } from "../utils/serviceColors";
 import { useCollapse } from "./CollapseContext";
+import { truncateLabel } from "../utils/label";
 
 interface AwsGroupNodeProps {
   id: string;
@@ -51,7 +52,7 @@ function _getStyle(resourceType: string) {
  * Service-group virtual nodes (id starts with "__svc__") use a bold colored header.
  */
 export function AwsGroupNode({ id, data, selected }: AwsGroupNodeProps) {
-  const label = data.resource_name ?? id;
+  const label = truncateLabel(data.resource_name ?? id);
   const isServiceGroup = data.resource_type?.startsWith("__service__");
   const style = _getStyle(data.resource_type ?? "");
   const { collapsedIds, toggleCollapse } = useCollapse();

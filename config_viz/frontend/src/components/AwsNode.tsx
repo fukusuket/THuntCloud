@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Handle, Position } from "reactflow";
 import type { NodeData } from "../types";
 import { getIconUrl } from "../utils/icons";
+import { truncateLabel } from "../utils/label";
 
 interface AwsNodeProps {
   id: string;
@@ -16,7 +17,8 @@ interface AwsNodeProps {
 export function AwsNode({ id, data, selected }: AwsNodeProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  const label = data.resource_name ?? id;
+  const fullLabel = data.resource_name ?? id;
+  const label = truncateLabel(fullLabel);
 
   return (
     <div

@@ -175,5 +175,23 @@ describe("AwsGroupNode", () => {
     expect(screen.getByTestId("handle-target-top")).toBeInTheDocument();
     expect(screen.getByTestId("handle-source-bottom")).toBeInTheDocument();
   });
+
+  // Label truncation: long names must not overflow the group header
+  describe("label truncation (TR)", () => {
+    const LONG_NAME = "my-very-long-vpc-name-that-exceeds-the-limit-and-more";
+
+    it("TR-C: long resource_name is truncated with ellipsis in the header", () => {
+      render(<AwsGroupNode {...props} data={{ ...props.data, resource_name: LONG_NAME }} />);
+      const node = screen.getByTestId("aws-group-node");
+      const spans = node.querySelectorAll("span.truncate");
+      const labelSpan = Array.from(spans).find((s) => s.textContent?.endsWith("…"));
+      expect(labelSpan).toBeTruthy();
+    });
+
+    it("TR-D: short resource_name is displayed unchanged (no ellipsis)", () => {
+      render(<AwsGroupNode {...props} />);
+      expect(screen.getByText("my-vpc").textContent?.endsWith("…")).toBe(false);
+    });
+  });
 });
 

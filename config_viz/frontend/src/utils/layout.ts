@@ -1,225 +1,212 @@
-import Dagre from "@dagrejs/dagre";
+import ELK from "elkjs/lib/elk.bundled.js";
+import type { ElkNode, ElkExtendedEdge, LayoutOptions } from "elkjs";
 import type { Node, Edge } from "reactflow";
 
-// Phase A-4: tuned for readability — wider nodes, larger gutters between ranks
-// and siblings, plus more breathing room inside group containers.
 const NODE_W = 200;
 const NODE_H = 56;
-const PADDING = 32; // inner padding inside group nodes
-const MIN_GROUP_W = 240;
-const MIN_GROUP_H = 96;
-const RANK_SEP = 80;
-const NODE_SEP = 56;
+const GROUP_MIN_W = 240;
+const GROUP_MIN_H = 96;
 
-function nodeDims(node: Node): { w: number; h: number } {
-  if (node.type === "awsGroupNode") return { w: MIN_GROUP_W, h: MIN_GROUP_H };
-  return { w: NODE_W, h: NODE_H };
-}
+const ROOT_OPTIONS: LayoutOptions = {
+  "elk.algorithm": "layered",
+  "elk.layered.cycleBreaking.strategy": "GREEDY",
+  "elk.layered.layering.strategy": "NETWORK_SIMPLEX",
+  "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+  "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+  "elk.layered.edgeRouting": "ORTHOGONAL",
+  "elk.separateConnectedComponents": "true",
+  "elk.spacing.nodeNode": "56",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "80",
+  "elk.padding": "[top=32,left=32,bottom=32,right=32]",
+};
 
-/**
- * Run flat dagre on a list of nodes using pre-computed sizes.
- * Does NOT call g.setParent — avoids the "Cannot set properties of undefined
- * (setting 'rank')" crash in @dagrejs/dagre compound-graph support.
- *
- * Returns positions normalised so the bounding-box top-left is at (0, 0).
- */
-function runFlatDagre(
-  nodes: Node[],
-  edges: Edge[],
-  rankdir: "TB" | "LR",
-  sizeOverrides: Map<string, { w: number; h: number }>
-): { positions: Map<string, { x: number; y: number }>; totalW: number; totalH: number } {
-  if (nodes.length === 0) return { positions: new Map(), totalW: 0, totalH: 0 };
+const CHILD_OPTIONS: LayoutOptions = {
+  "elk.algorithm": "layered",
+  "elk.layered.cycleBreaking.strategy": "GREEDY",
+  "elk.padding": "[top=32,left=32,bottom=32,right=32]",
+  "elk.spacing.nodeNode": "40",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "60",
+};
 
-  const g = new Dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({
-    rankdir,
-    ranksep: RANK_SEP,
-    nodesep: NODE_SEP,
-    marginx: PADDING,
-    marginy: PADDING,
-  });
+const elk = new ELK();
 
-  const idSet = new Set(nodes.map((n) => n.id));
-
-  for (const node of nodes) {
-    const s = sizeOverrides.get(node.id) ?? nodeDims(node);
-    g.setNode(node.id, { width: s.w, height: s.h });
-  }
-  for (const e of edges) {
-    if (idSet.has(e.source) && idSet.has(e.target)) {
-      g.setEdge(e.source, e.target);
-    }
-  }
-
-  Dagre.layout(g);
-
-  const positions = new Map<string, { x: number; y: number }>();
-  let minX = Infinity;
-  let minY = Infinity;
-
-  for (const node of nodes) {
-    const n = g.node(node.id);
-    if (!n) continue;
-    const s = sizeOverrides.get(node.id) ?? nodeDims(node);
-    const w = isFinite(n.width) ? n.width : s.w;
-    const h = isFinite(n.height) ? n.height : s.h;
-    const x = n.x - w / 2;
-    const y = n.y - h / 2;
-    positions.set(node.id, { x, y });
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-  }
-
-  // Normalise so top-left of bounding box = (0, 0)
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const [id, pos] of positions) {
-    const s = sizeOverrides.get(id) ?? nodeDims(nodes.find((n) => n.id === id)!);
-    positions.set(id, { x: pos.x - minX, y: pos.y - minY });
-    maxX = Math.max(maxX, pos.x - minX + s.w);
-    maxY = Math.max(maxY, pos.y - minY + s.h);
-  }
-
-  return {
-    positions,
-    totalW: isFinite(maxX) ? maxX + PADDING : MIN_GROUP_W,
-    totalH: isFinite(maxY) ? maxY + PADDING : MIN_GROUP_H,
-  };
-}
-
-/**
- * Apply dagre auto-layout to a list of React Flow nodes and edges.
- *
- * Two-pass strategy (avoids dagre compound crash):
- *   1. Bottom-up: recursively lay out children inside each group to compute
- *      the group's required size.
- *   2. Top-down: lay out root-level nodes using those computed sizes.
- *
- * Child node positions are relative to their parent (required by React Flow
- * when `extent: "parent"` is set).
- *
- * @param nodes   - React Flow node array (may include `parentNode`)
- * @param edges   - React Flow edge array
- * @returns New node array with updated `position` (and `style` for groups)
- */
-export function applyDagreLayout(
-  nodes: Node[],
-  edges: Edge[],
-): Node[] {
-  if (nodes.length === 0) return nodes;
-
-  // ── Build parent ↔ children maps ──────────────────────────────────────────
+function buildMaps(nodes: Node[]): {
+  parentOf: Map<string, string>;
+  childrenOf: Map<string, string[]>;
+} {
   const parentOf = new Map<string, string>();
-  const childrenOf = new Map<string, Node[]>();
-
-  for (const node of nodes) {
-    const pn = (node as Node & { parentNode?: string }).parentNode;
-    if (pn) {
-      parentOf.set(node.id, pn);
-      if (!childrenOf.has(pn)) childrenOf.set(pn, []);
-      childrenOf.get(pn)!.push(node);
+  const childrenOf = new Map<string, string[]>();
+  for (const n of nodes) {
+    const p = (n as Node & { parentNode?: string }).parentNode;
+    if (p) {
+      parentOf.set(n.id, p);
+      if (!childrenOf.has(p)) childrenOf.set(p, []);
+      childrenOf.get(p)!.push(n.id);
     }
   }
+  return { parentOf, childrenOf };
+}
 
-  // ── Computed sizes and relative positions (populated bottom-up) ───────────
-  const computedSizes = new Map<string, { w: number; h: number }>();
-  const relativePos = new Map<string, { x: number; y: number }>();
+// Collect all ancestors of a node (not including itself)
+function ancestors(id: string, parentOf: Map<string, string>): Set<string> {
+  const result = new Set<string>();
+  let cur = parentOf.get(id);
+  while (cur) {
+    result.add(cur);
+    cur = parentOf.get(cur);
+  }
+  return result;
+}
 
-  /**
-   * Recursively lay out children of `groupId` and return the required
-   * dimensions for the group node itself.
-   */
-  function computeGroup(groupId: string): { w: number; h: number } {
-    const children = childrenOf.get(groupId);
-    if (!children || children.length === 0) {
-      const base = nodeDims(nodes.find((n) => n.id === groupId) ?? ({ type: "awsGroupNode" } as Node));
-      return { w: Math.max(base.w, MIN_GROUP_W), h: Math.max(base.h, MIN_GROUP_H) };
-    }
+// Returns the id of the container node that should own this edge,
+// or null if the edge belongs at the root level.
+function findEdgeOwner(
+  aId: string,
+  bId: string,
+  parentOf: Map<string, string>,
+): string | null {
+  const aParent = parentOf.get(aId) ?? null;
+  const bParent = parentOf.get(bId) ?? null;
 
-    // Recurse first so child sizes are known
-    for (const child of children) {
-      if (childrenOf.has(child.id)) {
-        const s = computeGroup(child.id);
-        computedSizes.set(child.id, s);
-      }
-    }
+  // Siblings inside the same container
+  if (aParent !== null && aParent === bParent) return aParent;
 
-    // Lay out the children flat inside this group (always top-to-bottom)
-    const childEdges = edges.filter(
-      (e) => children.some((c) => c.id === e.source) && children.some((c) => c.id === e.target)
+  const aAnc = ancestors(aId, parentOf);
+  const bAnc = ancestors(bId, parentOf);
+
+  // b is a strict ancestor of a → place edge in b's parent
+  if (aAnc.has(bId)) return bParent;
+
+  // a is a strict ancestor of b → place edge in a's parent
+  if (bAnc.has(aId)) return aParent;
+
+  // Walk up from b's ancestors and find first shared with a's ancestors
+  let cur = bParent;
+  while (cur !== null && cur !== undefined) {
+    if (aAnc.has(cur)) return parentOf.get(cur) ?? null;
+    cur = parentOf.get(cur) ?? null;
+  }
+
+  return null;
+}
+
+function toElkNode(
+  id: string,
+  nodeById: Map<string, Node>,
+  childrenOf: Map<string, string[]>,
+  elkDir: string,
+): ElkNode {
+  const node = nodeById.get(id)!;
+  const isGroup = node.type === "awsGroupNode";
+  const childIds = childrenOf.get(id) ?? [];
+
+  const elkNode: ElkNode = {
+    id,
+    width: isGroup ? GROUP_MIN_W : NODE_W,
+    height: isGroup ? GROUP_MIN_H : NODE_H,
+  };
+
+  if (childIds.length > 0) {
+    elkNode.children = childIds.map((cid) =>
+      toElkNode(cid, nodeById, childrenOf, elkDir),
     );
-    const { positions, totalW, totalH } = runFlatDagre(
-      children,
-      childEdges,
-      "TB",
-      computedSizes
-    );
-
-    for (const [id, pos] of positions) {
-      // Offset by padding so children don't bleed into the group border
-      relativePos.set(id, { x: pos.x + PADDING, y: pos.y + PADDING });
-    }
-
-    return {
-      w: Math.max(totalW + PADDING * 2, MIN_GROUP_W),
-      h: Math.max(totalH + PADDING * 2, MIN_GROUP_H),
-    };
+    elkNode.layoutOptions = { ...CHILD_OPTIONS, "elk.direction": elkDir };
   }
 
-  // ── Pass 1: bottom-up size computation for every root group ───────────────
-  const rootNodes = nodes.filter((n) => !parentOf.has(n.id));
+  return elkNode;
+}
 
-  for (const node of rootNodes) {
-    if (childrenOf.has(node.id)) {
-      const s = computeGroup(node.id);
-      computedSizes.set(node.id, s);
-    }
+function toElkEdge(edge: Edge): ElkExtendedEdge {
+  return { id: edge.id, sources: [edge.source], targets: [edge.target] };
+}
+
+function injectEdges(
+  elkNode: ElkNode,
+  byOwner: Map<string | null, ElkExtendedEdge[]>,
+): void {
+  const owned = byOwner.get(elkNode.id);
+  if (owned?.length) elkNode.edges = [...(elkNode.edges ?? []), ...owned];
+  for (const child of elkNode.children ?? []) injectEdges(child, byOwner);
+}
+
+function extractPositions(
+  elkNode: ElkNode,
+  out: Map<string, { x: number; y: number; w: number; h: number }>,
+  skipRoot: boolean,
+): void {
+  if (!skipRoot) {
+    out.set(elkNode.id, {
+      x: elkNode.x ?? 0,
+      y: elkNode.y ?? 0,
+      w: elkNode.width ?? NODE_W,
+      h: elkNode.height ?? NODE_H,
+    });
+  }
+  for (const child of elkNode.children ?? [])
+    extractPositions(child, out, false);
+}
+
+export async function applyElkLayout(
+  nodes: Node[],
+  edges: Edge[],
+  direction: "TB" | "LR" = "TB",
+): Promise<Node[]> {
+  if (nodes.length === 0) return [];
+
+  const { parentOf, childrenOf } = buildMaps(nodes);
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const elkDir = direction === "TB" ? "DOWN" : "RIGHT";
+
+  const rootIds = nodes.filter((n) => !parentOf.has(n.id)).map((n) => n.id);
+  const elkChildren = rootIds.map((id) =>
+    toElkNode(id, nodeById, childrenOf, elkDir),
+  );
+
+  // Assign each edge to its owner container
+  const byOwner = new Map<string | null, ElkExtendedEdge[]>();
+  for (const edge of edges) {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) continue;
+    const owner = findEdgeOwner(edge.source, edge.target, parentOf);
+    if (!byOwner.has(owner)) byOwner.set(owner, []);
+    byOwner.get(owner)!.push(toElkEdge(edge));
   }
 
-  // ── Pass 2: lay out root nodes using computed sizes ───────────────────────
-  // Root-level uses "LR" regardless of user preference so that disconnected
-  // service groups (no edges between them) stack vertically instead of being
-  // placed in a single horizontal row by dagre's same-rank assignment.
-  const rootEdges = edges.filter(
-    (e) =>
-      rootNodes.some((n) => n.id === e.source) && rootNodes.some((n) => n.id === e.target)
-  );
-  const { positions: rootPositions } = runFlatDagre(
-    rootNodes,
-    rootEdges,
-    "LR",
-    computedSizes
-  );
+  const elkGraph: ElkNode = {
+    id: "__root__",
+    layoutOptions: { ...ROOT_OPTIONS, "elk.direction": elkDir },
+    children: elkChildren,
+    edges: byOwner.get(null) ?? [],
+  };
 
-  // ── Build final node list ─────────────────────────────────────────────────
-  return nodes.map((node) => {
-    const isGroup = node.type === "awsGroupNode";
-    const size = computedSizes.get(node.id);
+  for (const child of elkGraph.children ?? []) injectEdges(child, byOwner);
 
-    if (rootPositions.has(node.id)) {
-      const pos = rootPositions.get(node.id)!;
+  try {
+    const result = await elk.layout(elkGraph);
+    const positions = new Map<
+      string,
+      { x: number; y: number; w: number; h: number }
+    >();
+    extractPositions(result, positions, true);
+
+    return nodes.map((node) => {
+      const pos = positions.get(node.id);
+      if (!pos) return node;
+      const isGroup = node.type === "awsGroupNode";
       return {
         ...node,
-        position: pos,
-        ...(isGroup && size
-          ? { style: { ...((node.style as object) ?? {}), width: size.w, height: size.h } }
+        position: { x: pos.x, y: pos.y },
+        ...(isGroup
+          ? {
+              style: {
+                ...((node.style as object) ?? {}),
+                width: pos.w,
+                height: pos.h,
+              },
+            }
           : {}),
       };
-    }
-
-    if (relativePos.has(node.id)) {
-      const pos = relativePos.get(node.id)!;
-      return {
-        ...node,
-        position: pos,
-        ...(isGroup && size
-          ? { style: { ...((node.style as object) ?? {}), width: size.w, height: size.h } }
-          : {}),
-      };
-    }
-
-    return node;
-  });
+    });
+  } catch {
+    return nodes;
+  }
 }
