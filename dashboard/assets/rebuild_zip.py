@@ -71,6 +71,12 @@ FILE_MAP = {
     "charts/hrm_defense_evasion_table.yaml":          "charts/HRM_Defense_Evasion_API_Events.yaml",
     "charts/hrm_credential_access_table.yaml":        "charts/HRM_Credential_Access_API_Events.yaml",
     "charts/hrm_by_region.yaml":                      "charts/HRM_High_Risk_API_By_Region.yaml",
+    # Phase-1 new charts (DSH-39 to DSH-43) — Critical DFIR gaps
+    "charts/ssm_execution.yaml":                      "charts/SSM_Session_Run_Command_Execution.yaml",
+    "charts/rds_snapshot_share.yaml":                 "charts/RDS_Snapshot_Cross_Account_Share.yaml",
+    "charts/ec2_public_snapshot.yaml":                "charts/EC2_Public_Snapshot_AMI_Sharing.yaml",
+    "charts/vpc_flowlog_changes.yaml":                "charts/VPC_Flow_Log_Changes.yaml",
+    "charts/config_tampering.yaml":                   "charts/AWS_Config_Tampering.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

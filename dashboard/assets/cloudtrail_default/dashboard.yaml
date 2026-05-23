@@ -2,7 +2,7 @@
 # 6-tab layout: Identity & Access | Threat Detection |
 # Data & Infrastructure | GeoIP Intelligence | Temporal Analysis |
 # High-Risk API Monitor.
-# 45 charts total (37 original + 8 new HRM-39 to HRM-46).
+# 50 charts total (40 original + 5 Phase-1 DSH-39 to DSH-43 + 5 HRM).
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
@@ -105,6 +105,7 @@ position:
       - ROW-td-4
       - ROW-td-5
       - ROW-td-6
+      - ROW-td-7
     meta:
       text: "\U0001f3af Threat Detection"
       defaultText: "Tab 2"
@@ -154,6 +155,15 @@ position:
       - CHART-first-time-svc
     meta:
       background: BACKGROUND_TRANSPARENT
+  # Phase-1 new rows: Defense Evasion additions (DSH-42, DSH-43)
+  ROW-td-7:
+    type: ROW
+    id: ROW-td-7
+    children:
+      - CHART-vpc-flowlog
+      - CHART-config-tampering
+    meta:
+      background: BACKGROUND_TRANSPARENT
 
   # Tab 3 — Data & Infrastructure
   TAB-data:
@@ -165,6 +175,8 @@ position:
       - ROW-di-3
       - ROW-di-4
       - ROW-di-5
+      - ROW-di-6
+      - ROW-di-7
     meta:
       text: "\U0001f5c4 Data & Infrastructure"
       defaultText: "Tab 3"
@@ -204,6 +216,22 @@ position:
     id: ROW-di-5
     children:
       - CHART-route53
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-1 new rows: Exfiltration additions (DSH-39, DSH-40, DSH-41)
+  ROW-di-6:
+    type: ROW
+    id: ROW-di-6
+    children:
+      - CHART-ssm-execution
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-7:
+    type: ROW
+    id: ROW-di-7
+    children:
+      - CHART-rds-snapshot-share
+      - CHART-ec2-public-snapshot
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -749,6 +777,62 @@ position:
       width: 6
       height: 75
       sliceName: Credential Access API Events
+
+  # Phase-1 new charts (DSH-39 to DSH-43)
+  CHART-ssm-execution:
+    type: CHART
+    id: CHART-ssm-execution
+    children: []
+    meta:
+      chartId: 46
+      uuid: 39a0b1c2-d3e4-5678-f012-390000000039
+      width: 12
+      height: 75
+      sliceName: SSM Session / Run Command Execution
+
+  CHART-rds-snapshot-share:
+    type: CHART
+    id: CHART-rds-snapshot-share
+    children: []
+    meta:
+      chartId: 47
+      uuid: 40b1c2d3-e4f5-6789-0123-400000000040
+      width: 6
+      height: 75
+      sliceName: RDS Snapshot Cross-Account Share
+
+  CHART-ec2-public-snapshot:
+    type: CHART
+    id: CHART-ec2-public-snapshot
+    children: []
+    meta:
+      chartId: 48
+      uuid: 41c2d3e4-f5a6-7890-1234-410000000041
+      width: 6
+      height: 75
+      sliceName: EC2 Public Snapshot / AMI Sharing
+
+  CHART-vpc-flowlog:
+    type: CHART
+    id: CHART-vpc-flowlog
+    children: []
+    meta:
+      chartId: 49
+      uuid: 42d3e4f5-a6b7-8901-2345-420000000042
+      width: 6
+      height: 75
+      sliceName: VPC Flow Log Changes
+
+  CHART-config-tampering:
+    type: CHART
+    id: CHART-config-tampering
+    children: []
+    meta:
+      chartId: 50
+      uuid: 43e4f5a6-b7c8-9012-3456-430000000043
+      width: 6
+      height: 75
+      sliceName: AWS Config Tampering
 
 metadata:
   native_filter_configuration:

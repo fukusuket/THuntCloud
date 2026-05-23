@@ -198,6 +198,61 @@
     LIMIT 100
 
 - category: "\U0001f511 Identity & Access"
+  label: "\U0001f511 STS Federation Token Issuance"
+  description: "Detects GetFederationToken and GetSessionToken calls. Attackers use these to convert long-lived keys into persistent temporary credentials."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all GetFederationToken and GetSessionToken events from STS.
+    Attackers with a compromised IAM access key use these to generate temporary
+    credentials that are harder to revoke. GetFederationToken in particular
+    creates sessions that survive key rotation. Show caller, federation name,
+    duration requested, source IP, and region.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        user_identity_type,
+        json_extract_string(request_parameters, '$.name')            AS federation_name,
+        json_extract_string(request_parameters, '$.durationSeconds') AS duration_seconds,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'sts.amazonaws.com'
+      AND event_name IN ('GetFederationToken', 'GetSessionToken')
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f504 IAM Role Trust Policy Changes"
+  description: "Detects UpdateAssumeRolePolicy calls. Adding external account principals to a trust policy creates a persistent backdoor."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all UpdateAssumeRolePolicy events. Attackers add their own account
+    as a trusted principal in an existing role's trust policy, creating a
+    persistent backdoor that survives password resets and key rotation.
+    Show the role name, the new policy document, caller, source IP, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.roleName')        AS role_name,
+        json_extract_string(request_parameters, '$.policyDocument')  AS policy_document,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_name = 'UpdateAssumeRolePolicy'
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
   label: "\U0001f451 User Added to Admin Group"
   description: "Detects users added to groups with 'admin' in the name. Classic privilege escalation technique."
   chart:
@@ -387,6 +442,73 @@
     LIMIT 50
 
 - category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f6e1\ufe0f GuardDuty Detector Tampering"
+  description: "Detects GuardDuty disable, delete, and threat-intel manipulation. Any GuardDuty change mid-investigation is a critical indicator."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find any GuardDuty tampering events: DisableDetector, DeleteDetector,
+    UpdateDetector (suspicious state changes), DeletePublishingDestination,
+    CreateIPSet / CreateThreatIntelSet (attacker whitelisting their own IPs),
+    and DeleteIPSet / DeleteThreatIntelSet. GuardDuty changes during an
+    incident are a strong defense evasion indicator. Show detector ID,
+    caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.detectorId')    AS detector_id,
+        json_extract_string(request_parameters, '$.destinationId') AS destination_id,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'guardduty.amazonaws.com'
+      AND event_name IN (
+          'DisableDetector',          'DeleteDetector',
+          'DeletePublishingDestination',
+          'CreateIPSet',              'DeleteIPSet',
+          'CreateThreatIntelSet',     'DeleteThreatIntelSet',
+          'ArchiveFindings',          'UpdateFilter'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\u2699\ufe0f AWS Config Tampering"
+  description: "Detects AWS Config recorder/rule deletion. Stopping Config eliminates compliance evidence and change-tracking for an entire region."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Config tampering events: StopConfigurationRecorder,
+    DeleteConfigurationRecorder, DeleteDeliveryChannel, DeleteConfigRule,
+    and PutConfigRule (for suspicious rule changes). Stopping the Config
+    recorder eliminates compliance evidence and change-tracking for the
+    entire region. Show recorder/rule name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.configRuleName')              AS config_rule_name,
+        json_extract_string(request_parameters, '$.configurationRecorderName')   AS recorder_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'config.amazonaws.com'
+      AND event_name IN (
+          'StopConfigurationRecorder',  'DeleteConfigurationRecorder',
+          'DeleteDeliveryChannel',      'DeleteConfigRule',
+          'PutConfigRule'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f6e1 Detection & Response"
   label: "\U0001f6d1 CloudTrail Tampering"
   description: "Detects any attempt to stop or modify CloudTrail. The most critical alert — indicates cover-up."
   chart:
@@ -499,6 +621,39 @@
     LIMIT 50
 
 - category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4f8 EC2 Public Snapshot / AMI Sharing"
+  description: "Detects EBS snapshots or AMIs shared publicly (group=all). Enables anyone to copy your disk images and extract data."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ModifySnapshotAttribute events where createVolumePermission was
+    granted to 'all' (public), and ModifyImageAttribute events where
+    launchPermission was granted to 'all'. A public EBS snapshot or AMI allows
+    any AWS account to copy the disk image and extract sensitive data.
+    Show snapshot/AMI ID, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.snapshotId') AS snapshot_id,
+        json_extract_string(request_parameters, '$.imageId')    AS image_id,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_name IN ('ModifySnapshotAttribute', 'ModifyImageAttribute')
+      AND (
+          lower(request_parameters) LIKE '%"group":"all"%'
+          OR lower(request_parameters) LIKE '%group=all%'
+          OR lower(request_parameters) LIKE '%"all"%'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
   label: "\U0001f512 Unencrypted EBS Snapshot"
   description: "Finds EBS snapshots created without encryption. Compliance violation and data exposure risk."
   prompt: |
@@ -524,7 +679,44 @@
     LIMIT 100
 
 - category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4be RDS Snapshot Cross-Account Share"
+  description: "Detects RDS/Aurora snapshots shared to external AWS accounts. Classic data exfiltration via snapshot sharing."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ModifyDBSnapshotAttribute and ModifyDBClusterSnapshotAttribute events
+    where the restore permission was granted to another AWS account (valuesToAdd).
+    Attackers share snapshots to their own account to exfiltrate an entire database
+    without triggering S3/network-based DLP. Show snapshot ID, target account,
+    caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.dBSnapshotIdentifier')        AS snapshot_id,
+        json_extract_string(request_parameters, '$.dBClusterSnapshotIdentifier') AS cluster_snapshot_id,
+        json_extract_string(request_parameters, '$.attributeName')               AS attribute_name,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_name IN (
+        'ModifyDBSnapshotAttribute',
+        'ModifyDBClusterSnapshotAttribute'
+    )
+      AND (
+          request_parameters LIKE '%restore%'
+          OR request_parameters LIKE '%valuesToAdd%'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
   label: "\U0001f4a3 RDS Deleted without Final Snapshot"
+  description: "Detects RDS instance/cluster deletion with skipFinalSnapshot=true. Potential data destruction."
   description: "Detects RDS instance/cluster deletion with skipFinalSnapshot=true. Potential data destruction."
   prompt: |
     Find all DeleteDBInstance and DeleteDBCluster events where the final
@@ -632,6 +824,32 @@
 # ===========================================================================
 # Network & Infrastructure
 # ===========================================================================
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f30a VPC Flow Log Changes"
+  description: "Detects deletion of VPC Flow Logs. Removing flow logs eliminates network-level evidence — a critical defense evasion indicator."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all DeleteFlowLogs events (and CreateFlowLogs that may redirect traffic
+    to an attacker-controlled bucket). VPC Flow Logs are the primary network
+    forensic evidence source; deleting them is a strong defense evasion indicator.
+    Show caller, flow log IDs, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN ('DeleteFlowLogs', 'CreateFlowLogs')
+    ORDER BY event_time DESC
+    LIMIT 100
 
 - category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f525 Security Group Modifications"
@@ -1032,6 +1250,37 @@
 # ===========================================================================
 # Compute & Serverless
 # ===========================================================================
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f5a5\ufe0f SSM Session / Run Command"
+  description: "Detects SSM StartSession, SendCommand, and automation executions. Primary lateral movement path via managed instances."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Systems Manager remote-execution events: StartSession,
+    TerminateSession, ResumeSession, SendCommand, and StartAutomationExecution.
+    These are the primary lateral movement mechanism for attackers who have
+    compromised IAM credentials. Show caller, target instance, document name,
+    region, and source IP.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.target')       AS target_instance,
+        json_extract_string(request_parameters, '$.documentName') AS document_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ssm.amazonaws.com'
+      AND event_name IN (
+          'StartSession', 'TerminateSession', 'ResumeSession',
+          'SendCommand', 'StartAutomationExecution'
+      )
+    ORDER BY event_time DESC
+    LIMIT 200
 
 - category: "\u26a1 Compute & Serverless"
   label: "\U0001f5a5 EC2 Instance Launches"
