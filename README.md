@@ -29,7 +29,7 @@
 
 
 ### Designed for
-- 🔍 Security engineers & incident responders — investigating AWS account compromise, privilege escalation, or data exfiltration
+- 🔍 Security engineers — investigating AWS account compromise, privilege escalation, or data exfiltration
 - 🛡 Cloud security teams — running periodic cloud posture reviews without a dedicated SIEM
 - 🧑‍💻 Developers & SREs — quickly auditing their own account's CloudTrail history during or after an incident
 
