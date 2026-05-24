@@ -2,6 +2,8 @@
 
 <img src="doc/logo.png" alt="THuntCloud Logo" width="400">
 
+## What is THuntCloud?
+
 ### Hunt AWS threats in minutes — no SIEM required, no Cloud infra needed
 > Drop in your CloudTrail logs and get 84 ready-to-run threat hunts, a BI dashboard, and AI-assisted analysis
 > — all on your laptop with a single `docker compose up`.
