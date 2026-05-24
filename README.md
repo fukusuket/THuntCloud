@@ -13,12 +13,13 @@
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
 [![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-84-brightgreen)](#-built-in-hunts-builtin_huntsyaml----84-queries)
 [![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
-[![No SIEM](https://img.shields.io/badge/SIEM-not%20required-lightgrey)](#)
 
 **Designed for:**
 - 🔍 **Security engineers & incident responders** — investigating AWS account compromise, privilege escalation, or data exfiltration
 - 🛡 **Cloud security teams** — running periodic cloud posture reviews without a dedicated SIEM
 - 🧑‍💻 **Developers & SREs** — quickly auditing their own account's CloudTrail history during or after an incident
+
+## What is THuntCloud?
 
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
