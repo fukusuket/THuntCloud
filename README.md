@@ -150,14 +150,24 @@ See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for t
 
 ## Built-in Query & Dashboard Reference
 
-### Legend
+> **✅ Pre-built SQL** — runs without an OpenAI API key &nbsp;·&nbsp; **🤖 AI prompt only** — requires an OpenAI API key &nbsp;·&nbsp; **✦** — requires MaxMind GeoLite2 `.mmdb` files
 
-| Symbol | Meaning |
-|--------|---------|
-| ✅ | Pre-built SQL — runs without an OpenAI API key |
-| 🤖 | AI prompt only — requires an OpenAI API key |
+### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 84 queries
 
----
+| Category | Queries | Key Threats Covered |
+|----------|:-------:|---------------------|
+| 🔑 Identity & Access | 22 | Root usage · console login/MFA · privilege escalation · AssumeRole · Cognito · SSO · cross-account · credential enumeration |
+| 🛡 Detection & Response | 10 | GuardDuty/Config/CloudTrail tampering · WAF · Security Hub · CloudWatch Logs exfiltration · budget deletion |
+| 🪣 Data & Storage | 12 | S3 bulk download · RDS/EBS snapshot sharing · KMS key ops · S3 public access · cross-account replication |
+| 🌐 Network & Infrastructure | 11 | SG open to internet · NACL · route table · VPC flow log deletion · TLS downgrade · Elastic IP / C2 |
+| ⚡ Compute & Serverless | 9 | Lambda tampering/layers · SSM lateral movement · EKS · ECR supply chain · EventBridge persistence · EC2 user data |
+| 🕵 Threat Patterns | 5 | Off-hours writes · reconnaissance burst (10+ APIs/hour) · multi-region spread · unusual user agents |
+| 📊 Activity & Baseline | 4 | Top callers · error spikes · region distribution · recent errors (24h) |
+| ☁ IaC & Platform | 1 | CloudFormation / IaC abuse |
+| 🌍 GeoIP Analysis ✦ | 10 | Country/city/ASN ranking · impossible travel · multi-country credentials · access denied by country |
+
+<details>
+<summary>📋 Full list — all 84 queries (click to expand)</summary>
 
 ### Built-in Hunts (Streamlit UI — `builtin_hunts.yaml`)
 
@@ -292,7 +302,27 @@ See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for t
 | 9 | 🚫 Access Denied by Country | Groups access denied errors by source country | ✅ |
 | 10 | 📍 Top Source Cities | Ranks source cities by event volume | ✅ |
 
+</details>
+
 ---
+
+### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 50 charts
+
+| Category | Charts | What It Shows |
+|----------|:------:|---------------|
+| Overview & Baseline | 6 | Event volume over time · top API calls · read/write ratio · region distribution · errors · source IPs |
+| 🔑 Identity & Access | 9 | Root usage · console logins · MFA trend · login heatmap (JST) · privilege escalation · SSO · AssumeRole · Organizations |
+| 🪣 Data & Storage | 5 | EC2/RDS snapshot sharing · S3 policy/ACL changes · S3 protection config · Secrets Manager anomalies |
+| 🌐 Network & Infrastructure | 4 | NACL/route table changes · VPC flow log changes · Route53 DNS · throttling spikes |
+| 🛡 Detection & Response | 4 | Defense evasion events · Config tampering · EventBridge/CW tampering · top access denied actions |
+| ⚡ Compute & Serverless | 2 | SSM remote execution · EKS/ECR container events |
+| 🔎 Behavior & Tooling | 5 | User agent analysis · sensitive API calls · velocity spikes · dormant accounts reactivated · new service sources |
+| 🚨 High-Risk API Monitor (HRM) | 7 | HRM time series · top calls/actors/IPs · defense evasion detail · credential access detail · by region |
+| 🕒 First / Last Seen | 4 | Per API call · per IAM identity · per source IP · per user agent |
+| 🌍 GeoIP Analysis ✦ | 4 | World map · top countries/cities/ASNs by request volume |
+
+<details>
+<summary>📋 Full list — all 50 charts (click to expand)</summary>
 
 ### Dashboard Charts (Apache Superset — `dashboard/`)
 
@@ -397,6 +427,8 @@ See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for t
 | 48 | Top Countries by Request Volume | Top 20 source countries by API call volume with write-event and unique-caller breakdowns |
 | 49 | Top Cities by Request Volume | Top 25 cities by API call volume with write-event and unique-caller breakdowns |
 | 50 | Top ASN Organizations by Request Volume | Top 25 ASN organizations by API call volume |
+
+</details>
 
 ---
 
