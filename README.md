@@ -2,7 +2,7 @@
 
 <img src="doc/logo.png" alt="THuntCloud Logo" width="400">
 
-## Hunt AWS threats in minutes — no SIEM required
+## Hunt AWS threats in minutes — no SIEM required, no Cloud infra needed, only your laptop :)
 > Drop in your CloudTrail logs and get 84 ready-to-run threat hunts, a BI dashboard, and AI-assisted analysis
 > — all on your laptop with a single `docker compose up`.
 
@@ -30,25 +30,21 @@
 - **(Optional) AI-assisted analysis** — describe your investigation in plain language; AI writes the SQL and surfaces key findings
 
 ### Designed for
-- 🔍 **Security engineers & incident responders** — investigating AWS account compromise, privilege escalation, or data exfiltration
-- 🛡 **Cloud security teams** — running periodic cloud posture reviews without a dedicated SIEM
-- 🧑‍💻 **Developers & SREs** — quickly auditing their own account's CloudTrail history during or after an incident
+- 🔍 Security engineers & incident responders
+- 🛡 Cloud security teams
+- 🧑‍💻 Developers & SREs
 
 ---
 
 ### 🔍 84 Built-in Hunts + AI Chat (Streamlit UI)
-> Select a hunt category → click Run → results appear instantly — no SQL, no API key needed for pre-built queries.
-> Optionally describe your investigation in plain language and the AI writes the SQL for you.
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
 ### 📊 50 Pre-built Dashboard Charts (Apache Superset)
-> Full BI dashboard with time series, heatmaps, and a GeoIP world map — auto-populated from your logs on first launch.
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
 ### 🗺 AWS Config Resource Graph (FastAPI + React)
-> Interactive graph showing VPC → Subnet → EC2 / RDS / SG relationships, built from AWS Config snapshots.
 
 <img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
 
