@@ -2,35 +2,49 @@
 
 <img src="doc/logo.png" alt="THuntCloud Logo" width="400">
 
-## AWS CloudTrail Log Threat Hunting Tool
-> SIEM-equivalent AWS CloudTrail threat hunting on a single ordinary laptop — no cloud infrastructure required.
+## Hunt AWS threats in minutes — no SIEM required
+> Drop in your CloudTrail logs and get 84 ready-to-run threat hunts, a BI dashboard, and AI-assisted analysis
+> — all on your laptop with a single `docker compose up`.
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![CI](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml/badge.svg)](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
+[![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-84-brightgreen)](#-built-in-hunts-builtin_huntsyaml----84-queries)
+[![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
+[![No SIEM](https://img.shields.io/badge/SIEM-not%20required-lightgrey)](#)
+
+**Designed for:**
+- 🔍 **Security engineers & incident responders** — investigating AWS account compromise, privilege escalation, or data exfiltration
+- 🛡 **Cloud security teams** — running periodic cloud posture reviews without a dedicated SIEM
+- 🧑‍💻 **Developers & SREs** — quickly auditing their own account's CloudTrail history during or after an incident
 
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
-- **No-query hunting** — select a built-in hunt from the Streamlit dropdown and get instant results — no SQL knowledge required
+- **No-query hunting** — 84 built-in hunts work out of the box — no SQL knowledge required, no API key needed
 - **GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
-- **Built-in BI dashboard** — Apache Superset with pre-built CloudTrail charts
+- **Built-in BI dashboard** — 50 pre-built Apache Superset charts, auto-populated on first launch
 - **AWS Config visualization** — interactive resource graph with hierarchical layout (VPC / Subnet / EC2 nesting)
 - **Single-command launch** — `docker compose up -d`
-- **(Optional) AI-assisted analysis** — AI automatically analyses query result DataFrames and surfaces key findings in plain language
+- **(Optional) AI-assisted analysis** — describe your investigation in plain language; AI writes the SQL and surfaces key findings
 
 ## Screenshots
 
-### Built-in Queries and AI Chat (Streamlit UI) 
+### 🔍 84 Built-in Hunts + AI Chat (Streamlit UI)
+> Select a hunt category → click Run → results appear instantly — no SQL, no API key needed for pre-built queries.
+> Optionally describe your investigation in plain language and the AI writes the SQL for you.
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
-### Built-in Dashboard (Apache Superset)
+### 📊 50 Pre-built Dashboard Charts (Apache Superset)
+> Full BI dashboard with time series, heatmaps, and a GeoIP world map — auto-populated from your logs on first launch.
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
-### AWS Config Resource Graph (FastAPI + React)
+### 🗺 AWS Config Resource Graph (FastAPI + React)
+> Interactive graph showing VPC → Subnet → EC2 / RDS / SG relationships, built from AWS Config snapshots.
+
 <img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
 
 ---
