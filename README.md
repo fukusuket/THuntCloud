@@ -14,21 +14,25 @@
 [![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-84-brightgreen)](#-built-in-hunts-builtin_huntsyaml----84-queries)
 [![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
 
-**Designed for:**
-- 🔍 **Security engineers & incident responders** — investigating AWS account compromise, privilege escalation, or data exfiltration
-- 🛡 **Cloud security teams** — running periodic cloud posture reviews without a dedicated SIEM
-- 🧑‍💻 **Developers & SREs** — quickly auditing their own account's CloudTrail history during or after an incident
+
 
 ## What is THuntCloud?
 
-Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
+> Drop in your CloudTrail logs, run one command, and start hunting threats immediately :)
 
-- **No-query hunting** — 84 built-in hunts work out of the box — no SQL knowledge required, no API key needed
-- **Built-in dashboard** — 50 pre-built Apache Superset charts, auto-populated on first launch
-- **AWS Config visualization** — interactive resource graph with hierarchical layout (VPC / Subnet / EC2 nesting)
-- **Single-command launch** — `docker compose up -d`
+### Key Features
+
+- **🔍 No-query hunting** — 84 built-in hunts work out of the box — no SQL knowledge required, no API key needed
+- **📊 Built-in dashboard** — 50 pre-built Apache Superset charts, auto-populated on first launch
+- **🗺 AWS Config visualization** — interactive resource graph with hierarchical layout (VPC / Subnet / EC2 nesting)
+- **🖥️ Single-command launch** — `docker compose up -d`
 - **(Optional) GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
 - **(Optional) AI-assisted analysis** — describe your investigation in plain language; AI writes the SQL and surfaces key findings
+
+### Designed for
+- 🔍 **Security engineers & incident responders** — investigating AWS account compromise, privilege escalation, or data exfiltration
+- 🛡 **Cloud security teams** — running periodic cloud posture reviews without a dedicated SIEM
+- 🧑‍💻 **Developers & SREs** — quickly auditing their own account's CloudTrail history during or after an incident
 
 ---
 
