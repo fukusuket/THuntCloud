@@ -150,7 +150,7 @@ See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for t
 
 ## Built-in Query & Dashboard Reference
 
-> **✅ Pre-built SQL** — runs without an OpenAI API key &nbsp;·&nbsp; **🤖 AI prompt only** — requires an OpenAI API key &nbsp;·&nbsp; **✦** — requires MaxMind GeoLite2 `.mmdb` files
+> 💡 No SQL or deep AWS knowledge required — just select a hunt from the dropdown and get results instantly.
 
 ### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 84 queries
 
