@@ -1660,6 +1660,545 @@
 # IaC & Platform
 # ===========================================================================
 
+# ===========================================================================
+# Persistence & Execution (G-19 to G-22)
+# ===========================================================================
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f4c5 EventBridge / CloudWatch Rule Changes"
+  description: "Detects EventBridge rule and EventBridge Scheduler modifications. Attackers use scheduled rules to establish persistence without a long-running process."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all EventBridge rule and EventBridge Scheduler modification events:
+    PutRule, DeleteRule, DisableRule, EnableRule, PutTargets, RemoveTargets,
+    CreateSchedule, UpdateSchedule, DeleteSchedule.
+    Attackers use scheduled rules to execute malicious Lambda functions or SSM
+    commands on a recurring basis, achieving persistence without a running process.
+    Show rule name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.name')      AS rule_name,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN ('events.amazonaws.com', 'scheduler.amazonaws.com')
+      AND event_name IN (
+          'PutRule', 'DeleteRule', 'DisableRule', 'EnableRule',
+          'PutTargets', 'RemoveTargets',
+          'CreateSchedule', 'UpdateSchedule', 'DeleteSchedule'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f4dc CloudWatch Logs Subscription Changes"
+  description: "Detects CW Logs subscription filter creation/deletion and log group deletion. Attackers stream logs to an external destination or destroy evidence in place."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all CloudWatch Logs tampering events: PutSubscriptionFilter (log
+    exfiltration to attacker-controlled Kinesis/Lambda), DeleteSubscriptionFilter,
+    DeleteLogGroup, DeleteLogStream, and DeleteRetentionPolicy.
+    PutSubscriptionFilter to an external account silently streams all log events
+    to the attacker in real time. Show log group name, destination ARN,
+    caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.logGroupName')    AS log_group_name,
+        json_extract_string(request_parameters, '$.filterName')      AS filter_name,
+        json_extract_string(request_parameters, '$.destinationArn')  AS destination_arn,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'logs.amazonaws.com'
+      AND event_name IN (
+          'PutSubscriptionFilter', 'DeleteSubscriptionFilter',
+          'DeleteLogGroup',        'DeleteLogStream',
+          'DeleteRetentionPolicy', 'DisassociateKmsKey'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\u2638\ufe0f EKS Cluster API Calls"
+  description: "Detects EKS cluster control-plane modifications. Public API server exposure or rogue Fargate profiles enable container platform takeover."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all EKS cluster control-plane modification events: CreateCluster,
+    DeleteCluster, UpdateClusterConfig (especially endpointPublicAccess=true),
+    CreateNodegroup, DeleteNodegroup, CreateFargateProfile, CreateAddon,
+    DeleteAddon, AssociateAccessPolicy, CreateAccessEntry, DeleteAccessEntry.
+    Enabling the public API server endpoint or creating rogue Fargate profiles
+    gives the attacker persistent execution in the cluster. Show cluster name,
+    caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        COALESCE(
+            json_extract_string(request_parameters, '$.name'),
+            json_extract_string(request_parameters, '$.clusterName')
+        ) AS cluster_name,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'eks.amazonaws.com'
+      AND event_name IN (
+          'CreateCluster',         'DeleteCluster',         'UpdateClusterConfig',
+          'CreateNodegroup',       'DeleteNodegroup',
+          'CreateFargateProfile',  'DeleteFargateProfile',
+          'CreateAddon',           'DeleteAddon',           'UpdateAddon',
+          'AssociateAccessPolicy', 'DisassociateAccessPolicy',
+          'CreateAccessEntry',     'DeleteAccessEntry'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f433 ECR Repository / Image Changes"
+  description: "Detects ECR repository creation/deletion, policy changes, and image pushes. Injecting malicious images into a production repository is a supply-chain persistence technique."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ECR repository and image modification events: CreateRepository,
+    DeleteRepository, PutLifecyclePolicy, DeleteLifecyclePolicy,
+    SetRepositoryPolicy (cross-account access), DeleteRepositoryPolicy,
+    InitiateLayerUpload, CompleteLayerUpload, PutImage, BatchDeleteImage.
+    Pushing a malicious image tagged 'latest' to a production repository
+    poisons all subsequent deployments. Show repository name, image tag,
+    caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.repositoryName') AS repository_name,
+        json_extract_string(request_parameters, '$.imageTag')       AS image_tag,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ecr.amazonaws.com'
+      AND event_name IN (
+          'CreateRepository',     'DeleteRepository',
+          'PutLifecyclePolicy',   'DeleteLifecyclePolicy',
+          'SetRepositoryPolicy',  'DeleteRepositoryPolicy',
+          'InitiateLayerUpload',  'CompleteLayerUpload',
+          'PutImage',             'BatchDeleteImage'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Impact / C2 (G-23 to G-24)
+# ===========================================================================
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4bd RDS Public Accessibility Enabled"
+  description: "Detects RDS instances created or modified with PubliclyAccessible=true. Exposes the database directly to the internet, bypassing VPC security controls."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all RDS CreateDBInstance and ModifyDBInstance events where
+    publiclyAccessible was set to true. A publicly accessible RDS instance
+    bypasses VPC network controls and exposes the database directly to the
+    internet. Show DB identifier, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.dBInstanceIdentifier') AS db_instance,
+        json_extract_string(request_parameters, '$.publiclyAccessible')   AS publicly_accessible,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'rds.amazonaws.com'
+      AND event_name IN (
+          'CreateDBInstance', 'ModifyDBInstance',
+          'RestoreDBInstanceFromDBSnapshot',
+          'RestoreDBInstanceFromS3',
+          'RestoreDBInstanceToPointInTime'
+      )
+      AND (
+          request_parameters LIKE '%"publiclyAccessible":true%'
+          OR request_parameters LIKE '%publiclyAccessible=true%'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f4e1 Elastic IP Allocation / Association"
+  description: "Detects Elastic IP allocation and association. Attackers assign a fixed public IP to a compromised instance to create stable C2 infrastructure."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Elastic IP lifecycle events: AllocateAddress (new fixed public IP),
+    AssociateAddress (attach EIP to instance), DisassociateAddress, and
+    ReleaseAddress. Attackers assign a static Elastic IP to a compromised or
+    newly launched instance to ensure a predictable C2 endpoint that survives
+    instance restarts. Show caller, public IP, allocation ID, instance ID,
+    region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.domain')       AS domain,
+        json_extract_string(request_parameters, '$.allocationId') AS allocation_id,
+        json_extract_string(request_parameters, '$.instanceId')   AS instance_id,
+        json_extract_string(response_elements,  '$.publicIp')     AS public_ip,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'AllocateAddress', 'AssociateAddress',
+          'DisassociateAddress', 'ReleaseAddress'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Identity & Access additions (G-25, G-27, G-31, G-32)
+# ===========================================================================
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f4f0 AWS Organizations Account Creation"
+  description: "Detects Organizations account creation and delegated administrator changes. Attackers create shadow accounts to establish persistent footholds outside the main account."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Organizations management events: CreateAccount (shadow account
+    persistence), InviteAccountToOrganization, RegisterDelegatedAdministrator
+    (granting a rogue account service-level admin), DeregisterDelegatedAdministrator,
+    EnableAWSServiceAccess, DisableAWSServiceAccess, CreateOrganizationalUnit,
+    MoveAccount, AttachPolicy, DetachPolicy.
+    Creating a new account inside the organization gives the attacker a permanent
+    foothold that survives incident response in the targeted account.
+    Show account name, email, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.accountName')      AS account_name,
+        json_extract_string(request_parameters, '$.accountId')        AS target_account_id,
+        json_extract_string(request_parameters, '$.email')            AS account_email,
+        json_extract_string(request_parameters, '$.servicePrincipal') AS service_principal,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'organizations.amazonaws.com'
+      AND event_name IN (
+          'CreateAccount',                 'InviteAccountToOrganization',
+          'CreateOrganizationalUnit',      'MoveAccount',
+          'AttachPolicy',                  'DetachPolicy',
+          'RegisterDelegatedAdministrator','DeregisterDelegatedAdministrator',
+          'EnableAWSServiceAccess',        'DisableAWSServiceAccess'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f465 Cognito Unauthenticated Access"
+  description: "Detects Cognito Identity Pools with unauthenticated access enabled. Allows anonymous users to call AWS APIs with the unauthenticated IAM role's permissions."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all CreateIdentityPool and UpdateIdentityPool events where
+    allowUnauthenticatedIdentities was set to true.
+    An identity pool with unauthenticated access enabled lets anonymous internet
+    users obtain temporary AWS credentials through the unauthenticated IAM role,
+    which may have overly permissive policies attached.
+    Show pool name, pool ID, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.identityPoolId')              AS identity_pool_id,
+        json_extract_string(request_parameters, '$.identityPoolName')            AS identity_pool_name,
+        json_extract_string(request_parameters, '$.allowUnauthenticatedIdentities') AS allow_unauthenticated,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'cognito-identity.amazonaws.com'
+      AND event_name IN ('CreateIdentityPool', 'UpdateIdentityPool', 'SetIdentityPoolRoles')
+      AND (
+          request_parameters LIKE '%"allowUnauthenticatedIdentities":true%'
+          OR request_parameters LIKE '%allowUnauthenticatedIdentities=true%'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f9d0 IAM Access Analyzer Calls"
+  description: "Detects any use of IAM Access Analyzer. Attackers use the native AWS analyzer to enumerate externally accessible resources without writing custom recon scripts."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all IAM Access Analyzer API calls from access-analyzer.amazonaws.com.
+    Key events: CreateAnalyzer, ListFindings, GetFinding (attacker reads policy
+    gaps), StartResourceScan, ValidatePolicy.
+    Attackers leverage the built-in Access Analyzer to silently enumerate which
+    resources are externally accessible without triggering GuardDuty signatures
+    normally associated with custom recon tools.
+    Show event name, analyzer ARN, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.analyzerArn') AS analyzer_arn,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'access-analyzer.amazonaws.com'
+    ORDER BY event_time DESC
+    LIMIT 200
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f9e9 STS AssumeRoleWithWebIdentity"
+  description: "Detects AssumeRoleWithWebIdentity calls. Abusing a misconfigured OIDC trust (e.g., overly broad sub claim) lets attackers hijack a role using attacker-controlled tokens."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AssumeRoleWithWebIdentity events from sts.amazonaws.com.
+    A misconfigured OIDC trust policy (e.g., sub claim matched with a wildcard,
+    or GitHub Actions OIDC without a repo condition) lets attackers obtain
+    temporary credentials by presenting a forged or stolen third-party token.
+    Show role ARN, session name, source IP, and time.
+    Flag sessions where the requesting IP is unexpected.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.roleArn')          AS role_arn,
+        json_extract_string(request_parameters, '$.roleSessionName')  AS session_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'sts.amazonaws.com'
+      AND event_name = 'AssumeRoleWithWebIdentity'
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Detection & Response additions (G-26, G-28, G-33)
+# ===========================================================================
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f3f9 WAF WebACL Changes"
+  description: "Detects WAF WebACL creation, update, and deletion. Removing or weakening a WebACL disables protection against SQLi, XSS, and DDoS attacks."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all WAF WebACL modification events across WAFv2, WAF Classic, and
+    WAF Regional: CreateWebACL, UpdateWebACL, DeleteWebACL (disabling web
+    protection), AssociateWebACL, DisassociateWebACL.
+    Deleting a WebACL instantly removes all managed and custom rules protecting
+    an API Gateway, ALB, or CloudFront distribution.
+    Show WebACL name, scope (REGIONAL/CLOUDFRONT), caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.name')  AS waf_name,
+        json_extract_string(request_parameters, '$.id')    AS waf_id,
+        json_extract_string(request_parameters, '$.scope') AS scope,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN (
+        'wafv2.amazonaws.com', 'waf.amazonaws.com', 'waf-regional.amazonaws.com'
+    )
+      AND event_name IN (
+          'CreateWebACL', 'UpdateWebACL', 'DeleteWebACL',
+          'AssociateWebACL', 'DisassociateWebACL'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f4b0 Budget / Cost Anomaly Changes"
+  description: "Detects deletion or modification of AWS Budgets and Cost Anomaly monitors. Attackers remove budget alerts to hide cryptomining or resource-intensive operations."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Budget and Cost Anomaly management events: DeleteBudget (hiding
+    cryptomining costs), CreateBudget, UpdateBudget, CreateNotification,
+    DeleteNotification, CreateBudgetAction, DeleteBudgetAction,
+    DeleteAnomalyMonitor, CreateAnomalyMonitor, UpdateAnomalyMonitor,
+    DeleteAnomalySubscription.
+    Cryptominers routinely delete budget alerts to extend their operation window
+    before the account owner notices unexpected charges. Show budget name,
+    caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.budgetName') AS budget_name,
+        json_extract_string(request_parameters, '$.monitorArn') AS monitor_arn,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN ('budgets.amazonaws.com', 'ce.amazonaws.com')
+      AND event_name IN (
+          'CreateBudget',              'DeleteBudget',              'UpdateBudget',
+          'CreateNotification',        'DeleteNotification',
+          'CreateBudgetAction',        'DeleteBudgetAction',
+          'CreateAnomalyMonitor',      'DeleteAnomalyMonitor',      'UpdateAnomalyMonitor',
+          'CreateAnomalySubscription', 'DeleteAnomalySubscription'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\u26d4 Security Hub Tampering"
+  description: "Detects Security Hub disable, standard disable, and finding suppression. Silencing Security Hub removes the central aggregation point for all security findings."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Security Hub tampering events: DisableSecurityHub (complete
+    shutdown), BatchDisableStandards (disabling CIS/FSBP benchmarks),
+    DisableImportFindingsForProduct (severing 3rd-party integrations),
+    BatchUpdateFindings (mass finding suppression), UpdateStandardsControl
+    (disabling individual controls), DeleteInsight.
+    Disabling Security Hub removes the single-pane view of all security findings
+    across AWS services, masking active attacks. Show caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        source_ip_address,
+        request_parameters,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'securityhub.amazonaws.com'
+      AND event_name IN (
+          'DisableSecurityHub',
+          'BatchDisableStandards',
+          'DisableImportFindingsForProduct',
+          'BatchUpdateFindings',
+          'UpdateStandardsControl',
+          'DeleteInsight'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Compute & Serverless additions (G-29, G-30)
+# ===========================================================================
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f4e6 Lambda Layer Addition"
+  description: "Detects Lambda layer publication and permission changes. Publishing a malicious shared layer and adding it to production functions injects attacker code into the dependency chain."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Lambda layer management events: PublishLayerVersion (new or updated
+    layer that may contain malicious code), DeleteLayerVersion,
+    AddLayerVersionPermission (sharing layer with wildcard principal '*' — public
+    supply-chain attack), RemoveLayerVersionPermission.
+    Shared Lambda layers are a stealthy persistence vector: once added to a
+    function, malicious layer code runs on every invocation.
+    Show layer name, version, principal, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.layerName')     AS layer_name,
+        json_extract_string(request_parameters, '$.versionNumber') AS version_number,
+        json_extract_string(request_parameters, '$.principal')     AS principal,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'lambda.amazonaws.com'
+      AND event_name IN (
+          'PublishLayerVersion',        'DeleteLayerVersion',
+          'AddLayerVersionPermission',  'RemoveLayerVersionPermission'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f4dd EC2 User Data Modification"
+  description: "Detects ModifyInstanceAttribute calls that change the userData field. User data scripts run as root at next boot, providing a persistent code-execution backdoor."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ModifyInstanceAttribute events where the userData attribute was
+    changed. EC2 user data is a shell script run as root on every instance boot.
+    Modifying user data on a stopped instance and then starting it causes the
+    malicious script to execute with full root privileges at boot time.
+    Show instance ID, caller, region, and time. Check if the base64-encoded
+    user data contains suspicious indicators (curl, wget, reverse shell patterns).
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.instanceId') AS instance_id,
+        aws_region,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name = 'ModifyInstanceAttribute'
+      AND request_parameters LIKE '%userData%'
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# IaC & Platform
+# ===========================================================================
+
 - category: "\u2601 IaC & Platform"
   label: "\U0001f3d7 CloudFormation / IaC Abuse"
   description: "Detects CloudFormation stack operations. Attackers may use IaC to rapidly deploy malicious infrastructure."
