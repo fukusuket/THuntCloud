@@ -30,6 +30,8 @@ Drop in your CloudTrail logs, run one command, and start hunting threats immedia
 - **(Optional) GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
 - **(Optional) AI-assisted analysis** — describe your investigation in plain language; AI writes the SQL and surfaces key findings
 
+---
+
 ### 🔍 84 Built-in Hunts + AI Chat (Streamlit UI)
 > Select a hunt category → click Run → results appear instantly — no SQL, no API key needed for pre-built queries.
 > Optionally describe your investigation in plain language and the AI writes the SQL for you.
