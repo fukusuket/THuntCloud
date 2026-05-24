@@ -24,13 +24,11 @@
 Drop in your CloudTrail logs, run one command, and start hunting threats immediately.
 
 - **No-query hunting** — 84 built-in hunts work out of the box — no SQL knowledge required, no API key needed
-- **GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
-- **Built-in BI dashboard** — 50 pre-built Apache Superset charts, auto-populated on first launch
+- **Built-in dashboard** — 50 pre-built Apache Superset charts, auto-populated on first launch
 - **AWS Config visualization** — interactive resource graph with hierarchical layout (VPC / Subnet / EC2 nesting)
 - **Single-command launch** — `docker compose up -d`
+- **(Optional) GeoIP enrichment** — country, city, and ASN for every source IP via MaxMind GeoLite2
 - **(Optional) AI-assisted analysis** — describe your investigation in plain language; AI writes the SQL and surfaces key findings
-
-## Screenshots
 
 ### 🔍 84 Built-in Hunts + AI Chat (Streamlit UI)
 > Select a hunt category → click Run → results appear instantly — no SQL, no API key needed for pre-built queries.
@@ -127,41 +125,6 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | `dashboard` | Apache Superset | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
 | `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
 
-
-## Architecture
-
-Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                             Docker Compose                             │
-│                                                                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │   ingester   │  │    agent     │  │  config_viz │  │  dashboard  │  │
-│  │  (Rust)      │  │  (Streamlit) │  │  (FastAPI+  │  │  (Superset) │  │
-│  │              │  │              │  │   React)    │  │             │  │
-│  │ CloudTrail   │  │  AI Chat     │  │   Resource  │  │  Visualiz   │  │
-│  │ AWS Config   │  │  SQL gen/exec│  │    Graph    │  │             │  │
-│  │ ingest       │  │  READ_ONLY   │  │   READ_ONLY │  │   READ_ONLY │  │
-│  │ READ_WRITE   │  │              │  │             │  │             │  │
-│  └──────┬───────┘  └──────┬───────┘  └────┬────────┘  └─────┬───────┘  │
-│         └─────────────────┴───────────────┴─────────────────┘          │
-│                                │                                       │
-│                         ┌──────▼───────┐                               │
-│                         │   DuckDB     │                               │
-│                         │ (Bind Mount) │                               │
-│                         │   (SSD)      │                               │
-│                         └──────────────┘                               │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### End-to-End Sequence Diagram
-
-See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for the full lifecycle sequence diagram.
-
----
 
 ## Built-in Query & Dashboard Reference
 
@@ -444,6 +407,43 @@ See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for t
 | 50 | Top ASN Organizations by Request Volume | Top 25 ASN organizations by API call volume |
 
 </details>
+
+---
+
+
+
+## Architecture
+
+Four Docker containers share one DuckDB file via a bind mount (`docker/data/db/`).
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                             Docker Compose                             │
+│                                                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │   ingester   │  │    agent     │  │  config_viz │  │  dashboard  │  │
+│  │  (Rust)      │  │  (Streamlit) │  │  (FastAPI+  │  │  (Superset) │  │
+│  │              │  │              │  │   React)    │  │             │  │
+│  │ CloudTrail   │  │  AI Chat     │  │   Resource  │  │  Visualiz   │  │
+│  │ AWS Config   │  │  SQL gen/exec│  │    Graph    │  │             │  │
+│  │ ingest       │  │  READ_ONLY   │  │   READ_ONLY │  │   READ_ONLY │  │
+│  │ READ_WRITE   │  │              │  │             │  │             │  │
+│  └──────┬───────┘  └──────┬───────┘  └────┬────────┘  └─────┬───────┘  │
+│         └─────────────────┴───────────────┴─────────────────┘          │
+│                                │                                       │
+│                         ┌──────▼───────┐                               │
+│                         │   DuckDB     │                               │
+│                         │ (Bind Mount) │                               │
+│                         │   (SSD)      │                               │
+│                         └──────────────┘                               │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### End-to-End Sequence Diagram
+
+See [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md#end-to-end-sequence-diagram) for the full lifecycle sequence diagram.
 
 ---
 
