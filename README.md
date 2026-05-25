@@ -17,15 +17,15 @@
 [![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
 
 ### Key Features
-### 🔍 91 Built-in Hunts + AI Chat (Streamlit UI)
+### 🔍 91 Built-in Hunts + AI Chat
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
-### 📊 50 Pre-built Dashboard Charts (Apache Superset 6.1)
+### 📊 50 Pre-built Dashboard Charts
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
-### 🗺 AWS Config Resource Graph (FastAPI + React)
+### 🗺 AWS Config Resource Graph
 
 <img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
 
