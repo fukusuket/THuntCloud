@@ -171,33 +171,6 @@
     LIMIT 100
 
 - category: "\U0001f511 Identity & Access"
-  label: "\U0001fa9e Self AssumeRole Detection"
-  description: "Detects roles that assume themselves. Often a code bug; counts toward STS API quotas."
-  chart:
-    type: timeseries
-    bucket: day
-  prompt: |
-    Find all AssumeRole events where the caller's session issuer ARN matches the
-    target role ARN (self-assume). These waste STS quota and may indicate
-    misconfigured automation.
-  sql: |
-    SELECT
-        event_time,
-        user_identity_arn,
-        json_extract_string(raw_event, '$.userIdentity.sessionContext.sessionIssuer.arn') AS session_issuer_arn,
-        source_ip_address,
-        error_code
-    FROM cloudtrail_events
-    WHERE event_source       = 'sts.amazonaws.com'
-      AND event_name         = 'AssumeRole'
-      AND user_identity_type = 'AssumedRole'
-      AND error_code         IS NULL
-      AND json_extract_string(raw_event, '$.userIdentity.sessionContext.sessionIssuer.arn')
-          = json_extract_string(raw_event, '$.resources[0].ARN')
-    ORDER BY event_time DESC
-    LIMIT 100
-
-- category: "\U0001f511 Identity & Access"
   label: "\U0001f6a7 IAM Permission Boundary Changes"
   description: "Detects permission boundary put/delete events. Removing a permission boundary immediately expands a principal's effective permissions, enabling privilege escalation."
   chart:
@@ -486,31 +459,6 @@
     ORDER BY event_time DESC
     LIMIT 100
 
-- category: "\U0001f511 Identity & Access"
-  label: "\U0001f4cb Top IAM Actions by Principal"
-  description: "Ranks principals by IAM API call volume. High volume may indicate enumeration or approaching service limits."
-  chart:
-    type: bar
-    x: event_name
-    y:
-      - api_count
-  prompt: |
-    Identify the top callers of the IAM service by number of API calls.
-    Show principal ARN, event names, account ID, and call count.
-    High IAM activity may indicate enumeration or service limit pressure.
-  sql: |
-    SELECT
-        user_identity_arn,
-        event_name,
-        recipient_account_id,
-        COUNT(*) AS api_count
-    FROM cloudtrail_events
-    WHERE event_source      = 'iam.amazonaws.com'
-      AND user_identity_arn IS NOT NULL
-    GROUP BY user_identity_arn, event_name, recipient_account_id
-    ORDER BY api_count DESC
-    LIMIT 30
-
 # ===========================================================================
 # Detection & Response
 # ===========================================================================
@@ -637,59 +585,6 @@
     ORDER BY event_time DESC
     LIMIT 100
 
-- category: "\U0001f6e1 Detection & Response"
-  label: "\u274c Top Error Codes (Last 7 Days)"
-  description: "Ranks error codes by frequency over the last 7 days. Error spikes can signal probing or outage."
-  chart:
-    type: bar
-    x: error_code
-    y:
-      - event_count
-  prompt: |
-    Find the most frequent API error codes and messages in the past 7 days.
-    Show error count, number of affected identities, first and last occurrence.
-    Error spikes may indicate probing, misconfiguration, or an outage.
-  sql: |
-    SELECT
-        error_code,
-        error_message,
-        COUNT(*)                          AS event_count,
-        COUNT(DISTINCT user_identity_arn) AS affected_identities,
-        MIN(event_time)                   AS first_seen,
-        MAX(event_time)                   AS last_seen
-    FROM cloudtrail_events
-    WHERE error_code IS NOT NULL
-      AND event_time >= NOW() - INTERVAL '7 days'
-    GROUP BY error_code, error_message
-    ORDER BY event_count DESC
-    LIMIT 20
-
-- category: "\U0001f6e1 Detection & Response"
-  label: "\u2614 AWS Support Role Access"
-  description: "Detects when AWS Support assumed the AWSServiceRoleForSupport role. Required for data sovereignty audits."
-  chart:
-    type: timeseries
-    bucket: day
-  prompt: |
-    Show any events where AWS Support has taken over the AWSServiceRoleForSupport
-    role. This is relevant for data sovereignty and compliance requirements.
-    Include event source, name, region, resource ARN, and time.
-  sql: |
-    SELECT
-        event_time,
-        event_source,
-        event_name,
-        aws_region,
-        source_ip_address,
-        user_agent,
-        user_identity_type,
-        recipient_account_id
-    FROM cloudtrail_events
-    WHERE event_source = 'sts.amazonaws.com'
-      AND user_agent LIKE '%support.amazonaws.com%'
-    ORDER BY event_time DESC
-    LIMIT 100
-
 # ===========================================================================
 # Data & Storage
 # ===========================================================================
@@ -749,31 +644,6 @@
           lower(request_parameters) LIKE '%"group":"all"%'
           OR lower(request_parameters) LIKE '%group=all%'
           OR lower(request_parameters) LIKE '%"all"%'
-      )
-    ORDER BY event_time DESC
-    LIMIT 100
-
-- category: "\U0001faa3 Data & Storage"
-  label: "\U0001f512 Unencrypted EBS Snapshot"
-  description: "Finds EBS snapshots created without encryption. Compliance violation and data exposure risk."
-  prompt: |
-    Find all CreateSnapshot and CreateSnapshots events where the resulting
-    snapshot is not encrypted. Show volume ID, snapshot ID, region, and caller.
-    Unencrypted snapshots may violate compliance requirements.
-  sql: |
-    SELECT
-        event_time,
-        user_identity_arn,
-        aws_region,
-        json_extract_string(request_parameters, '$.volumeId')   AS volume_id,
-        json_extract_string(response_elements,  '$.snapshotId') AS snapshot_id,
-        json_extract_string(response_elements,  '$.encrypted')  AS encrypted,
-        source_ip_address
-    FROM cloudtrail_events
-    WHERE event_name IN ('CreateSnapshot', 'CreateSnapshots')
-      AND (
-          json_extract_string(response_elements, '$.encrypted') = 'false'
-          OR json_extract_string(response_elements, '$.encrypted') IS NULL
       )
     ORDER BY event_time DESC
     LIMIT 100
@@ -1254,37 +1124,6 @@
     LIMIT 200
 
 - category: "\U0001f310 Network & Infrastructure"
-  label: "\U0001f512 TLS Downgrade Detection"
-  description: "Finds API calls using TLS 1.1 or older. Support ended June 2023; usage may indicate legacy clients."
-  chart:
-    type: bar
-    x: event_source
-    y:
-      - call_count
-  prompt: |
-    Find all API calls that used TLS version 1.1 or lower. These clients
-    must be upgraded as older TLS is deprecated by AWS. Show event source,
-    TLS version, source IP, and call count.
-  sql: |
-    SELECT
-        event_source,
-        json_extract_string(raw_event, '$.tlsDetails.tlsVersion') AS tls_version,
-        source_ip_address,
-        recipient_account_id,
-        COUNT(*) AS call_count
-    FROM cloudtrail_events
-    WHERE json_extract_string(raw_event, '$.tlsDetails.tlsVersion') LIKE 'TLSv%'
-      AND TRY_CAST(
-          replace(
-              json_extract_string(raw_event, '$.tlsDetails.tlsVersion'),
-              'TLSv', ''
-          ) AS DOUBLE
-      ) <= 1.1
-    GROUP BY event_source, tls_version, source_ip_address, recipient_account_id
-    ORDER BY call_count DESC
-    LIMIT 50
-
-- category: "\U0001f310 Network & Infrastructure"
   label: "\U0001f6a7 VPC Endpoint Access Denied"
   description: "Detects access denied errors via VPC endpoints. May indicate misconfigured endpoint policy."
   chart:
@@ -1443,34 +1282,6 @@
 # ===========================================================================
 
 - category: "\U0001f4ca Activity & Baseline"
-  label: "\U0001f4ca Top Callers This Week"
-  description: "Shows the 20 most active IAM entities by event count over the past 7 days."
-  chart:
-    type: bar
-    x: user_identity_arn
-    y:
-      - read_events
-      - write_events
-  prompt: |
-    Show the top 20 most active IAM entities (by event count) in the past 7 days.
-    Break down by read vs write operations. Flag any service accounts performing
-    an unusually high number of mutating calls.
-  sql: |
-    SELECT
-        user_identity_arn,
-        COUNT(*)                                    AS total_events,
-        COUNT(*) FILTER (WHERE read_only = true)    AS read_events,
-        COUNT(*) FILTER (WHERE read_only = false)   AS write_events,
-        COUNT(DISTINCT aws_region)                  AS regions_active,
-        MAX(event_time)                             AS last_seen
-    FROM cloudtrail_events
-    WHERE event_time >= NOW() - INTERVAL '7 days'
-      AND user_identity_arn IS NOT NULL
-    GROUP BY user_identity_arn
-    ORDER BY total_events DESC
-    LIMIT 20
-
-- category: "\U0001f4ca Activity & Baseline"
   label: "\u274c Error Spike Detection"
   description: "Finds 1-hour windows where error count exceeds the daily average by 3x. Signals scanning or outage."
   prompt: |
@@ -1478,31 +1289,6 @@
     (error_code IS NOT NULL) exceeds the daily average by 3x or more.
     Show the time bucket, error count, top error codes, and the user
     identities generating the most errors.
-
-- category: "\U0001f4ca Activity & Baseline"
-  label: "\U0001f4ca Activity by Region"
-  description: "Counts API calls per AWS region. Unexpected regions may indicate unauthorized resource creation."
-  chart:
-    type: bar
-    x: aws_region
-    y:
-      - total_events
-      - write_events
-  prompt: |
-    Show the total number of API calls broken down by AWS region.
-    Highlight regions with unusually high activity or regions that are
-    not normally used by this account (potential unauthorized resource creation).
-  sql: |
-    SELECT
-        aws_region,
-        COUNT(*)                                    AS total_events,
-        COUNT(*) FILTER (WHERE read_only = false)   AS write_events,
-        COUNT(DISTINCT user_identity_arn)            AS distinct_callers,
-        MIN(event_time)                              AS first_event,
-        MAX(event_time)                              AS last_event
-    FROM cloudtrail_events
-    GROUP BY aws_region
-    ORDER BY total_events DESC
 
 - category: "\U0001f4ca Activity & Baseline"
   label: "\U0001f50d Events with Errors (24h)"
@@ -2226,6 +2012,609 @@
     )
     ORDER BY event_time DESC
     LIMIT 100
+
+# ===========================================================================
+# Identity & Access — DFIR追加 (NEW-02)
+# ===========================================================================
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f3af IAM PassRole Abuse"
+  description: "Detects iam:PassRole calls. Passing a privileged role to EC2/Lambda/Glue/ECS/SageMaker is the most common lateral privilege escalation path."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all iam:PassRole events. Attackers with iam:PassRole permission assign
+    a highly privileged role to a compute service (EC2, Lambda, Glue, ECS,
+    SageMaker) they control, gaining all permissions of that role without
+    directly possessing those permissions themselves.
+    Show caller, role name/ARN, target service context, source IP, and time.
+  sql: |
+    SELECT
+        event_time,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.roleName')        AS role_name,
+        json_extract_string(request_parameters, '$.roleArn')         AS role_arn,
+        json_extract_string(request_parameters, '$.functionName')    AS lambda_function,
+        json_extract_string(request_parameters, '$.instanceId')      AS ec2_instance,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'iam.amazonaws.com'
+      AND event_name = 'PassRole'
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Detection & Response — DFIR追加 (NEW-07)
+# ===========================================================================
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f6ab AWS Macie Tampering"
+  description: "Detects Macie disable and finding-filter creation. Attackers suppress Macie findings before exfiltrating sensitive data from S3."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Macie tampering events: DisableMacie (complete shutdown),
+    CreateFindingsFilter / UpdateFindingsFilter (suppressing sensitive-data
+    findings before exfiltration), DisableOrganizationAdminAccount,
+    UpdateMacieSession (reducing scan scope), CreateClassificationJob
+    (attacker-initiated data discovery on victim buckets).
+    Macie is the primary sensitive-data detection layer; disabling it or
+    creating suppression filters is a pre-exfiltration defense-evasion step.
+    Show event name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.id')               AS job_or_filter_id,
+        json_extract_string(request_parameters, '$.name')             AS resource_name,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'macie2.amazonaws.com'
+      AND event_name IN (
+          'DisableMacie',
+          'CreateFindingsFilter',         'UpdateFindingsFilter',
+          'DeleteFindingsFilter',
+          'DisableOrganizationAdminAccount',
+          'UpdateMacieSession',
+          'CreateClassificationJob',
+          'UpdateClassificationJob'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Data & Storage — DFIR追加 (NEW-01, NEW-04, NEW-05, NEW-06, NEW-09, NEW-12)
+# ===========================================================================
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f525 AWS Backup Tampering"
+  description: "Detects Backup Vault/Plan/RecoveryPoint deletion. Destroying backups is the first step in ransomware attacks to prevent recovery."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Backup tampering events: DeleteBackupVault,
+    DeleteBackupPlan, DeleteRecoveryPoint, DeleteBackupSelection,
+    DisassociateRecoveryPoint, PutBackupVaultAccessPolicy (cross-account
+    access to exfiltrate backups), DeleteBackupVaultLockConfiguration
+    (removing immutable backup lock).
+    Ransomware operators delete all backup copies before encrypting primary data
+    to prevent recovery. Any backup vault or recovery-point deletion outside a
+    sanctioned maintenance window is a critical incident indicator.
+    Show vault/plan name, recovery point ARN, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.backupVaultName')     AS vault_name,
+        json_extract_string(request_parameters, '$.backupPlanId')        AS plan_id,
+        json_extract_string(request_parameters, '$.recoveryPointArn')    AS recovery_point_arn,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'backup.amazonaws.com'
+      AND event_name IN (
+          'DeleteBackupVault',             'DeleteBackupPlan',
+          'DeleteRecoveryPoint',           'DeleteBackupSelection',
+          'DisassociateRecoveryPoint',     'PutBackupVaultAccessPolicy',
+          'DeleteBackupVaultLockConfiguration'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4a3 S3 Bulk Object Deletion"
+  description: "Detects high-volume DeleteObject/DeleteObjects calls (>=50/hour). Distinct from exfiltration — this is data destruction / ransomware pattern."
+  chart:
+    type: bar
+    x: user_identity_arn
+    y:
+      - delete_count
+  prompt: |
+    Find identities performing 50 or more S3 DeleteObject or DeleteObjects
+    calls within a single hour. This is the primary data-destruction pattern
+    for ransomware and wiper attacks — distinct from the GetObject exfiltration
+    pattern already monitored. Show caller, source IP, hour bucket,
+    number of delete operations, and number of affected buckets.
+  sql: |
+    SELECT
+        user_identity_arn,
+        source_ip_address,
+        DATE_TRUNC('hour', event_time)                                   AS hour_bucket,
+        COUNT(*)                                                          AS delete_count,
+        COUNT(DISTINCT json_extract_string(request_parameters, '$.bucketName'))
+                                                                          AS buckets_affected
+    FROM cloudtrail_events
+    WHERE event_source = 's3.amazonaws.com'
+      AND event_name IN ('DeleteObject', 'DeleteObjects')
+    GROUP BY user_identity_arn, source_ip_address, hour_bucket
+    HAVING COUNT(*) >= 50
+    ORDER BY delete_count DESC
+    LIMIT 50
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f5c4 DynamoDB Export / Bulk Exfiltration"
+  description: "Detects DynamoDB ExportTableToPointInTime (silent full-table export to S3) and table deletion. High-risk exfiltration and destruction vector."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all DynamoDB data-exfiltration and destruction events:
+    ExportTableToPointInTime (exports entire table to any S3 bucket — including
+    attacker-controlled ones — without generating GetItem events),
+    DeleteTable (data destruction), CreateGlobalTable (replicating data to
+    attacker region), UpdateContinuousBackups (disabling PITR to prevent recovery).
+    DynamoDB exports bypass S3/network-based DLP because the data moves
+    server-side. Show table name, export destination bucket, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.tableName')         AS table_name,
+        json_extract_string(request_parameters, '$.s3Bucket')          AS export_s3_bucket,
+        json_extract_string(request_parameters, '$.s3BucketOwner')     AS s3_bucket_owner,
+        json_extract_string(request_parameters, '$.exportFormat')      AS export_format,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'dynamodb.amazonaws.com'
+      AND event_name IN (
+          'ExportTableToPointInTime',
+          'DeleteTable',
+          'CreateGlobalTable',
+          'UpdateContinuousBackups'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f30a Kinesis Firehose / Stream Exfiltration Channel"
+  description: "Detects Kinesis Firehose delivery stream creation/update pointing to external S3. Real-time data pipeline exfiltration invisible to network DLP."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Kinesis Data Firehose and Kinesis Data Streams management events:
+    CreateDeliveryStream (new pipeline — check for external S3 bucket owner),
+    UpdateDestination (redirecting existing stream to attacker S3),
+    DeleteDeliveryStream, StopStreamEncryption (weakening stream protection),
+    CreateStream (new stream for attacker data collection).
+    A Firehose delivery stream configured to an attacker-controlled S3 bucket
+    creates a real-time data pipeline that bypasses all network-level DLP.
+    Show stream name, destination bucket, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.deliveryStreamName') AS stream_name,
+        json_extract_string(request_parameters, '$.streamName')         AS kinesis_stream,
+        request_parameters,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN (
+        'firehose.amazonaws.com',
+        'kinesis.amazonaws.com'
+      )
+      AND event_name IN (
+          'CreateDeliveryStream',    'UpdateDestination',       'DeleteDeliveryStream',
+          'CreateStream',            'StopStreamEncryption',
+          'MergeShards',             'SplitShard'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f5dd Secrets Manager Deletion & Cross-Account Policy"
+  description: "Detects Secrets Manager secret deletion and cross-account resource policy changes. Complements existing bulk-read detection with destruction and policy-exfiltration vectors."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find Secrets Manager events beyond bulk reads: DeleteSecret (immediate or
+    scheduled destruction of credentials), PutResourcePolicy (granting secret
+    access to external AWS accounts — a silent exfiltration of credentials),
+    DeleteResourcePolicy, RestoreSecret (an attacker restoring a secret they
+    deleted to cover tracks), CancelRotateSecret (freezing rotation to preserve
+    a known credential).
+    These complement the existing bulk GetSecretValue detection by covering
+    the destruction and cross-account-sharing exfiltration paths.
+    Show secret ID, recovery window, resource policy, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.secretId')             AS secret_id,
+        json_extract_string(request_parameters, '$.recoveryWindowInDays') AS recovery_window_days,
+        json_extract_string(request_parameters, '$.resourcePolicy')       AS resource_policy,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'secretsmanager.amazonaws.com'
+      AND event_name IN (
+          'DeleteSecret',
+          'PutResourcePolicy',       'DeleteResourcePolicy',
+          'RemoveRegionsFromReplication',
+          'ReplicateSecretToRegions',
+          'CancelRotateSecret'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4e1 SQS / SNS Cross-Account Policy Changes"
+  description: "Detects SQS/SNS queue/topic policy changes that grant access to external accounts. Creates a silent exfiltration channel without triggering high-volume send alerts."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find SQS and SNS permission changes that may grant external accounts
+    access to receive messages: SQS SetQueueAttributes (changing queue policy
+    to allow external sqs:ReceiveMessage), SQS AddPermission / RemovePermission,
+    SNS AddPermission / RemovePermission, SNS SetTopicAttributes,
+    SNS Subscribe (subscribing an attacker-controlled HTTP endpoint or
+    cross-account SQS queue).
+    Unlike high-volume send monitoring, this detects the configuration step
+    that enables silent data streaming to attacker-controlled endpoints.
+    Show resource ARN, granted account, permission label, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        aws_region,
+        COALESCE(
+            json_extract_string(request_parameters, '$.queueUrl'),
+            json_extract_string(request_parameters, '$.topicArn')
+        )                                                               AS resource_arn,
+        json_extract_string(request_parameters, '$.label')             AS permission_label,
+        json_extract_string(request_parameters, '$.awsAccountId')      AS granted_account_id,
+        json_extract_string(request_parameters, '$.endpoint')          AS subscription_endpoint,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE (
+        event_source = 'sqs.amazonaws.com'
+        AND event_name IN ('SetQueueAttributes', 'AddPermission', 'RemovePermission')
+      ) OR (
+        event_source = 'sns.amazonaws.com'
+        AND event_name IN ('AddPermission', 'RemovePermission',
+                           'SetTopicAttributes', 'Subscribe')
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Network & Infrastructure — DFIR追加 (NEW-08, NEW-11, NEW-13, NEW-14)
+# ===========================================================================
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f310 CloudFront Distribution Tampering"
+  description: "Detects CloudFront distribution creation and origin changes. Modifying origins redirects CDN traffic to attacker-controlled servers for MitM interception or data collection."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all CloudFront distribution modification events: CreateDistribution,
+    UpdateDistribution (especially origin domain changes — redirects all CDN
+    traffic to attacker server), DeleteDistribution, CreateCachePolicy,
+    CreateOriginAccessControl / UpdateOriginAccessControl (loosening S3 origin
+    access), AssociateAlias (hijacking a domain alias).
+    An attacker who modifies a CloudFront origin to point to their own server
+    intercepts all end-user traffic passing through the distribution in real time.
+    Show distribution ID, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.id')               AS distribution_id,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'cloudfront.amazonaws.com'
+      AND event_name IN (
+          'CreateDistribution',       'UpdateDistribution',
+          'DeleteDistribution',
+          'CreateCachePolicy',        'UpdateCachePolicy',
+          'CreateOriginAccessControl','UpdateOriginAccessControl',
+          'AssociateAlias'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f6e1 Network Firewall / Shield Tampering"
+  description: "Detects Network Firewall and Shield protection removal. Deleting network-layer defenses exposes VPCs to direct attack traffic."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Network Firewall and Shield tampering events:
+    DeleteFirewall, DeleteFirewallPolicy, DeleteRuleGroup (removing packet
+    inspection rules), DisassociateSubnets (detaching firewall from protected
+    subnets), UpdateFirewallPolicy / UpdateRuleGroup (weakening inspection rules),
+    Shield DeleteProtection (removing DDoS protection from a resource),
+    DisableProactiveEngagement (removing 24/7 Shield Response Team engagement),
+    DeleteSubscription (cancelling Shield Advanced).
+    Unlike WAF (covered separately), Network Firewall operates at the VPC
+    level and its removal exposes entire subnet ranges to attack traffic.
+    Show resource name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.firewallName')          AS firewall_name,
+        json_extract_string(request_parameters, '$.firewallPolicyArn')     AS firewall_policy_arn,
+        json_extract_string(request_parameters, '$.ruleGroupArn')          AS rule_group_arn,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE (
+        event_source = 'network-firewall.amazonaws.com'
+        AND event_name IN (
+            'DeleteFirewall',       'DeleteFirewallPolicy',
+            'DeleteRuleGroup',      'DisassociateSubnets',
+            'UpdateFirewallPolicy', 'UpdateRuleGroup'
+        )
+      ) OR (
+        event_source = 'shield.amazonaws.com'
+        AND event_name IN (
+            'DeleteProtection',          'DisableProactiveEngagement',
+            'DeleteSubscription',        'DisassociateDRTLogBucket',
+            'DisassociateDRTRole'
+        )
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f3f7 ACM Certificate Operations"
+  description: "Detects ACM certificate requests and deletions. Attackers use compromised accounts to issue TLS certificates for attacker-controlled domains to build phishing infrastructure."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ACM certificate lifecycle events: RequestCertificate (especially
+    for domains not owned by the organization — phishing or impersonation
+    infrastructure), DeleteCertificate (removing evidence or disrupting HTTPS
+    services), ImportCertificate (importing attacker-controlled certificates),
+    ExportCertificate (exfiltrating private key material).
+    A compromised AWS account can issue TLS certificates for arbitrary domain
+    names using DNS validation, creating legitimate-looking phishing sites
+    backed by certificates from trusted CAs.
+    Show domain name, SAN names, validation method, cert ARN, caller, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.domainName')              AS domain_name,
+        json_extract_string(request_parameters, '$.subjectAlternativeNames') AS san_names,
+        json_extract_string(request_parameters, '$.certificateArn')          AS cert_arn,
+        json_extract_string(request_parameters, '$.validationMethod')        AS validation_method,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'acm.amazonaws.com'
+      AND event_name IN (
+          'RequestCertificate',
+          'DeleteCertificate',
+          'ImportCertificate',
+          'ExportCertificate'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f9f1 VPN / Direct Connect / Transit Gateway"
+  description: "Detects new VPN connections, Direct Connect, and Transit Gateway attachments. Attackers create covert network tunnels for persistent C2 or data exfiltration channels."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all VPN, Direct Connect, and Transit Gateway management events:
+    CreateVpnConnection / CreateVpnGateway / CreateCustomerGateway (new
+    encrypted tunnel to attacker-controlled network),
+    CreateTransitGateway / CreateTransitGatewayAttachment /
+    AcceptTransitGatewayVpcAttachment (connecting rogue VPC to organization
+    network), DeleteVpnConnection / DeleteTransitGateway (removing evidence).
+    These services create persistent Layer-3 network paths that survive
+    instance termination and IAM key rotation, providing a durable
+    exfiltration channel or C2 communication path.
+    Show resource IDs, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.transitGatewayId')         AS tgw_id,
+        json_extract_string(request_parameters, '$.vpnConnectionId')           AS vpn_id,
+        json_extract_string(request_parameters, '$.connectionId')              AS dx_connection_id,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'CreateTransitGateway',             'DeleteTransitGateway',
+          'CreateTransitGatewayAttachment',   'DeleteTransitGatewayAttachment',
+          'AcceptTransitGatewayVpcAttachment',
+          'CreateVpnConnection',              'DeleteVpnConnection',
+          'CreateVpnGateway',                 'DeleteVpnGateway',
+          'CreateCustomerGateway',            'DeleteCustomerGateway'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Compute & Serverless — DFIR追加 (NEW-10, NEW-15)
+# ===========================================================================
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f4a5 EC2 Mass Stop / Terminate"
+  description: "Detects high-volume EC2 StopInstances/TerminateInstances (>=5 in one hour). Indicates ransomware disruption or destructive attack."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find identities performing 5 or more EC2 StopInstances or TerminateInstances
+    calls within a single hour. This pattern indicates a destructive attack:
+    ransomware operators stop instances to safely encrypt attached EBS volumes,
+    while wipers terminate instances to destroy running workloads.
+    Show caller, region, hour bucket, total operation count, and breakdown
+    between stop and terminate actions.
+  sql: |
+    SELECT
+        user_identity_arn,
+        source_ip_address,
+        aws_region,
+        DATE_TRUNC('hour', event_time)                                              AS hour_bucket,
+        COUNT(*)                                                                     AS instance_ops_count,
+        COUNT(*) FILTER (WHERE event_name = 'TerminateInstances')                   AS terminate_count,
+        COUNT(*) FILTER (WHERE event_name = 'StopInstances')                        AS stop_count
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN ('TerminateInstances', 'StopInstances')
+    GROUP BY user_identity_arn, source_ip_address, aws_region, hour_bucket
+    HAVING COUNT(*) >= 5
+    ORDER BY instance_ops_count DESC
+    LIMIT 50
+
+- category: "\u26a1 Compute & Serverless"
+  label: "\U0001f4b0 EC2 Spot Fleet / Reserved Instance Abuse"
+  description: "Detects large Spot Fleet requests, Reserved Instance purchases, and Auto Scaling group creation with high capacity. Cryptomining financial-impact indicator."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find EC2 resource reservation and auto-scaling events that indicate
+    resource hijacking for cryptomining: RequestSpotFleet (bulk cheap GPU/CPU
+    capacity), PurchaseReservedInstancesOffering (committing org funds to
+    long-term compute), RequestSpotInstances, CreateAutoScalingGroup with
+    maxSize > 20 (auto-scaling cryptomining fleet), PutScalingPolicy /
+    ExecutePolicy (triggering mass scale-out).
+    Show target capacity, instance count, ASG max size, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        aws_region,
+        json_extract_string(request_parameters, '$.spotFleetRequestConfig.targetCapacity') AS spot_target_capacity,
+        json_extract_string(request_parameters, '$.instanceCount')                          AS instance_count,
+        json_extract_string(request_parameters, '$.autoScalingGroupName')                   AS asg_name,
+        json_extract_string(request_parameters, '$.maxSize')                                AS asg_max_size,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ec2.amazonaws.com'
+      AND event_name IN (
+          'RequestSpotFleet',                'CancelSpotFleetRequests',
+          'RequestSpotInstances',
+          'PurchaseReservedInstancesOffering',
+          'ModifyReservedInstances',
+          'CreateAutoScalingGroup',          'UpdateAutoScalingGroup',
+          'PutScalingPolicy',                'ExecutePolicy'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# IaC & Platform — DFIR追加 (NEW-03)
+# ===========================================================================
+
+- category: "\u2601 IaC & Platform"
+  label: "\U0001f6e0 CodeBuild / CodePipeline Supply Chain Attack"
+  description: "Detects CI/CD pipeline creation and modification. Injecting malicious build steps or modifying pipeline sources poisons all subsequent deployments."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all CI/CD pipeline tampering events: CodeBuild UpdateProject
+    (changing build environment image or commands — injects malicious build
+    steps into every subsequent build), CreateProject, StartBuild (unusual
+    caller triggering a build), CodePipeline CreatePipeline / UpdatePipeline
+    (modifying source stage to pull from attacker repo),
+    StartPipelineExecution, CodeDeploy CreateDeploymentGroup /
+    UpdateDeploymentGroup (redirecting deployments), CreateDeployment,
+    CodeStar Connections CreateConnection / UpdateConnection (linking
+    attacker-controlled GitHub/GitLab repo).
+    Show resource name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        aws_region,
+        COALESCE(
+            json_extract_string(request_parameters, '$.projectName'),
+            json_extract_string(request_parameters, '$.name'),
+            json_extract_string(request_parameters, '$.pipelineName'),
+            json_extract_string(request_parameters, '$.applicationName')
+        )                                                               AS resource_name,
+        source_ip_address,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source IN (
+        'codebuild.amazonaws.com',
+        'codepipeline.amazonaws.com',
+        'codedeploy.amazonaws.com',
+        'codestar-connections.amazonaws.com'
+      )
+      AND event_name IN (
+          'CreateProject',          'UpdateProject',            'StartBuild',
+          'BatchDeleteBuilds',      'DeleteProject',
+          'CreatePipeline',         'UpdatePipeline',           'StartPipelineExecution',
+          'DeletePipeline',
+          'CreateDeploymentGroup',  'UpdateDeploymentGroup',    'CreateDeployment',
+          'DeleteDeploymentGroup',
+          'CreateConnection',       'UpdateConnection',         'DeleteConnection'
+      )
+    ORDER BY event_time DESC
+    LIMIT 200
 
 # ===========================================================================
 # GeoIP Analysis
