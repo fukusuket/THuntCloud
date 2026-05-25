@@ -198,10 +198,17 @@ def test_new_chart_referenced_in_dashboard(fragment: str, label: str) -> None:
     "filter_id,description",
     [
         ("NATIVE_FILTER-identity-type", "Identity Type filter"),
+        ("NATIVE_FILTER-identity-type-not", "Identity Type NOT filter"),
         ("NATIVE_FILTER-region", "AWS Region filter"),
+        ("NATIVE_FILTER-region-not", "AWS Region NOT filter"),
         ("NATIVE_FILTER-error-code", "Error Code filter"),
+        ("NATIVE_FILTER-error-code-not", "Error Code NOT filter"),
         ("NATIVE_FILTER-read-only", "Write/Read filter"),
+        ("NATIVE_FILTER-read-only-not", "Write/Read NOT filter"),
         ("NATIVE_FILTER-arn", "Principal ARN filter"),
+        ("NATIVE_FILTER-arn-not", "Principal ARN NOT filter"),
+        ("NATIVE_FILTER-user-agent", "User Agent filter"),
+        ("NATIVE_FILTER-user-agent-not", "User Agent NOT filter"),
     ],
 )
 def test_new_native_filter_exists(filter_id: str, description: str) -> None:

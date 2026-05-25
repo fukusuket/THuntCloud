@@ -985,6 +985,31 @@ metadata:
       description: "Filter by identity type: Root, IAMUser, AssumedRole, etc."
       chartsInScope: []
       tabsInScope: []
+    - id: NATIVE_FILTER-identity-type-not
+      name: "Identity Type  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_identity_type
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: false
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected identity types (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
     - id: NATIVE_FILTER-arn
       name: "Principal ARN  + Include"
       filterType: filter_select
@@ -1008,6 +1033,31 @@ metadata:
         excluded: []
       type: NATIVE_FILTER
       description: "Include only the selected IAM principal ARNs."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-arn-not
+      name: "Principal ARN  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_identity_arn
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected IAM principal ARNs (NOT filter)."
       chartsInScope: []
       tabsInScope: []
     - id: NATIVE_FILTER-source-ip
@@ -1185,6 +1235,81 @@ metadata:
       description: "Filter all charts to the selected AWS regions."
       chartsInScope: []
       tabsInScope: []
+    - id: NATIVE_FILTER-region-not
+      name: "AWS Region  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: aws_region
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected AWS regions (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-user-agent
+      name: "User Agent  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_agent
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Include only the selected user agents."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-user-agent-not
+      name: "User Agent  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_agent
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected user agents (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
     - id: NATIVE_FILTER-error-code
       name: "Error Code"
       filterType: filter_select
@@ -1210,6 +1335,31 @@ metadata:
       description: "Focus on a specific error code (AccessDenied, Throttling, etc.)."
       chartsInScope: []
       tabsInScope: []
+    - id: NATIVE_FILTER-error-code-not
+      name: "Error Code  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: error_code
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected error codes (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
     - id: NATIVE_FILTER-read-only
       name: "Write / Read"
       filterType: filter_select
@@ -1233,6 +1383,31 @@ metadata:
         excluded: []
       type: NATIVE_FILTER
       description: "Filter to write-only (false) or read-only (true) operations."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-read-only-not
+      name: "Write / Read  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: read_only
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: false
+        searchAllOptions: false
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected read_only value (NOT filter)."
       chartsInScope: []
       tabsInScope: []
   charts:
