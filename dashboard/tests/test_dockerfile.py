@@ -37,29 +37,26 @@ def test_duckdb_engine_version_constraint() -> None:
     )
 
 
-def test_pip_uses_break_system_packages() -> None:
-    """DU-16: pip install must include --break-system-packages.
+def test_pip_uses_uv_for_install() -> None:
+    """DU-16: duckdb-engine must be installed via uv into the Superset 6.x venv.
 
-    Two failure modes require this flag:
+    Superset 6.x manages a virtual environment at /app/.venv using uv.
+    The venv intentionally omits pip (uv-managed venvs skip it by default), so
+    both `pip install` and `python3 -m pip install` fail at build time with:
+        /app/.venv/bin/python3: No module named pip
 
-    1. PEP 668 (externally-managed-environment):
-       Some Superset 6.x images are based on Debian bookworm with Python marked as
-       externally managed.  pip install fails with exit code 1 and:
-           error: externally-managed-environment
-       Fix: add --break-system-packages.
+    uv is inherited into the final (lean) image stage and is the correct tool
+    to install packages directly into /app/.venv.  --break-system-packages is
+    not needed because uv targets the isolated venv, not the system Python.
 
-    2. duckdb version conflict:
-       Superset 6.x may already have duckdb installed at a specific version.
-       Pinning duckdb>=1.2.0 can cause pip's dependency resolver to fail.
-       Fix: remove the explicit duckdb pin — let duckdb-engine pull in a
-       compatible version as its own dependency.
+    Changed from: pip install --break-system-packages --no-cache-dir ...
+    Changed to:   uv pip install --python /app/.venv --no-cache-dir ...
     """
     content = _read_dockerfile()
-    assert "--break-system-packages" in content, (
-        "Dockerfile pip install must include --break-system-packages to handle:\n"
-        "  1. PEP 668 externally-managed-environment restriction\n"
-        "  2. duckdb version conflict with Superset 6.x pre-installed packages\n"
-        "Add: pip install --break-system-packages --no-cache-dir ..."
+    assert "uv pip install" in content, (
+        "Dockerfile must use 'uv pip install' to install packages.\n"
+        "Superset 6.x uses a uv-managed venv at /app/.venv that has no pip module.\n"
+        "Change to: uv pip install --python /app/.venv --no-cache-dir ..."
     )
 
 

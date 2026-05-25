@@ -82,6 +82,9 @@ FILE_MAP = {
     "charts/sso_events.yaml": "charts/IAM_Identity_Center_SSO_Events.yaml",
     "charts/s3_bucket_policy_changes.yaml": "charts/S3_Bucket_Policy_ACL_Changes.yaml",
     "charts/nacl_route_changes.yaml": "charts/Network_ACL_Route_Table_Changes.yaml",
+    # Phase-3 new charts (DSH-47 to DSH-48) — Container and EventBridge coverage
+    "charts/eventbridge_cw_tampering.yaml": "charts/EventBridge_CloudWatch_Rule_Tampering.yaml",
+    "charts/container_platform_events.yaml": "charts/EKS_ECR_Container_Platform_Events.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

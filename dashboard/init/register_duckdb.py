@@ -21,10 +21,14 @@ import sys
 
 DB_NAME = "CloudTrail DuckDB"
 DUCKDB_PATH = os.environ.get("DUCKDB_PATH", "/data/db/threat_hunting.db")
-# Four slashes: duckdb:// (scheme) + empty host + /absolute/path
+# DU-13: Use duckdb+duckdb_engine:// (explicit driver) instead of duckdb://.
+# SQLAlchemy 2.x (Superset 6.x) entry-point auto-discovery can fail with:
+#   "Can't load plugin: sqlalchemy.dialects:duckdb"
+# The explicit +duckdb_engine suffix bypasses entry-point lookup entirely.
+# Four slashes total: scheme "duckdb+duckdb_engine://" + absolute path "/data/db/..."
 # NOTE: ?read_only=true is NOT a valid duckdb-engine URI parameter.
 # Read-only access is enforced via connect_args in extra (see below).
-SQLALCHEMY_URI = f"duckdb:////{DUCKDB_PATH}"
+SQLALCHEMY_URI = f"duckdb+duckdb_engine:///{DUCKDB_PATH}"
 
 
 def main() -> None:
@@ -43,14 +47,22 @@ def main() -> None:
         from superset.extensions import db  # noqa: PLC0415
         from superset.models.core import Database  # noqa: PLC0415
 
+        import json as _json  # noqa: PLC0415
+
         existing = db.session.query(Database).filter_by(database_name=DB_NAME).first()
         if existing:
             updated = False
-            # Fix URI if it was registered with the bad ?read_only=true param.
-            if "?read_only" in existing.sqlalchemy_uri:
+            # Fix URI when either:
+            #   (a) the old ?read_only=true param is present (never valid for duckdb-engine), or
+            #   (b) the URI uses the bare duckdb:// scheme instead of duckdb+duckdb_engine://.
+            # DU-13: duckdb+duckdb_engine:// bypasses SA2 entry-point auto-discovery, preventing
+            #        "Can't load plugin: sqlalchemy.dialects:duckdb" under SQLAlchemy 2.x.
+            needs_uri_fix = (
+                "?read_only" in existing.sqlalchemy_uri
+                or not existing.sqlalchemy_uri.startswith("duckdb+duckdb_engine")
+            )
+            if needs_uri_fix:
                 existing.sqlalchemy_uri = SQLALCHEMY_URI
-                import json as _json  # noqa: PLC0415
-
                 existing.extra = _json.dumps(
                     {
                         "metadata_params": {},
@@ -60,7 +72,7 @@ def main() -> None:
                 )
                 updated = True
                 print(
-                    f"    Database '{DB_NAME}' URI updated (removed bad ?read_only param)."
+                    f"    Database '{DB_NAME}' URI updated to duckdb+duckdb_engine:// driver."
                 )
             # Disable async execution — no Celery worker is present in this deployment.
             # allow_run_async=True causes SQL Lab to submit queries to a Celery worker,
@@ -78,8 +90,6 @@ def main() -> None:
             else:
                 print(f"    Database '{DB_NAME}' already registered — skipping.")
             return
-
-        import json as _json  # noqa: PLC0415
 
         database = Database(
             database_name=DB_NAME,

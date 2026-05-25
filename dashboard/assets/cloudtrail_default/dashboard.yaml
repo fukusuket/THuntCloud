@@ -2,7 +2,10 @@
 # 6-tab layout: Identity & Access | Threat Detection |
 # Data & Infrastructure | GeoIP Intelligence | Temporal Analysis |
 # High-Risk API Monitor.
-# 53 charts total (50 Phase-1 + 3 Phase-2 DSH-44 to DSH-46).
+# 50 charts total:
+#   Phase-1  DSH-01 to DSH-43   (43 charts — baseline, identity, data, network, compute)
+#   Phase-2  DSH-44 to DSH-46   ( 3 charts — SSO, S3 policy, NACL/route)
+#   Phase-3  DSH-47 to DSH-48   ( 2 charts — EventBridge/CW tampering, EKS/ECR events)
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
@@ -116,6 +119,7 @@ position:
       - ROW-td-6
       - ROW-td-7
       - ROW-td-8
+      - ROW-td-9
     meta:
       text: "\U0001f3af Threat Detection"
       defaultText: "Tab 2"
@@ -182,6 +186,14 @@ position:
       - CHART-nacl-route
     meta:
       background: BACKGROUND_TRANSPARENT
+  # Phase-3 new row: EventBridge / CloudWatch rule tampering (DSH-47)
+  ROW-td-9:
+    type: ROW
+    id: ROW-td-9
+    children:
+      - CHART-eventbridge-cw
+    meta:
+      background: BACKGROUND_TRANSPARENT
 
   # Tab 3 — Data & Infrastructure
   TAB-data:
@@ -196,6 +208,7 @@ position:
       - ROW-di-6
       - ROW-di-7
       - ROW-di-8
+      - ROW-di-9
     meta:
       text: "\U0001f5c4 Data & Infrastructure"
       defaultText: "Tab 3"
@@ -259,6 +272,14 @@ position:
     id: ROW-di-8
     children:
       - CHART-s3-policy-changes
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-3 new row: Container platform events (DSH-48)
+  ROW-di-9:
+    type: ROW
+    id: ROW-di-9
+    children:
+      - CHART-container-platform
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -894,6 +915,29 @@ position:
       width: 12
       height: 75
       sliceName: Network ACL / Route Table Changes
+
+  # Phase-3 new charts (DSH-47, DSH-48)
+  CHART-eventbridge-cw:
+    type: CHART
+    id: CHART-eventbridge-cw
+    children: []
+    meta:
+      chartId: 54
+      uuid: 47c8d9e0-f1a2-3456-7890-470000000047
+      width: 12
+      height: 75
+      sliceName: EventBridge / CloudWatch Rule Tampering
+
+  CHART-container-platform:
+    type: CHART
+    id: CHART-container-platform
+    children: []
+    meta:
+      chartId: 55
+      uuid: 48d9e0f1-a2b3-4567-8901-480000000048
+      width: 12
+      height: 75
+      sliceName: EKS / ECR Container Platform Events
 
 metadata:
   native_filter_configuration:

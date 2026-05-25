@@ -6,6 +6,22 @@ This file is mounted into the Superset container at
 
 import os
 
+# DU-15: Explicitly register the DuckDB SQLAlchemy dialect under all lookup keys.
+#
+# SQLAlchemy 2.x normalizes the URI driver separator when resolving dialects:
+#   URI "duckdb+duckdb_engine://"  →  registry lookup key "duckdb.duckdb_engine"
+#   URI "duckdb://"                →  registry lookup key "duckdb"
+#
+# Without explicit registration both lookups fall through to importlib.metadata
+# entry-point discovery, which can silently fail in Superset 6.x, producing:
+#   Can't load plugin: sqlalchemy.dialects:duckdb.duckdb_engine
+#
+# We register both keys so either URI form works regardless of entry-point state.
+from sqlalchemy.dialects import registry  # noqa: E402
+
+registry.register("duckdb", "duckdb_engine", "Dialect")
+registry.register("duckdb.duckdb_engine", "duckdb_engine", "Dialect")
+
 # Secret key for session signing — MUST be overridden in production via env var.
 SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "change-me-in-production")
 
@@ -28,8 +44,6 @@ WTF_CSRF_ENABLED = False
 FEATURE_FLAGS = {
     # Disable Alerts & Reports to reduce complexity in v1.0.
     "ALERTS_ATTACH_REPORTS": False,
-    # Enable native dashboard filters (required for export menu).
-    "DASHBOARD_NATIVE_FILTERS": True,
-    # Enable drag-and-drop chart layout in dashboard editor.
-    "ENABLE_EXPLORE_DRAG_AND_DROP": True,
+    # DU-03: DASHBOARD_NATIVE_FILTERS removed — enabled by default in Superset 6.x.
+    # DU-04: ENABLE_EXPLORE_DRAG_AND_DROP removed — flag was removed in Superset 6.x.
 }

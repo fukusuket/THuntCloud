@@ -3,7 +3,7 @@
 uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 version: 1.0.0
 database_name: CloudTrail DuckDB
-sqlalchemy_uri: "duckdb:////data/db/threat_hunting.db"
+sqlalchemy_uri: "duckdb+duckdb_engine:////data/db/threat_hunting.db"
 cache_timeout: null
 expose_in_sqllab: true
 allow_run_async: false
