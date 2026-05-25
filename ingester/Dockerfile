@@ -2,7 +2,7 @@
 # binary from GitHub Releases and skip Rust compilation entirely.
 # Used by the `prebuilt-runtime` target below.
 # Leave empty (default) to compile from source with the `runtime` target.
-ARG INGESTER_VERSION="v0.1.11"
+ARG INGESTER_VERSION="v0.1.13"
 
 # ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
 # No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
