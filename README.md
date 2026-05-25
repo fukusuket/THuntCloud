@@ -13,11 +13,11 @@
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
-[![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-84-brightgreen)](#-built-in-hunts-builtin_huntsyaml----84-queries)
+[![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-91-brightgreen)](#-built-in-hunts-builtin_huntsyaml----91-queries)
 [![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
 
 ### Key Features
-### 🔍 84 Built-in Hunts + AI Chat (Streamlit UI)
+### 🔍 91 Built-in Hunts + AI Chat (Streamlit UI)
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
@@ -119,22 +119,22 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 > 💡 No SQL or deep AWS knowledge required — just select a hunt from the dropdown and get results instantly.
 
-### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 84 queries
+### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 91 queries
 
 | Category | Queries | Key Threats Covered |
 |----------|:-------:|---------------------|
-| 🔑 Identity & Access | 22 | Root usage · console login/MFA · privilege escalation · AssumeRole · Cognito · SSO · cross-account · credential enumeration |
-| 🛡 Detection & Response | 10 | GuardDuty/Config/CloudTrail tampering · WAF · Security Hub · CloudWatch Logs exfiltration · budget deletion |
-| 🪣 Data & Storage | 12 | S3 bulk download · RDS/EBS snapshot sharing · KMS key ops · S3 public access · cross-account replication |
-| 🌐 Network & Infrastructure | 11 | SG open to internet · NACL · route table · VPC flow log deletion · TLS downgrade · Elastic IP / C2 |
-| ⚡ Compute & Serverless | 9 | Lambda tampering/layers · SSM lateral movement · EKS · ECR supply chain · EventBridge persistence · EC2 user data |
+| 🔑 Identity & Access | 21 | Root usage · console login/MFA · privilege escalation · AssumeRole · PassRole · Cognito · SSO · cross-account · credential enumeration |
+| 🛡 Detection & Response | 9 | GuardDuty/Config/CloudTrail/Macie tampering · WAF · Security Hub · CloudWatch Logs exfiltration · budget deletion |
+| 🪣 Data & Storage | 17 | S3 bulk download/deletion · RDS/EBS snapshot sharing · KMS key ops · S3 public access · backup tampering · DynamoDB export · Kinesis exfiltration · Secrets Manager |
+| 🌐 Network & Infrastructure | 14 | SG open to internet · NACL · route table · VPC flow log deletion · Elastic IP / C2 · CloudFront · Network Firewall · ACM certs · VPN/TGW |
+| ⚡ Compute & Serverless | 11 | Lambda tampering/layers · SSM lateral movement · EKS · ECR supply chain · EventBridge persistence · EC2 user data · mass terminate · Spot Fleet |
 | 🕵 Threat Patterns | 5 | Off-hours writes · reconnaissance burst (10+ APIs/hour) · multi-region spread · unusual user agents |
-| 📊 Activity & Baseline | 4 | Top callers · error spikes · region distribution · recent errors (24h) |
-| ☁ IaC & Platform | 1 | CloudFormation / IaC abuse |
+| 📊 Activity & Baseline | 2 | Error spikes · recent errors (24h) |
+| ☁ IaC & Platform | 2 | CloudFormation / IaC abuse · CI/CD supply chain |
 | 🌍 GeoIP Analysis ✦ | 10 | Country/city/ASN ranking · impossible travel · multi-country credentials · access denied by country |
 
 <details>
-<summary>📋 Full list — all 84 queries (click to expand)</summary>
+<summary>📋 Full list — all 91 queries (click to expand)</summary>
 
 ### Built-in Hunts (Streamlit UI — `builtin_hunts.yaml`)
 
@@ -148,22 +148,21 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 4 | 🔓 Console Login without MFA | Detects console logins where MFA was not used | ✅ |
 | 5 | 🔄 Privilege Escalation (IAM) | Detects IAM policy attachment and role manipulation events | ✅ |
 | 6 | 🔐 AssumeRole Cross-Account | Shows AssumeRole events across different AWS accounts | ✅ |
-| 7 | 🪮 Self AssumeRole Detection | Detects roles that assume themselves | ✅ |
-| 8 | 🚧 IAM Permission Boundary Changes | Detects permission boundary put/delete events | ✅ |
-| 9 | 🆔 IAM Identity Center (SSO) Events | Detects AWS IAM Identity Center management actions | ✅ |
-| 10 | 🔗 SAML / OIDC Provider Updates | Detects SAML/OIDC identity provider changes (backdoor creation) | ✅ |
-| 11 | 🔑 STS Federation Token Issuance | Detects GetFederationToken and GetSessionToken calls | ✅ |
-| 12 | 🔄 IAM Role Trust Policy Changes | Detects UpdateAssumeRolePolicy calls (trust backdoor) | ✅ |
-| 13 | 👑 User Added to Admin Group | Detects users added to groups with 'admin' in the name | ✅ |
-| 14 | 🔐 MFA & Password Changes | Detects MFA deactivation and password resets | ✅ |
-| 15 | 🗝 Access Key Abuse | Detects access keys used from 3+ distinct source IPs in 7 days | ✅ |
-| 16 | 🔄 Credential Report & Enumeration | Detects IAM enumeration activity (GenerateCredentialReport, ListUsers, etc.) | ✅ |
-| 17 | 🏢 Cross-Account Access | Finds events where caller account differs from recipient account | ✅ |
-| 18 | 📋 Top IAM Actions by Principal | Ranks principals by IAM API call volume | ✅ |
-| 19 | 📰 AWS Organizations Account Creation | Detects Organizations account creation and delegated admin changes | ✅ |
-| 20 | 👥 Cognito Unauthenticated Access | Detects Cognito Identity Pools with unauthenticated access enabled | ✅ |
-| 21 | 🧐 IAM Access Analyzer Calls | Detects any use of IAM Access Analyzer (attacker recon) | ✅ |
-| 22 | 🧩 STS AssumeRoleWithWebIdentity | Detects OIDC trust abuse via AssumeRoleWithWebIdentity | ✅ |
+| 7 | 🚧 IAM Permission Boundary Changes | Detects permission boundary put/delete events | ✅ |
+| 8 | 🆔 IAM Identity Center (SSO) Events | Detects AWS IAM Identity Center management actions | ✅ |
+| 9 | 🔗 SAML / OIDC Provider Updates | Detects SAML/OIDC identity provider changes (backdoor creation) | ✅ |
+| 10 | 🔑 STS Federation Token Issuance | Detects GetFederationToken and GetSessionToken calls | ✅ |
+| 11 | 🔄 IAM Role Trust Policy Changes | Detects UpdateAssumeRolePolicy calls (trust backdoor) | ✅ |
+| 12 | 👑 User Added to Admin Group | Detects users added to groups with 'admin' in the name | ✅ |
+| 13 | 🔐 MFA & Password Changes | Detects MFA deactivation and password resets | ✅ |
+| 14 | 🗝 Access Key Abuse | Detects access keys used from 3+ distinct source IPs in 7 days | ✅ |
+| 15 | 🔄 Credential Report & Enumeration | Detects IAM enumeration activity (GenerateCredentialReport, ListUsers, etc.) | ✅ |
+| 16 | 🏢 Cross-Account Access | Finds events where caller account differs from recipient account | ✅ |
+| 17 | 📰 AWS Organizations Account Creation | Detects Organizations account creation and delegated admin changes | ✅ |
+| 18 | 👥 Cognito Unauthenticated Access | Detects Cognito Identity Pools with unauthenticated access enabled | ✅ |
+| 19 | 🧐 IAM Access Analyzer Calls | Detects any use of IAM Access Analyzer (attacker recon) | ✅ |
+| 20 | 🧩 STS AssumeRoleWithWebIdentity | Detects OIDC trust abuse via AssumeRoleWithWebIdentity | ✅ |
+| 21 | 🎯 IAM PassRole Abuse | Detects iam:PassRole calls used to escalate privilege via compute services | ✅ |
 
 #### 🛡 Detection & Response
 
@@ -173,12 +172,11 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 2 | 🛡️ GuardDuty Detector Tampering | Detects GuardDuty disable, delete, and threat-intel manipulation | ✅ |
 | 3 | ⚙️ AWS Config Tampering | Detects AWS Config recorder/rule deletion | ✅ |
 | 4 | 🛑 CloudTrail Tampering | Detects any attempt to stop or modify CloudTrail | ✅ |
-| 5 | ❌ Top Error Codes (Last 7 Days) | Ranks error codes by frequency over the last 7 days | ✅ |
-| 6 | ☂ AWS Support Role Access | Detects when AWS Support assumed the AWSServiceRoleForSupport role | ✅ |
-| 7 | 📜 CloudWatch Logs Subscription Changes | Detects CW Logs subscription filter creation/deletion (log exfiltration) | ✅ |
-| 8 | 🏹 WAF WebACL Changes | Detects WAF WebACL creation, update, and deletion | ✅ |
-| 9 | 💰 Budget / Cost Anomaly Changes | Detects deletion or modification of AWS Budgets (hiding cryptomining) | ✅ |
-| 10 | ⛔ Security Hub Tampering | Detects Security Hub disable, standard disable, and finding suppression | ✅ |
+| 5 | 📜 CloudWatch Logs Subscription Changes | Detects CW Logs subscription filter creation/deletion (log exfiltration) | ✅ |
+| 6 | 🏹 WAF WebACL Changes | Detects WAF WebACL creation, update, and deletion | ✅ |
+| 7 | 💰 Budget / Cost Anomaly Changes | Detects deletion or modification of AWS Budgets (hiding cryptomining) | ✅ |
+| 8 | ⛔ Security Hub Tampering | Detects Security Hub disable, standard disable, and finding suppression | ✅ |
+| 9 | 🚫 AWS Macie Tampering | Detects Macie disable and finding-filter creation (pre-exfiltration evasion) | ✅ |
 
 #### 🪣 Data & Storage
 
@@ -186,16 +184,21 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 |---|-------|-------------|-----|
 | 1 | 🪣 S3 Data Access Anomalies | Detects bulk GetObject calls (≥100/hour) indicating exfiltration | ✅ |
 | 2 | 📸 EC2 Public Snapshot / AMI Sharing | Detects EBS snapshots or AMIs shared publicly (group=all) | ✅ |
-| 3 | 🔒 Unencrypted EBS Snapshot | Finds EBS snapshots created without encryption | ✅ |
-| 4 | 🪳 S3 Bucket Policy / ACL Changes | Detects S3 bucket policy and ACL modifications | ✅ |
-| 5 | 📂 S3 Versioning / Logging Disabled | Detects S3 versioning suspension and server access logging disable | ✅ |
-| 6 | 🔁 S3 Cross-Account Replication | Detects PutBucketReplication (silent object copy to attacker account) | ✅ |
-| 7 | 💾 RDS Snapshot Cross-Account Share | Detects RDS/Aurora snapshots shared to external AWS accounts | ✅ |
-| 8 | 💣 RDS Deleted without Final Snapshot | Detects RDS deletion with skipFinalSnapshot=true (data destruction) | ✅ |
-| 9 | 🔓 S3 Public Access Block Disabled | Detects S3 public access block settings being disabled | ✅ |
-| 10 | 🔓 KMS Key Operations | Flags sensitive KMS operations (DisableKey, ScheduleKeyDeletion, Decrypt) | ✅ |
-| 11 | 📧 Data Exfiltration Channels | Detects high-volume SNS/SQS/SES/S3 PutObject calls (≥50/hour) | ✅ |
-| 12 | 💽 RDS Public Accessibility Enabled | Detects RDS instances with PubliclyAccessible=true | ✅ |
+| 3 | 🪳 S3 Bucket Policy / ACL Changes | Detects S3 bucket policy and ACL modifications | ✅ |
+| 4 | 📂 S3 Versioning / Logging Disabled | Detects S3 versioning suspension and server access logging disable | ✅ |
+| 5 | 🔁 S3 Cross-Account Replication | Detects PutBucketReplication (silent object copy to attacker account) | ✅ |
+| 6 | 💾 RDS Snapshot Cross-Account Share | Detects RDS/Aurora snapshots shared to external AWS accounts | ✅ |
+| 7 | 💣 RDS Deleted without Final Snapshot | Detects RDS deletion with skipFinalSnapshot=true (data destruction) | ✅ |
+| 8 | 🔓 S3 Public Access Block Disabled | Detects S3 public access block settings being disabled | ✅ |
+| 9 | 🔓 KMS Key Operations | Flags sensitive KMS operations (DisableKey, ScheduleKeyDeletion, Decrypt) | ✅ |
+| 10 | 📧 Data Exfiltration Channels | Detects high-volume SNS/SQS/SES/S3 PutObject calls (≥50/hour) | ✅ |
+| 11 | 💽 RDS Public Accessibility Enabled | Detects RDS instances with PubliclyAccessible=true | ✅ |
+| 12 | 🔥 AWS Backup Tampering | Detects Backup Vault/Plan/RecoveryPoint deletion (ransomware indicator) | ✅ |
+| 13 | 💣 S3 Bulk Object Deletion | Detects high-volume DeleteObject calls (≥50/hour) — data destruction pattern | ✅ |
+| 14 | 🗄 DynamoDB Export / Bulk Exfiltration | Detects DynamoDB ExportTableToPointInTime and table deletion | ✅ |
+| 15 | 🌊 Kinesis Firehose / Stream Exfiltration Channel | Detects Firehose delivery stream creation/update pointing to external S3 | ✅ |
+| 16 | 🗝 Secrets Manager Deletion & Cross-Account Policy | Detects Secrets Manager secret deletion and cross-account resource policy changes | ✅ |
+| 17 | 📡 SQS / SNS Cross-Account Policy Changes | Detects SQS/SNS policy changes granting access to external accounts | ✅ |
 
 #### 🌐 Network & Infrastructure
 
@@ -209,9 +212,12 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 6 | 🌍 Security Group Opened to Internet | Finds security group rules allowing traffic from 0.0.0.0/0 | ✅ |
 | 7 | 📡 Network Infrastructure Changes | Detects VPC / subnet / IGW / NAT Gateway / peering changes | ✅ |
 | 8 | 🖥 Write Events from Management Console | Identifies mutating API calls made via the AWS console | ✅ |
-| 9 | 🔒 TLS Downgrade Detection | Finds API calls using TLS 1.1 or older | ✅ |
-| 10 | 🚧 VPC Endpoint Access Denied | Detects access denied errors via VPC endpoints | ✅ |
-| 11 | 📡 Elastic IP Allocation / Association | Detects Elastic IP allocation/association (C2 stable endpoint) | ✅ |
+| 9 | 🚧 VPC Endpoint Access Denied | Detects access denied errors via VPC endpoints | ✅ |
+| 10 | 📡 Elastic IP Allocation / Association | Detects Elastic IP allocation/association (C2 stable endpoint) | ✅ |
+| 11 | 🌐 CloudFront Distribution Tampering | Detects CloudFront origin changes that redirect CDN traffic (MitM) | ✅ |
+| 12 | 🛡 Network Firewall / Shield Tampering | Detects Network Firewall and Shield protection removal | ✅ |
+| 13 | 🏷 ACM Certificate Operations | Detects ACM certificate requests and deletions (phishing infrastructure) | ✅ |
+| 14 | 🧱 VPN / Direct Connect / Transit Gateway | Detects new VPN connections and Transit Gateway attachments (covert tunnels) | ✅ |
 
 #### 🕵 Threat Patterns
 
@@ -227,10 +233,8 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 | # | Label | Description | SQL |
 |---|-------|-------------|-----|
-| 1 | 📊 Top Callers This Week | Shows the 20 most active IAM entities (past 7 days) | ✅ |
-| 2 | ❌ Error Spike Detection | Finds 1-hour windows where error count exceeds daily average by 3× | 🤖 |
-| 3 | 📊 Activity by Region | Counts API calls per AWS region (detect unexpected regions) | ✅ |
-| 4 | 🔍 Events with Errors (24h) | Lists all error events in the past 24 hours | ✅ |
+| 1 | ❌ Error Spike Detection | Finds 1-hour windows where error count exceeds daily average by 3× | 🤖 |
+| 2 | 🔍 Events with Errors (24h) | Lists all error events in the past 24 hours | ✅ |
 
 #### ⚡ Compute & Serverless
 
@@ -245,12 +249,15 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 7 | 🐳 ECR Repository / Image Changes | Detects ECR repository/image events (supply-chain persistence) | ✅ |
 | 8 | 📦 Lambda Layer Addition | Detects Lambda layer publication and permission changes | ✅ |
 | 9 | 📝 EC2 User Data Modification | Detects ModifyInstanceAttribute with userData change (root exec at boot) | ✅ |
+| 10 | 💥 EC2 Mass Stop / Terminate | Detects high-volume StopInstances/TerminateInstances (≥5/hour) — ransomware indicator | ✅ |
+| 11 | 💰 EC2 Spot Fleet / Reserved Instance Abuse | Detects large Spot Fleet requests and Reserved Instance purchases (cryptomining) | ✅ |
 
 #### ☁ IaC & Platform
 
 | # | Label | Description | SQL |
 |---|-------|-------------|-----|
 | 1 | 🏗 CloudFormation / IaC Abuse | Detects CloudFormation stack operations (malicious infra deployment) | ✅ |
+| 2 | 🛠 CodeBuild / CodePipeline Supply Chain Attack | Detects CI/CD pipeline creation and modification (supply chain attack) | ✅ |
 
 #### 🌍 GeoIP Analysis
 
