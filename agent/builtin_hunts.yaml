@@ -135,9 +135,11 @@
         error_code
     FROM cloudtrail_events
     WHERE event_name IN (
-        'PutUserPolicy', 'AttachUserPolicy',
-        'PutRolePolicy', 'AttachRolePolicy',
-        'CreatePolicyVersion', 'SetDefaultPolicyVersion'
+        'PutUserPolicy',        'AttachUserPolicy',
+        'PutRolePolicy',        'AttachRolePolicy',
+        'CreatePolicyVersion',  'SetDefaultPolicyVersion',
+        'AttachGroupPolicy',    'PutGroupPolicy',
+        'CreateGroup'
     )
     ORDER BY event_time DESC
     LIMIT 100
@@ -2914,4 +2916,420 @@
     GROUP BY geo_country_code, geo_city
     ORDER BY event_count DESC
     LIMIT 30
+
+# ===========================================================================
+# Identity & Access — Pacu / IAM-Privilege-Escalation gap fills
+# (A-1 to A-3, A-7, A-9)
+# ===========================================================================
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f465 IAM Group Membership Changes"
+  description: "Detects all AddUserToGroup and RemoveUserFromGroup events regardless of group name. Any group addition may indicate privilege escalation through group-inherited policies."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AddUserToGroup and RemoveUserFromGroup events.
+    Any group addition can be a privilege escalation step if the target group
+    carries high-privilege policies — not just groups with 'admin' in the name.
+    Show caller, target user, group name, source IP, and time.
+    Flag groups whose names suggest elevated access (admin, power, root, owner,
+    super, billing, security, infra, devops, sre).
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.userName')  AS target_user,
+        json_extract_string(request_parameters, '$.groupName') AS group_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_name IN ('AddUserToGroup', 'RemoveUserFromGroup', 'CreateGroup', 'DeleteGroup')
+    ORDER BY event_time DESC
+    LIMIT 200
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f9ea Glue DevEndpoint Privilege Escalation"
+  description: "Detects Glue development endpoint creation and connection enumeration. iam:PassRole + glue:CreateDevEndpoint grants full role permissions via SSH — one of the most overlooked IAM privilege escalation techniques."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all Glue development endpoint and connection events:
+    CreateDevEndpoint / UpdateDevEndpoint (iam:PassRole + glue:CreateDevEndpoint
+    creates an SSH-accessible endpoint that can run arbitrary code with the
+    passed role's full permissions), DeleteDevEndpoint, GetDevEndpoint,
+    GetConnections / GetConnection (enumerating stored database credentials
+    in the Glue Data Catalog — a common post-compromise credential harvest step).
+    Show endpoint name, role ARN, public key, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.endpointName')    AS endpoint_name,
+        json_extract_string(request_parameters, '$.roleArn')         AS role_arn,
+        json_extract_string(request_parameters, '$.connectionName')  AS connection_name,
+        json_extract_string(request_parameters, '$.publicKey')       AS public_key,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'glue.amazonaws.com'
+      AND event_name IN (
+          'CreateDevEndpoint',   'UpdateDevEndpoint',   'DeleteDevEndpoint',
+          'GetDevEndpoint',      'GetDevEndpoints',
+          'GetConnections',      'GetConnection',
+          'CreateConnection',    'DeleteConnection'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f9ea SageMaker Notebook Privilege Escalation"
+  description: "Detects SageMaker notebook instance creation and presigned URL generation. iam:PassRole + sagemaker:CreateNotebookInstance provides a Jupyter environment with the passed role's full AWS permissions. CreatePresignedNotebookInstanceUrl alone can grant access to an existing notebook."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all SageMaker notebook management events:
+    CreateNotebookInstance (iam:PassRole + sagemaker:CreateNotebookInstance
+    launches a Jupyter environment with the passed role's full AWS permissions),
+    CreatePresignedNotebookInstanceUrl (an attacker with only this permission
+    can access any existing notebook and its attached role),
+    StartNotebookInstance, StopNotebookInstance, DeleteNotebookInstance,
+    UpdateNotebookInstance (changing to a more privileged role).
+    Also flag CreateTrainingJob and CreateProcessingJob which accept iam:PassRole.
+    Show notebook name, role ARN, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.notebookInstanceName')   AS notebook_name,
+        json_extract_string(request_parameters, '$.roleArn')                AS role_arn,
+        json_extract_string(request_parameters, '$.instanceType')           AS instance_type,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'sagemaker.amazonaws.com'
+      AND event_name IN (
+          'CreateNotebookInstance',              'UpdateNotebookInstance',
+          'DeleteNotebookInstance',              'StartNotebookInstance',
+          'StopNotebookInstance',
+          'CreatePresignedNotebookInstanceUrl',
+          'CreateTrainingJob',                   'CreateProcessingJob',
+          'CreateTransformJob',                  'CreateHyperParameterTuningJob'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f6e0 Data Pipeline / CodeStar Privilege Escalation"
+  description: "Detects Data Pipeline and CodeStar resource creation. Both accept iam:PassRole and can execute arbitrary code with the passed role's permissions. CodeStar:CreateProjectFromTemplate is an undocumented API that creates an admin IAM role."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Data Pipeline and CodeStar management events used for
+    privilege escalation:
+    Data Pipeline: CreatePipeline + PutPipelineDefinition + ActivatePipeline
+    (the pipeline definition can contain a ShellCommandActivity that runs
+    arbitrary code with the passed role's permissions),
+    CodeStar: CreateProjectFromTemplate (undocumented API that creates an
+    admin-equivalent IAM role as a side effect), CreateProject, AssociateTeamMember
+    (granting team member role with elevated access).
+    Show resource name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        event_source,
+        user_identity_arn,
+        COALESCE(
+            json_extract_string(request_parameters, '$.name'),
+            json_extract_string(request_parameters, '$.pipelineId')
+        )                                                               AS resource_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE (
+        event_source = 'datapipeline.amazonaws.com'
+        AND event_name IN (
+            'CreatePipeline',     'PutPipelineDefinition',
+            'ActivatePipeline',   'DeletePipeline'
+        )
+    ) OR (
+        event_source = 'codestar.amazonaws.com'
+        AND event_name IN (
+            'CreateProject',              'DeleteProject',
+            'CreateProjectFromTemplate',
+            'AssociateTeamMember',        'DisassociateTeamMember',
+            'UpdateTeamMember'
+        )
+    )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "\U0001f511 Identity & Access"
+  label: "\U0001f9e9 Step Functions Privilege Escalation"
+  description: "Detects Step Functions state machine creation and execution. iam:PassRole + states:CreateStateMachine + states:StartExecution allows running arbitrary Lambda / ECS tasks under the passed role's permissions."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all AWS Step Functions management events:
+    CreateStateMachine (iam:PassRole + states:CreateStateMachine can execute
+    Lambda functions or ECS tasks under the passed role's full permissions),
+    UpdateStateMachine (changing the role or task definitions),
+    DeleteStateMachine, StartExecution, StopExecution, CreateActivity.
+    Step Functions is an often-overlooked privilege escalation path because
+    it indirectly invokes other services under the passed role.
+    Show state machine name, role ARN, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.name')         AS state_machine_name,
+        json_extract_string(request_parameters, '$.roleArn')      AS role_arn,
+        json_extract_string(request_parameters, '$.stateMachineArn') AS state_machine_arn,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'states.amazonaws.com'
+      AND event_name IN (
+          'CreateStateMachine',  'UpdateStateMachine',  'DeleteStateMachine',
+          'StartExecution',      'StopExecution',
+          'CreateActivity',      'DeleteActivity'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Data & Storage — EBS Direct API / ECS (A-4, A-5)
+# ===========================================================================
+
+- category: "\U0001faa3 Data & Storage"
+  label: "\U0001f4be EBS Direct API Snapshot Exfiltration"
+  description: "Detects EBS Direct API calls (ListSnapshotBlocks / GetSnapshotBlock). Pacu's ebs__download_snapshots uses this API to stream raw snapshot data without creating EC2 instances, bypassing traditional snapshot-sharing detection."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all EBS Direct API calls from ebs.amazonaws.com:
+    ListSnapshotBlocks / GetSnapshotBlock (reading raw block data directly from
+    an EBS snapshot — Pacu's ebs__download_snapshots module uses this to stream
+    an entire disk image without creating an EC2 instance or requesting a snapshot
+    copy, so it bypasses the traditional ModifySnapshotAttribute detection),
+    ListChangedBlocks (incremental diff exfiltration),
+    StartSnapshot / CompleteSnapshot / PutSnapshotBlock (writing data to a new
+    snapshot, potentially to stage exfiltrated data in attacker-controlled storage).
+    Show snapshot ID, block index, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.snapshotId')    AS snapshot_id,
+        json_extract_string(request_parameters, '$.blockIndex')    AS block_index,
+        json_extract_string(request_parameters, '$.volumeSize')    AS volume_size_gb,
+        json_extract_string(request_parameters, '$.description')   AS description,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ebs.amazonaws.com'
+      AND event_name IN (
+          'ListSnapshotBlocks',   'GetSnapshotBlock',
+          'ListChangedBlocks',    'PutSnapshotBlock',
+          'StartSnapshot',        'CompleteSnapshot'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Compute & Serverless — ECS Backdoor / Lightsail (A-5, A-6)
+# ===========================================================================
+
+- category: "⚡ Compute & Serverless"
+  label: "\U0001f4e6 ECS Task Definition Backdoor"
+  description: "Detects ECS task definition registration and service updates. Pacu's ecs__backdoor_task_def registers a new task definition version pointing to a malicious container image, then updates the service to deploy it — all without touching ECR."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all ECS task definition and service modification events:
+    RegisterTaskDefinition (Pacu backdoors ECS by registering a new task definition
+    revision that adds a credential-stealing sidecar container, then updates the
+    service to use that revision — no ECR changes are required),
+    DeregisterTaskDefinition (removing evidence of the original definition),
+    UpdateService (switching to the backdoored task definition revision),
+    CreateService (deploying a new rogue service), RunTask / StartTask
+    (ad-hoc execution of a malicious task definition).
+    Show task family/definition, cluster name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        COALESCE(
+            json_extract_string(request_parameters, '$.family'),
+            json_extract_string(request_parameters, '$.taskDefinition')
+        )                                                                  AS task_family,
+        json_extract_string(request_parameters, '$.cluster')              AS cluster,
+        json_extract_string(request_parameters, '$.service')              AS service_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'ecs.amazonaws.com'
+      AND event_name IN (
+          'RegisterTaskDefinition',   'DeregisterTaskDefinition',
+          'UpdateService',            'CreateService',            'DeleteService',
+          'RunTask',                  'StartTask',                'StopTask'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+- category: "⚡ Compute & Serverless"
+  label: "\U0001f4a1 Lightsail Instance & Key Abuse"
+  description: "Detects Lightsail instance access, key pair operations, and port exposure. Pacu has three dedicated Lightsail modules (enum, download_ssh_keys, generate_temp_access). Lightsail resources operate outside the standard EC2 security boundary."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all sensitive AWS Lightsail operations:
+    GetInstanceAccessDetails (Pacu's lightsail__download_ssh_keys retrieves the
+    default SSH key and temporary credentials for any Lightsail instance),
+    CreateKeyPair / ImportKeyPair / DownloadDefaultKeyPair (SSH key material
+    exfiltration and backdoor creation),
+    GetRelationalDatabaseMasterUserPassword (database credential theft),
+    OpenInstancePublicPorts (opening ports to 0.0.0.0/0 on the Lightsail firewall),
+    CreateInstances (new instance launch for cryptomining or C2),
+    ExportSnapshot / CreateInstanceSnapshotFromSnapshot (data exfiltration via snapshot).
+    Show instance name, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        COALESCE(
+            json_extract_string(request_parameters, '$.instanceName'),
+            json_extract_string(request_parameters, '$.relationalDatabaseName'),
+            json_extract_string(request_parameters, '$.keyPairName')
+        )                                                                AS resource_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'lightsail.amazonaws.com'
+      AND event_name IN (
+          'GetInstanceAccessDetails',
+          'CreateKeyPair',                       'ImportKeyPair',
+          'DownloadDefaultKeyPair',
+          'GetRelationalDatabaseMasterUserPassword',
+          'OpenInstancePublicPorts',             'CloseInstancePublicPorts',
+          'CreateInstances',                     'DeleteInstance',
+          'CreateInstanceSnapshot',              'ExportSnapshot',
+          'CreateInstanceFromSnapshot'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
+
+# ===========================================================================
+# Detection & Response — GuardDuty read recon (A-8)
+# ===========================================================================
+
+- category: "\U0001f6e1 Detection & Response"
+  label: "\U0001f50d GuardDuty Findings Read (Attacker Recon)"
+  description: "Detects read-only GuardDuty API calls. Pacu's guardduty__list_findings module reads active findings to understand what the defender has already detected, allowing the attacker to adapt their tactics and avoid triggering new alerts."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all GuardDuty read-only API calls that an attacker would use to
+    understand the defender's detection posture:
+    ListFindings / GetFindings (Pacu's guardduty__list_findings enumerates
+    all active findings to see what the SOC has already detected — attackers
+    use this to confirm whether their activity has been flagged),
+    GetDetector / ListDetectors (checking which regions have GuardDuty enabled
+    and what findings types are configured),
+    ListIPSets / ListThreatIntelSets (reading the allowlist to understand
+    which IPs are already trusted — enabling IP spoofing evasion),
+    GetIPSet / GetThreatIntelSet (reading the actual allowlisted IPs).
+    Any unexpected caller reading GuardDuty findings warrants investigation.
+    Show caller, detector ID, finding IDs, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        json_extract_string(request_parameters, '$.detectorId')  AS detector_id,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'guardduty.amazonaws.com'
+      AND event_name IN (
+          'ListFindings',         'GetFindings',
+          'GetDetector',          'ListDetectors',
+          'ListIPSets',           'GetIPSet',
+          'ListThreatIntelSets',  'GetThreatIntelSet',
+          'GetMasterAccount',     'ListMembers'
+      )
+    ORDER BY event_time DESC
+    LIMIT 200
+
+# ===========================================================================
+# Network & Infrastructure — API Gateway (A-10)
+# ===========================================================================
+
+- category: "\U0001f310 Network & Infrastructure"
+  label: "\U0001f511 API Gateway Key Creation & Management"
+  description: "Detects API Gateway key creation and REST API management. Pacu's api_gateway__create_api_keys creates persistent API credentials that survive IAM key rotation. Attackers also modify API authorizers to weaken access controls."
+  chart:
+    type: timeseries
+    bucket: day
+  prompt: |
+    Find all sensitive API Gateway management events:
+    CreateApiKey / UpdateApiKey / DeleteApiKey (Pacu's api_gateway__create_api_keys
+    generates persistent API keys that bypass IAM-based authentication and
+    survive IAM credential rotation — a durable persistence mechanism),
+    CreateRestApi / DeleteRestApi (deploying or removing API endpoints),
+    CreateAuthorizer / UpdateAuthorizer / DeleteAuthorizer (modifying or
+    removing API authorization checks),
+    CreateDeployment (deploying configuration changes that may weaken auth),
+    UpdateAccount (modifying the CloudWatch role or throttling limits),
+    ImportRestApi (importing a pre-configured API that may bypass auth).
+    Show API name, key ID, caller, region, and time.
+  sql: |
+    SELECT
+        event_time,
+        event_name,
+        user_identity_arn,
+        COALESCE(
+            json_extract_string(request_parameters, '$.name'),
+            json_extract_string(request_parameters, '$.keyId'),
+            json_extract_string(request_parameters, '$.restApiId')
+        )                                                              AS resource_name,
+        source_ip_address,
+        aws_region,
+        error_code
+    FROM cloudtrail_events
+    WHERE event_source = 'apigateway.amazonaws.com'
+      AND event_name IN (
+          'CreateApiKey',       'UpdateApiKey',       'DeleteApiKey',
+          'CreateRestApi',      'DeleteRestApi',       'ImportRestApi',
+          'CreateAuthorizer',   'UpdateAuthorizer',    'DeleteAuthorizer',
+          'CreateDeployment',   'UpdateAccount',
+          'CreateUsagePlan',    'DeleteUsagePlan'
+      )
+    ORDER BY event_time DESC
+    LIMIT 100
 

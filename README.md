@@ -5,7 +5,7 @@
 ## What is THuntCloud?
 
 ### Hunt AWS threats in minutes — no SIEM required, no Cloud infra needed
-> Drop in your CloudTrail logs and get 91 ready-to-run threat hunts, a BI dashboard, and AI-assisted analysis
+> Drop in your CloudTrail logs and get 101 ready-to-run threat hunts, a BI dashboard, and AI-assisted analysis
 > — all on your laptop with a single `docker compose up`.
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -13,15 +13,15 @@
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
-[![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-91-brightgreen)](#-built-in-hunts-builtin_huntsyaml----91-queries)
-[![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-50-blue)](#-dashboard-charts-apache-superset----dashboard----50-charts)
+[![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-101-brightgreen)](#-built-in-hunts-builtin_huntsyaml----101-queries)
+[![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-53-blue)](#-dashboard-charts-apache-superset----dashboard----53-charts)
 
 ### Key Features
-### 🔍 91 Built-in Hunts + AI Chat
+### 🔍 101 Built-in Hunts + AI Chat
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
-### 📊 50 Pre-built Dashboard Charts
+### 📊 53 Pre-built Dashboard Charts
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
@@ -119,22 +119,22 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 > 💡 No SQL or deep AWS knowledge required — just select a hunt from the dropdown and get results instantly.
 
-### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 91 queries
+### 🎯 Built-in Hunts (`builtin_hunts.yaml`) — 101 queries
 
 | Category | Queries | Key Threats Covered |
 |----------|:-------:|---------------------|
-| 🔑 Identity & Access | 21 | Root usage · console login/MFA · privilege escalation · AssumeRole · PassRole · Cognito · SSO · cross-account · credential enumeration |
-| 🛡 Detection & Response | 9 | GuardDuty/Config/CloudTrail/Macie tampering · WAF · Security Hub · CloudWatch Logs exfiltration · budget deletion |
-| 🪣 Data & Storage | 17 | S3 bulk download/deletion · RDS/EBS snapshot sharing · KMS key ops · S3 public access · backup tampering · DynamoDB export · Kinesis exfiltration · Secrets Manager |
-| 🌐 Network & Infrastructure | 14 | SG open to internet · NACL · route table · VPC flow log deletion · Elastic IP / C2 · CloudFront · Network Firewall · ACM certs · VPN/TGW |
-| ⚡ Compute & Serverless | 11 | Lambda tampering/layers · SSM lateral movement · EKS · ECR supply chain · EventBridge persistence · EC2 user data · mass terminate · Spot Fleet |
+| 🔑 Identity & Access | 26 | Root usage · console login/MFA · privilege escalation (incl. AttachGroupPolicy/PutGroupPolicy) · AssumeRole · PassRole · Cognito · SSO · Glue DevEndpoint · SageMaker notebook · Data Pipeline · CodeStar · Step Functions · cross-account · credential enumeration |
+| 🛡 Detection & Response | 10 | GuardDuty/Config/CloudTrail/Macie tampering · GuardDuty findings read (attacker recon) · WAF · Security Hub · CloudWatch Logs exfiltration · budget deletion |
+| 🪣 Data & Storage | 18 | S3 bulk download/deletion · RDS/EBS snapshot sharing · EBS Direct API exfiltration · KMS key ops · S3 public access · backup tampering · DynamoDB export · Kinesis exfiltration · Secrets Manager |
+| 🌐 Network & Infrastructure | 15 | SG open to internet · NACL · route table · VPC flow log deletion · Elastic IP / C2 · CloudFront · Network Firewall · ACM certs · VPN/TGW · API Gateway key creation |
+| ⚡ Compute & Serverless | 13 | Lambda tampering/layers · SSM lateral movement · EKS · ECR supply chain · ECS task definition backdoor · EventBridge persistence · EC2 user data · mass terminate · Spot Fleet · Lightsail abuse |
 | 🕵 Threat Patterns | 5 | Off-hours writes · reconnaissance burst (10+ APIs/hour) · multi-region spread · unusual user agents |
 | 📊 Activity & Baseline | 2 | Error spikes · recent errors (24h) |
 | ☁ IaC & Platform | 2 | CloudFormation / IaC abuse · CI/CD supply chain |
 | 🌍 GeoIP Analysis ✦ | 10 | Country/city/ASN ranking · impossible travel · multi-country credentials · access denied by country |
 
 <details>
-<summary>📋 Full list — all 91 queries (click to expand)</summary>
+<summary>📋 Full list — all 101 queries (click to expand)</summary>
 
 ### Built-in Hunts (Streamlit UI — `builtin_hunts.yaml`)
 
@@ -146,7 +146,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 2 | 👤 New IAM Users / Keys | Identifies IAM user and access key creation events | ✅ |
 | 3 | 🌐 Console Logins | Lists all console login attempts (brute force detection) | ✅ |
 | 4 | 🔓 Console Login without MFA | Detects console logins where MFA was not used | ✅ |
-| 5 | 🔄 Privilege Escalation (IAM) | Detects IAM policy attachment and role manipulation events | ✅ |
+| 5 | 🔄 Privilege Escalation (IAM) | Detects IAM policy attachment and role manipulation events (incl. AttachGroupPolicy / PutGroupPolicy) | ✅ |
 | 6 | 🔐 AssumeRole Cross-Account | Shows AssumeRole events across different AWS accounts | ✅ |
 | 7 | 🚧 IAM Permission Boundary Changes | Detects permission boundary put/delete events | ✅ |
 | 8 | 🆔 IAM Identity Center (SSO) Events | Detects AWS IAM Identity Center management actions | ✅ |
@@ -163,6 +163,11 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 19 | 🧐 IAM Access Analyzer Calls | Detects any use of IAM Access Analyzer (attacker recon) | ✅ |
 | 20 | 🧩 STS AssumeRoleWithWebIdentity | Detects OIDC trust abuse via AssumeRoleWithWebIdentity | ✅ |
 | 21 | 🎯 IAM PassRole Abuse | Detects iam:PassRole calls used to escalate privilege via compute services | ✅ |
+| 22 | 👥 IAM Group Membership Changes | Detects all AddUserToGroup / RemoveUserFromGroup / CreateGroup events regardless of group name | ✅ |
+| 23 | 🧪 Glue DevEndpoint Privilege Escalation | Detects Glue development endpoint creation (iam:PassRole + glue:CreateDevEndpoint) and connection enumeration for credential harvest | ✅ |
+| 24 | 🧪 SageMaker Notebook Privilege Escalation | Detects SageMaker notebook creation and presigned URL generation (iam:PassRole + sagemaker:CreateNotebookInstance) | ✅ |
+| 25 | 🛠 Data Pipeline / CodeStar Privilege Escalation | Detects Data Pipeline and CodeStar resource creation used for iam:PassRole escalation | ✅ |
+| 26 | 🧩 Step Functions Privilege Escalation | Detects Step Functions state machine creation (iam:PassRole + states:CreateStateMachine) | ✅ |
 
 #### 🛡 Detection & Response
 
@@ -177,6 +182,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 7 | 💰 Budget / Cost Anomaly Changes | Detects deletion or modification of AWS Budgets (hiding cryptomining) | ✅ |
 | 8 | ⛔ Security Hub Tampering | Detects Security Hub disable, standard disable, and finding suppression | ✅ |
 | 9 | 🚫 AWS Macie Tampering | Detects Macie disable and finding-filter creation (pre-exfiltration evasion) | ✅ |
+| 10 | 🔍 GuardDuty Findings Read (Attacker Recon) | Detects read-only GuardDuty calls (ListFindings / GetFindings) — attacker checks what the SOC has already detected | ✅ |
 
 #### 🪣 Data & Storage
 
@@ -199,6 +205,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 15 | 🌊 Kinesis Firehose / Stream Exfiltration Channel | Detects Firehose delivery stream creation/update pointing to external S3 | ✅ |
 | 16 | 🗝 Secrets Manager Deletion & Cross-Account Policy | Detects Secrets Manager secret deletion and cross-account resource policy changes | ✅ |
 | 17 | 📡 SQS / SNS Cross-Account Policy Changes | Detects SQS/SNS policy changes granting access to external accounts | ✅ |
+| 18 | 💾 EBS Direct API Snapshot Exfiltration | Detects EBS Direct API (ListSnapshotBlocks / GetSnapshotBlock) — Pacu ebs__download_snapshots bypasses snapshot-sharing detection | ✅ |
 
 #### 🌐 Network & Infrastructure
 
@@ -218,6 +225,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 12 | 🛡 Network Firewall / Shield Tampering | Detects Network Firewall and Shield protection removal | ✅ |
 | 13 | 🏷 ACM Certificate Operations | Detects ACM certificate requests and deletions (phishing infrastructure) | ✅ |
 | 14 | 🧱 VPN / Direct Connect / Transit Gateway | Detects new VPN connections and Transit Gateway attachments (covert tunnels) | ✅ |
+| 15 | 🔑 API Gateway Key Creation & Management | Detects API Gateway key creation (Pacu api_gateway__create_api_keys) and authorizer changes that weaken access controls | ✅ |
 
 #### 🕵 Threat Patterns
 
@@ -251,6 +259,8 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 9 | 📝 EC2 User Data Modification | Detects ModifyInstanceAttribute with userData change (root exec at boot) | ✅ |
 | 10 | 💥 EC2 Mass Stop / Terminate | Detects high-volume StopInstances/TerminateInstances (≥5/hour) — ransomware indicator | ✅ |
 | 11 | 💰 EC2 Spot Fleet / Reserved Instance Abuse | Detects large Spot Fleet requests and Reserved Instance purchases (cryptomining) | ✅ |
+| 12 | 📦 ECS Task Definition Backdoor | Detects RegisterTaskDefinition / UpdateService — Pacu ecs__backdoor_task_def injects a malicious sidecar without touching ECR | ✅ |
+| 13 | 💡 Lightsail Instance & Key Abuse | Detects Lightsail key retrieval, port exposure, and instance access (Pacu lightsail__download_ssh_keys / lightsail__generate_temp_access) | ✅ |
 
 #### ☁ IaC & Platform
 
@@ -280,13 +290,13 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 ---
 
-### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 50 charts
+### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 53 charts
 
 | Category | Charts | What It Shows |
 |----------|:------:|---------------|
 | Overview & Baseline | 6 | Event volume over time · top API calls · read/write ratio · region distribution · errors · source IPs |
-| 🔑 Identity & Access | 9 | Root usage · console logins · MFA trend · login heatmap (JST) · privilege escalation · SSO · AssumeRole · Organizations |
-| 🪣 Data & Storage | 5 | EC2/RDS snapshot sharing · S3 policy/ACL changes · S3 protection config · Secrets Manager anomalies |
+| 🔑 Identity & Access | 10 | Root usage · console logins · MFA trend · login heatmap (JST) · privilege escalation · SSO · AssumeRole · Organizations · Glue/SageMaker privilege escalation |
+| 🪣 Data & Storage | 7 | EC2/RDS snapshot sharing · S3 policy/ACL changes · S3 protection config · Secrets Manager anomalies · ECS task definition backdoor · EBS Direct API exfiltration |
 | 🌐 Network & Infrastructure | 4 | NACL/route table changes · VPC flow log changes · Route53 DNS · throttling spikes |
 | 🛡 Detection & Response | 4 | Defense evasion events · Config tampering · EventBridge/CW tampering · top access denied actions |
 | ⚡ Compute & Serverless | 2 | SSM remote execution · EKS/ECR container events |
@@ -296,7 +306,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 🌍 GeoIP Analysis ✦ | 4 | World map · top countries/cities/ASNs by request volume |
 
 <details>
-<summary>📋 Full list — all 50 charts (click to expand)</summary>
+<summary>📋 Full list — all 53 charts (click to expand)</summary>
 
 ### Dashboard Charts (Apache Superset — `dashboard/`)
 
@@ -324,6 +334,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 13 | IAM Identity Center (SSO) Events | AWS IAM Identity Center management events from sso.amazonaws.com (DSH-44) |
 | 14 | AssumedRole from External IP | AssumeRole calls from public (non-private) IP addresses (DSH-27) |
 | 15 | Organizations / SCP Changes | AWS Organizations management events including SCP policy changes (DSH-24) |
+| 16 | Glue & SageMaker Privilege Escalation | Glue DevEndpoint and SageMaker Notebook events used for IAM privilege escalation via iam:PassRole (DSH-50) |
 
 #### Data & Storage
 
@@ -334,6 +345,8 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 18 | S3 Bucket Policy / ACL Changes | S3 bucket policy and ACL modification events (DSH-45) |
 | 19 | S3 Protection Config Changes | S3 events that weaken bucket security posture (DSH-25) |
 | 20 | Secrets Access Anomaly | Identities accessing Secrets Manager or SSM Parameter Store ≥10 times in one hour |
+| 21 | ECS Task Definition Backdoor | ECS task definition registration and service update events — Pacu ecs__backdoor_task_def pattern (DSH-49) |
+| 22 | EBS Direct API Snapshot Exfiltration | EBS Direct API calls (ListSnapshotBlocks / GetSnapshotBlock) used to stream snapshot data without EC2 (DSH-51) |
 
 #### Network & Infrastructure
 

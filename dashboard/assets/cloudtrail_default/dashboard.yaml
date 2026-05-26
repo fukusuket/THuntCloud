@@ -2,10 +2,11 @@
 # 6-tab layout: Identity & Access | Threat Detection |
 # Data & Infrastructure | GeoIP Intelligence | Temporal Analysis |
 # High-Risk API Monitor.
-# 50 charts total:
+# 53 charts total:
 #   Phase-1  DSH-01 to DSH-43   (43 charts — baseline, identity, data, network, compute)
 #   Phase-2  DSH-44 to DSH-46   ( 3 charts — SSO, S3 policy, NACL/route)
 #   Phase-3  DSH-47 to DSH-48   ( 2 charts — EventBridge/CW tampering, EKS/ECR events)
+#   Phase-4  DSH-49 to DSH-51   ( 3 charts — ECS task definition, Glue/SageMaker privesc, EBS Direct API)
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
@@ -56,6 +57,7 @@ position:
       - ROW-ia-4
       - ROW-ia-5
       - ROW-ia-6
+      - ROW-ia-7
     meta:
       text: "\U0001f511 Identity & Access"
       defaultText: "Tab 1"
@@ -103,6 +105,14 @@ position:
     id: ROW-ia-6
     children:
       - CHART-sso-events
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-4 new row: Glue & SageMaker privilege escalation (DSH-50)
+  ROW-ia-7:
+    type: ROW
+    id: ROW-ia-7
+    children:
+      - CHART-glue-sagemaker-privesc
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -209,6 +219,8 @@ position:
       - ROW-di-7
       - ROW-di-8
       - ROW-di-9
+      - ROW-di-10
+      - ROW-di-11
     meta:
       text: "\U0001f5c4 Data & Infrastructure"
       defaultText: "Tab 3"
@@ -280,6 +292,22 @@ position:
     id: ROW-di-9
     children:
       - CHART-container-platform
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-4 new row: ECS Task Definition Backdoor (DSH-49)
+  ROW-di-10:
+    type: ROW
+    id: ROW-di-10
+    children:
+      - CHART-ecs-task-def
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-4 new row: EBS Direct API Exfiltration (DSH-51)
+  ROW-di-11:
+    type: ROW
+    id: ROW-di-11
+    children:
+      - CHART-ebs-direct-api
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -893,6 +921,40 @@ position:
       width: 12
       height: 75
       sliceName: IAM Identity Center (SSO) Events
+
+  # Phase-4 new charts (DSH-49 to DSH-51)
+  CHART-glue-sagemaker-privesc:
+    type: CHART
+    id: CHART-glue-sagemaker-privesc
+    children: []
+    meta:
+      chartId: 56
+      uuid: 50b2c3d4-e5f6-7890-bcde-500000000050
+      width: 12
+      height: 75
+      sliceName: Glue & SageMaker Privilege Escalation
+
+  CHART-ecs-task-def:
+    type: CHART
+    id: CHART-ecs-task-def
+    children: []
+    meta:
+      chartId: 57
+      uuid: 49a1b2c3-d4e5-6789-abcd-490000000049
+      width: 12
+      height: 75
+      sliceName: ECS Task Definition Backdoor
+
+  CHART-ebs-direct-api:
+    type: CHART
+    id: CHART-ebs-direct-api
+    children: []
+    meta:
+      chartId: 58
+      uuid: 51c3d4e5-f6a7-8901-cdef-510000000051
+      width: 12
+      height: 75
+      sliceName: EBS Direct API Snapshot Exfiltration
 
   CHART-s3-policy-changes:
     type: CHART
@@ -1531,3 +1593,12 @@ metadata:
     - slice_name: High-Risk API Calls by Region
       viz_type: bar
       description: HRM-46 - High-risk watchlist API calls distributed by AWS region.
+    - slice_name: Glue & SageMaker Privilege Escalation
+      viz_type: table
+      description: DSH-50 - Glue DevEndpoint and SageMaker Notebook events used for IAM privilege escalation via iam:PassRole.
+    - slice_name: ECS Task Definition Backdoor
+      viz_type: table
+      description: DSH-49 - ECS task definition registration and service update events (Pacu ecs__backdoor_task_def pattern).
+    - slice_name: EBS Direct API Snapshot Exfiltration
+      viz_type: table
+      description: DSH-51 - EBS Direct API calls (ListSnapshotBlocks/GetSnapshotBlock) used to exfiltrate snapshot data without creating EC2 instances.
