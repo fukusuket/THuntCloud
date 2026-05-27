@@ -190,6 +190,102 @@ def test_new_chart_referenced_in_dashboard(fragment: str, label: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Nested tab structure tests (S3 / RDS sub-tabs)
+# ---------------------------------------------------------------------------
+
+
+def test_s3_rds_combined_tab_is_top_level() -> None:
+    """TAB-s3-rds must appear as a direct child of TABS_ID."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tabs_id = position.get("TABS_ID", {})
+    top_tabs = tabs_id.get("children", [])
+    assert "TAB-s3-rds" in top_tabs, "TAB-s3-rds not found in TABS_ID children"
+
+
+def test_s3_and_rds_charts_in_tab_s3_rds() -> None:
+    """S3 and RDS charts must all be in the combined TAB-s3-rds."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tab = position.get("TAB-s3-rds", {})
+    assert tab.get("type") == "TAB", "TAB-s3-rds must be a TAB type"
+    charts = []
+    for row_id in tab.get("children", []):
+        row = position.get(row_id, {})
+        charts.extend(row.get("children", []))
+    assert "CHART-s3-protection" in charts, "CHART-s3-protection not found in TAB-s3-rds"
+    assert "CHART-s3-policy-changes" in charts, "CHART-s3-policy-changes not found in TAB-s3-rds"
+    assert "CHART-rds-snapshot-share" in charts, "CHART-rds-snapshot-share not found in TAB-s3-rds"
+
+
+def test_s3_protection_not_in_tab_threat() -> None:
+    """CHART-s3-protection must no longer appear in Tab 2 (Threat Detection)."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tab_threat = position.get("TAB-threat", {})
+    charts_in_threat = []
+    for row_id in tab_threat.get("children", []):
+        row = position.get(row_id, {})
+        charts_in_threat.extend(row.get("children", []))
+    assert "CHART-s3-protection" not in charts_in_threat, (
+        "CHART-s3-protection should have been moved out of TAB-threat"
+    )
+
+
+def test_computing_tab_is_top_level() -> None:
+    """TAB-computing must appear as a direct child of TABS_ID."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tabs_id = position.get("TABS_ID", {})
+    top_tabs = tabs_id.get("children", [])
+    assert "TAB-computing" in top_tabs, "TAB-computing not found in TABS_ID children"
+
+
+def test_computing_charts_in_tab_computing() -> None:
+    """EC2/ECS/EKS/SSM/EBS charts must be in TAB-computing."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tab = position.get("TAB-computing", {})
+    assert tab.get("type") == "TAB", "TAB-computing must be a TAB type"
+    charts = []
+    for row_id in tab.get("children", []):
+        row = position.get(row_id, {})
+        charts.extend(row.get("children", []))
+    for chart_id in (
+        "CHART-ssm-execution",
+        "CHART-ec2-public-snapshot",
+        "CHART-container-platform",
+        "CHART-ecs-task-def",
+        "CHART-ebs-direct-api",
+    ):
+        assert chart_id in charts, f"{chart_id} not found in TAB-computing"
+
+
+def test_computing_charts_not_in_tab_data() -> None:
+    """Computing charts must not remain in TAB-data."""
+    dashboard = load_dashboard()
+    position = dashboard.get("position", {})
+    tab_data = position.get("TAB-data", {})
+    charts_in_data = []
+    for row_id in tab_data.get("children", []):
+        row = position.get(row_id, {})
+        charts_in_data.extend(row.get("children", []))
+    for chart_id in (
+        "CHART-ssm-execution",
+        "CHART-ec2-public-snapshot",
+        "CHART-container-platform",
+        "CHART-ecs-task-def",
+        "CHART-ebs-direct-api",
+        "CHART-s3-protection",
+        "CHART-s3-policy-changes",
+        "CHART-rds-snapshot-share",
+    ):
+        assert chart_id not in charts_in_data, (
+            f"{chart_id} should not remain in TAB-data"
+        )
+
+
+# ---------------------------------------------------------------------------
 # New native filters
 # ---------------------------------------------------------------------------
 

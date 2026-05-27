@@ -85,6 +85,10 @@ FILE_MAP = {
     # Phase-3 new charts (DSH-47 to DSH-48) — Container and EventBridge coverage
     "charts/eventbridge_cw_tampering.yaml": "charts/EventBridge_CloudWatch_Rule_Tampering.yaml",
     "charts/container_platform_events.yaml": "charts/EKS_ECR_Container_Platform_Events.yaml",
+    # Phase-4 new charts (DSH-49 to DSH-51) — ECS, Glue/SageMaker, EBS Direct API
+    "charts/ecs_task_definition.yaml": "charts/ECS_Task_Definition_Backdoor.yaml",
+    "charts/glue_sagemaker_privesc.yaml": "charts/Glue_SageMaker_Privilege_Escalation.yaml",
+    "charts/ebs_direct_api.yaml": "charts/EBS_Direct_API_Snapshot_Exfiltration.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

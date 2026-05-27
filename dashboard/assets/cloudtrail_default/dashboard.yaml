@@ -1,7 +1,7 @@
 # CloudTrail Threat Hunting — Dashboard Definition (v2)
-# 6-tab layout: Identity & Access | Threat Detection |
-# Data & Infrastructure | GeoIP Intelligence | Temporal Analysis |
-# High-Risk API Monitor.
+# 8-tab layout: Identity & Access | Threat Detection |
+# API Activity | Computing | S3 & RDS | GeoIP Intelligence |
+# Temporal Analysis | High-Risk API Monitor.
 # 53 charts total:
 #   Phase-1  DSH-01 to DSH-43   (43 charts — baseline, identity, data, network, compute)
 #   Phase-2  DSH-44 to DSH-46   ( 3 charts — SSO, S3 policy, NACL/route)
@@ -42,6 +42,8 @@ position:
       - TAB-identity
       - TAB-threat
       - TAB-data
+      - TAB-computing
+      - TAB-s3-rds
       - TAB-geoip
       - TAB-temporal
       - TAB-hrm
@@ -169,7 +171,6 @@ position:
     id: ROW-td-5
     children:
       - CHART-org-scp
-      - CHART-s3-protection
     meta:
       background: BACKGROUND_TRANSPARENT
   ROW-td-6:
@@ -215,16 +216,38 @@ position:
       - ROW-di-3
       - ROW-di-4
       - ROW-di-5
+    meta:
+      text: "\U0001f4ca API Activity"
+      defaultText: "Tab 3"
+      tooltip: "API call volume, regional distribution, caller attribution (IP/UserAgent), and suspicious access patterns"
+
+  # Tab 4 — Computing (EC2, ECS, EKS, SSM, EBS)
+  TAB-computing:
+    type: TAB
+    id: TAB-computing
+    children:
       - ROW-di-6
-      - ROW-di-7
-      - ROW-di-8
+      - ROW-di-7b
       - ROW-di-9
       - ROW-di-10
       - ROW-di-11
     meta:
-      text: "\U0001f5c4 Data & Infrastructure"
-      defaultText: "Tab 3"
-      tooltip: "Data access anomalies and infrastructure change tracking"
+      text: "\U0001f5a5️ Computing"
+      defaultText: "Tab 4"
+      tooltip: "EC2, ECS, EKS, SSM, and EBS compute platform events"
+
+  # Tab 5 — S3 & RDS Security
+  TAB-s3-rds:
+    type: TAB
+    id: TAB-s3-rds
+    children:
+      - ROW-s3-1
+      - ROW-s3-2
+      - ROW-rds-1
+    meta:
+      text: "\U0001fab3 S3 & RDS"
+      defaultText: "Tab 4"
+      tooltip: "S3 bucket policy / ACL changes and RDS snapshot cross-account share"
   ROW-di-1:
     type: ROW
     id: ROW-di-1
@@ -270,20 +293,11 @@ position:
       - CHART-ssm-execution
     meta:
       background: BACKGROUND_TRANSPARENT
-  ROW-di-7:
+  ROW-di-7b:
     type: ROW
-    id: ROW-di-7
+    id: ROW-di-7b
     children:
-      - CHART-rds-snapshot-share
       - CHART-ec2-public-snapshot
-    meta:
-      background: BACKGROUND_TRANSPARENT
-  # Phase-2 new row: S3 permission changes (DSH-45)
-  ROW-di-8:
-    type: ROW
-    id: ROW-di-8
-    children:
-      - CHART-s3-policy-changes
     meta:
       background: BACKGROUND_TRANSPARENT
   # Phase-3 new row: Container platform events (DSH-48)
@@ -308,6 +322,31 @@ position:
     id: ROW-di-11
     children:
       - CHART-ebs-direct-api
+    meta:
+      background: BACKGROUND_TRANSPARENT
+
+  # S3 sub-tab rows
+  ROW-s3-1:
+    type: ROW
+    id: ROW-s3-1
+    children:
+      - CHART-s3-protection
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-s3-2:
+    type: ROW
+    id: ROW-s3-2
+    children:
+      - CHART-s3-policy-changes
+    meta:
+      background: BACKGROUND_TRANSPARENT
+
+  # RDS sub-tab rows
+  ROW-rds-1:
+    type: ROW
+    id: ROW-rds-1
+    children:
+      - CHART-rds-snapshot-share
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -537,7 +576,7 @@ position:
     meta:
       chartId: 24
       uuid: 24f6a7b8-c9d0-1234-f012-345678901234
-      width: 6
+      width: 12
       height: 50
       sliceName: Organizations / SCP Changes
   CHART-s3-protection:
@@ -547,7 +586,7 @@ position:
     meta:
       chartId: 25
       uuid: 25a7b8c9-d0e1-2345-0123-456789012345
-      width: 6
+      width: 12
       height: 50
       sliceName: S3 Protection Config Changes
   CHART-first-time-svc:
@@ -873,7 +912,7 @@ position:
     meta:
       chartId: 47
       uuid: 40b1c2d3-e4f5-6789-0123-400000000040
-      width: 6
+      width: 12
       height: 75
       sliceName: RDS Snapshot Cross-Account Share
 
@@ -884,7 +923,7 @@ position:
     meta:
       chartId: 48
       uuid: 41c2d3e4-f5a6-7890-1234-410000000041
-      width: 6
+      width: 12
       height: 75
       sliceName: EC2 Public Snapshot / AMI Sharing
 
