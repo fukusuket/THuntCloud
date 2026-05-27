@@ -77,7 +77,7 @@ services:
         CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     container_name: threat-hunting-agent
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro       # READ_ONLY
     environment:
@@ -86,6 +86,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.5}
       - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-5.4-mini}
+      - STREAMLIT_SERVER_HEADLESS=true
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
@@ -102,7 +103,7 @@ services:
         CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
     container_name: threat-hunting-config-viz
     ports:
-      - "8502:8502"
+      - "127.0.0.1:8502:8502"
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro   # READ_ONLY
     environment:
@@ -124,7 +125,7 @@ services:
     image: thuntcloud-dashboard:latest
     container_name: threat-hunting-dashboard
     ports:
-      - "8088:8088"
+      - "127.0.0.1:8088:8088"
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
       - superset_home:/app/superset_home
