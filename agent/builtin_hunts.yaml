@@ -79,7 +79,7 @@
         source_ip_address,
         aws_region,
         user_agent,
-        json_extract_string(raw_event, '$.responseElements.ConsoleLogin') AS login_result,
+        json_extract_string(response_elements, '$.ConsoleLogin') AS login_result,
         error_code,
         error_message
     FROM cloudtrail_events
@@ -104,12 +104,12 @@
         user_identity_arn,
         source_ip_address,
         aws_region,
-        json_extract_string(raw_event, '$.additionalEventData.MFAUsed') AS mfa_used,
-        json_extract_string(raw_event, '$.additionalEventData.LoginTo')  AS login_to
+        json_extract_string(additional_event_data, '$.MFAUsed') AS mfa_used,
+        json_extract_string(additional_event_data, '$.LoginTo')  AS login_to
     FROM cloudtrail_events
     WHERE event_source = 'signin.amazonaws.com'
       AND event_name   = 'ConsoleLogin'
-      AND json_extract_string(raw_event, '$.additionalEventData.MFAUsed') = 'No'
+      AND json_extract_string(additional_event_data, '$.MFAUsed') = 'No'
     ORDER BY event_time DESC
     LIMIT 100
 
@@ -1119,7 +1119,7 @@
     FROM cloudtrail_events
     WHERE read_only = false
       AND (
-          json_extract_string(raw_event, '$.sessionCredentialFromConsole') = 'true'
+          session_credential_from_console = 'true'
           OR user_agent LIKE '%signin.amazonaws.com%'
       )
     ORDER BY event_time DESC
@@ -1144,10 +1144,10 @@
         source_ip_address,
         error_code,
         error_message,
-        json_extract_string(raw_event, '$.vpcEndpointId') AS vpc_endpoint_id
+        vpc_endpoint_id
     FROM cloudtrail_events
     WHERE error_code IN ('AccessDenied', 'AccessDeniedException')
-      AND json_extract_string(raw_event, '$.vpcEndpointId') IS NOT NULL
+      AND vpc_endpoint_id IS NOT NULL
     ORDER BY event_time DESC
     LIMIT 100
 
@@ -2799,7 +2799,7 @@
         geo_city,
         source_ip_address,
         user_identity_arn,
-        json_extract_string(raw_event, '$.responseElements.ConsoleLogin') AS login_result,
+        json_extract_string(response_elements, '$.ConsoleLogin') AS login_result,
         event_time,
         error_code
     FROM cloudtrail_events
