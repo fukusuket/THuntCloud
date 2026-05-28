@@ -1,92 +1,68 @@
 
-# ─────────────────────────────────────────────
-# AWS Log Threat Hunting Tool — Docker Compose
-# ─────────────────────────────────────────────
-# DuckDB access model:
-#   ingester  → READ_WRITE  (exclusive writer)
-#   agent     → READ_ONLY   (reader)
-#   dashboard → READ_ONLY   (reader)
+# DuckDB writers: ingester (READ_WRITE). Readers: agent, config-viz, superset (READ_ONLY).
 #
-# Always run ingester FIRST, then start agent/dashboard.
-#
-# Volume strategy:
-#   DuckDB data is bind-mounted directly in each service rather than via a
-#   named volume with driver_opts, because Docker Engine on Linux (including
-#   WSL2) requires absolute paths for named-volume bind mounts — relative paths
-#   are silently mis-resolved, causing ingester and Superset to use different
-#   storage locations.  Docker Compose resolves relative paths in *service*
-#   volume entries correctly on all platforms (macOS, Linux, WSL2), so this
-#   approach is cross-platform safe.
-#
-#   Default host path : ./data/db  (relative to this docker-compose.yml)
-#   Override          : set DUCKDB_HOST_PATH to an absolute path in .env
-#                       e.g. DUCKDB_HOST_PATH=/home/youruser/THuntCloud/docker/data/db
-# ─────────────────────────────────────────────
+# Volume strategy: services use direct bind mounts (not named volumes) so Docker Compose
+# resolves relative paths correctly on macOS, Linux, and WSL2. Named volumes with
+# driver_opts silently mis-resolve relative paths on Linux/WSL2.
+#   Default: ./data/db  |  Override: set DUCKDB_HOST_PATH=/abs/path in .env
+
+x-superset-image: &superset-image thuntcloud-dashboard:latest
+x-superset-env: &superset-env
+  SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-change-me-in-production}
+  DUCKDB_PATH: /data/db/threat_hunting.db
+x-ca-cert-arg: &ca-cert-arg
+  CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
 
 services:
 
-  # ── ingester ──────────────────────────────
   ingester:
     build:
       context: ../ingester
       dockerfile: Dockerfile
-      # Build target:
-      #   prebuilt-runtime (default) — download a pre-built binary from GitHub Releases
-      #                                (recommended: fast startup, includes all features)
-      #   runtime                    — compile from source (Rust + DuckDB C++ bundled)
-      #                                Set INGESTER_BUILD_TARGET=runtime to opt in.
-      #                                First build takes ~10–30 min; subsequent builds use cache.
+      # prebuilt-runtime (default): downloads pre-built binary — fast startup.
+      # runtime: compiles from source (Rust + DuckDB C++), first build ~10–30 min.
+      # Set INGESTER_BUILD_TARGET=runtime to opt in.
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
         INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.13}
-        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
+        <<: *ca-cert-arg
     container_name: threat-hunting-ingester
     volumes:
-      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_WRITE
-      - ./logs:/data/logs:ro                              # Source CloudTrail log directory (read-only)
-      - ${CONFIG_HOST_PATH:-./data/config-snapshots}:/data/config:ro  # AWS Config snapshot JSON files (read-only)
-      - ${GEOIP_HOST_PATH:-./data/geoip}:/data/geoip:ro  # MaxMind GeoLite2 .mmdb files (read-only)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db
+      - ./logs:/data/logs:ro
+      - ${CONFIG_HOST_PATH:-./data/config-snapshots}:/data/config:ro
+      - ${GEOIP_HOST_PATH:-./data/geoip}:/data/geoip:ro
     environment:
-      - DUCKDB_PATH=/data/db/threat_hunting.db
-      - RUST_LOG=${RUST_LOG:-info}
-      # GeoIP paths — set any of these (or pass --geoip-* CLI flags directly).
-      # Accepts either a .mmdb file path or a directory; a directory is scanned
-      # automatically for the first .mmdb file found inside it.
-      - GEOIP_CITY_PATH=${GEOIP_CITY_PATH:-}
-      - GEOIP_COUNTRY_PATH=${GEOIP_COUNTRY_PATH:-}
-      - GEOIP_ASN_PATH=${GEOIP_ASN_PATH:-}
+      DUCKDB_PATH: /data/db/threat_hunting.db
+      RUST_LOG: ${RUST_LOG:-info}
+      GEOIP_CITY_PATH: ${GEOIP_CITY_PATH:-}
+      GEOIP_COUNTRY_PATH: ${GEOIP_COUNTRY_PATH:-}
+      GEOIP_ASN_PATH: ${GEOIP_ASN_PATH:-}
     profiles:
-      - ingest                        # Run only when explicitly invoked
-    # Usage (CloudTrail — no GeoIP):
-    #   docker compose --profile ingest run --rm ingester ingest --path /data/logs
-    # Usage (CloudTrail — with GeoIP, place .mmdb files in docker/data/geoip/ first):
-    #   docker compose --profile ingest run --rm ingester ingest \
-    #     --path /data/logs --geoip-country /data/geoip
-    # Usage (AWS Config snapshots — place JSON files in docker/data/config-snapshots/ first):
-    #   docker compose --profile ingest run --rm ingester config-import --path /data/config
-    # Usage (enrich existing DB with GeoIP):
-    #   docker compose --profile ingest run --rm ingester enrich \
-    #     --geoip-country /data/geoip
+      - ingest
+    # docker compose --profile ingest run --rm ingester ingest --path /data/logs
+    # docker compose --profile ingest run --rm ingester ingest --path /data/logs --geoip-country /data/geoip
+    # docker compose --profile ingest run --rm ingester config-import --path /data/config
+    # docker compose --profile ingest run --rm ingester enrich --geoip-country /data/geoip
 
-  # ── agent (Streamlit AI UI) ───────────────
   agent:
     build:
       context: ../agent
       dockerfile: Dockerfile
       args:
-        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
+        <<: *ca-cert-arg
     container_name: threat-hunting-agent
     ports:
       - "127.0.0.1:8501:8501"
     volumes:
-      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro       # READ_ONLY
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro
     environment:
-      - DUCKDB_PATH=/data/db/threat_hunting.db
-      - DUCKDB_READONLY=true
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.5}
-      - OPENAI_MODEL_LITE=${OPENAI_MODEL_LITE:-gpt-5.4-mini}
-      - STREAMLIT_SERVER_HEADLESS=true
+      DUCKDB_PATH: /data/db/threat_hunting.db
+      DUCKDB_READONLY: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      OPENAI_MODEL_LITE: ${OPENAI_MODEL_LITE:-gpt-5.4-mini}
+      STREAMLIT_SERVER_HEADLESS: "true"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
@@ -94,20 +70,19 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── config_viz (AWS Config resource graph) ──
   config-viz:
     build:
       context: ../config_viz
       dockerfile: Dockerfile
       args:
-        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
+        <<: *ca-cert-arg
     container_name: threat-hunting-config-viz
     ports:
       - "127.0.0.1:8502:8502"
     volumes:
-      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro   # READ_ONLY
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro
     environment:
-      - DUCKDB_PATH=/data/db/threat_hunting.db
+      DUCKDB_PATH: /data/db/threat_hunting.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8502/api/snapshots"]
@@ -115,58 +90,50 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── Superset dashboard ────────────────────
   superset:
     build:
       context: ../dashboard
       dockerfile: Dockerfile
       args:
-        CUSTOM_CA_CERT_BASE64: ${CUSTOM_CA_CERT_BASE64:-}
-    image: thuntcloud-dashboard:latest
+        <<: *ca-cert-arg
+    image: *superset-image
     container_name: threat-hunting-dashboard
     ports:
       - "127.0.0.1:8088:8088"
     volumes:
-      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db
       - superset_home:/app/superset_home
-      - ../dashboard/assets:/app/dashboards:ro               # Pre-built dashboard ZIPs
-      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
+      - ../dashboard/assets:/app/dashboards:ro
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro
     environment:
-      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
-      - DUCKDB_PATH=/data/db/threat_hunting.db
+      <<: *superset-env
     restart: unless-stopped
     depends_on:
       superset-init:
         condition: service_completed_successfully
 
-  # ── Superset initializer (run-once) ───────
   superset-init:
-    image: thuntcloud-dashboard:latest
+    image: *superset-image
     container_name: threat-hunting-superset-init
     volumes:
-      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db          # READ_ONLY enforced at connection level (connect_args read_only=True)
+      - ${DUCKDB_HOST_PATH:-./data/db}:/data/db
       - superset_home:/app/superset_home
       - ../dashboard/assets:/app/dashboards:ro
-      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro  # Config overrides
-      - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro                    # Init script
-      - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro        # DuckDB registration script
-      - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro      # Dataset registration script
-      - ../dashboard/init/import_dashboard.py:/app/import_dashboard.py:ro      # Dashboard import script
+      - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ../dashboard/init/bootstrap.sh:/app/bootstrap.sh:ro
+      - ../dashboard/init/register_duckdb.py:/app/register_duckdb.py:ro
+      - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro
+      - ../dashboard/init/import_dashboard.py:/app/import_dashboard.py:ro
     environment:
-      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
-      - SUPERSET_ADMIN_USERNAME=${SUPERSET_ADMIN_USERNAME:-admin}
-      - SUPERSET_ADMIN_PASSWORD=${SUPERSET_ADMIN_PASSWORD:-admin}
-      - SUPERSET_ADMIN_EMAIL=${SUPERSET_ADMIN_EMAIL:-admin@localhost}
-      - DUCKDB_PATH=/data/db/threat_hunting.db
+      <<: *superset-env
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@localhost}
     entrypoint: ["/bin/bash", "/app/bootstrap.sh"]
     restart: "no"
 
-  # ── Superset metadata re-sync (on-demand) ──────────────────────────────────
-  # Re-syncs the cloudtrail_events dataset column metadata after re-ingestion.
-  # Run this when the dashboard shows no data after a fresh ingest:
-  #   docker compose --profile resync run --rm superset-resync
   superset-resync:
-    image: thuntcloud-dashboard:latest
+    image: *superset-image
     container_name: threat-hunting-superset-resync
     volumes:
       - ${DUCKDB_HOST_PATH:-./data/db}:/data/db:ro
@@ -174,20 +141,15 @@ services:
       - ../dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro
       - ../dashboard/init/register_dataset.py:/app/register_dataset.py:ro
     environment:
-      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-change-me-in-production}
-      - DUCKDB_PATH=/data/db/threat_hunting.db
-      - FORCE_RESYNC=true
+      <<: *superset-env
+      FORCE_RESYNC: "true"
     entrypoint: ["python3", "/app/register_dataset.py"]
     restart: "no"
     profiles:
-      - resync                        # Run only when explicitly invoked
+      - resync
+    # Re-sync dataset column metadata after re-ingestion if the dashboard shows no data:
+    #   docker compose --profile resync run --rm superset-resync
 
-# ── Volumes ───────────────────────────────────
-# Note: duckdb_data is no longer a named volume.  Each service uses a direct
-# bind mount (see service volumes above) so that Docker Compose — not the
-# Docker daemon — resolves the relative path.  This is required for
-# Linux / WSL2 compatibility.
 volumes:
-
   superset_home:
     name: threat-hunting-superset-home

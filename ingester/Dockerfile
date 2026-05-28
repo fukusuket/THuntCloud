@@ -1,19 +1,12 @@
-# ── Build arg: set to a release tag (e.g. v0.1.4) to download a prebuilt
-# binary from GitHub Releases and skip Rust compilation entirely.
-# Used by the `prebuilt-runtime` target below.
-# Leave empty (default) to compile from source with the `runtime` target.
+# INGESTER_VERSION: release tag used to download a pre-built binary (prebuilt-runtime target).
+# Set INGESTER_BUILD_TARGET=runtime in docker-compose to compile from source instead.
 ARG INGESTER_VERSION="v0.1.13"
 
-# ── (Proxy) Custom CA certificate ─────────────────────────────────────────────
-# No edits needed here. Set CUSTOM_CA_CERT_BASE64 in docker/.env to enable.
-# See docker/.env.example for instructions.
-# This global ARG is redeclared in each stage that requires network access.
+# Global ARG — must be redeclared in each stage that requires network access.
 ARG CUSTOM_CA_CERT_BASE64=""
 
-# ── Stage 1: Builder (compile from source) ────────────────────────────────────
 FROM rust:1.95-slim AS builder
 
-# Inherit global proxy CA setting for cargo crate downloads
 ARG CUSTOM_CA_CERT_BASE64
 RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
         apt-get update \
@@ -26,7 +19,7 @@ RUN if [ -n "$CUSTOM_CA_CERT_BASE64" ]; then \
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
-# Install build dependencies required by duckdb (bundled feature compiles C++)
+# DuckDB's bundled feature compiles C++, requiring these build deps.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
@@ -34,50 +27,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Limit parallel C++ compilation jobs to prevent OOM on memory-constrained
-# environments (e.g. WSL2 defaults to 2 GB RAM).
-# Increase or remove this if you have ≥16 GB RAM available.
+# Limit to 2 parallel C++ jobs to prevent OOM in memory-constrained envs (e.g. WSL2 ~2 GB RAM).
 ENV CARGO_BUILD_JOBS=2
 
 WORKDIR /app
 
-# Cache dependencies by copying manifests first
 COPY Cargo.toml Cargo.lock ./
-
-# Create a dummy main.rs so cargo can fetch and compile dependencies.
+# Dummy main.rs lets cargo fetch and compile dependencies before copying real source.
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
 RUN cargo build --release --locked || true
 
-# Now copy the real source and build
 COPY src ./src
 RUN touch src/main.rs && cargo build --release --locked
 
-# ── Stage 2: Runtime (source build) ──────────────────────────────────────────
-FROM debian:trixie-slim AS runtime
-
-
+# Shared base for runtime and prebuilt-runtime targets.
+FROM debian:trixie-slim AS base-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libstdc++6 \
     libgcc-s1 \
     && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
-
-COPY --from=builder /app/target/release/ingester /usr/local/bin/ingester
-
 ENTRYPOINT ["ingester"]
 CMD ["--help"]
 
-# ── Stage 3: Prebuilt binary downloader ───────────────────────────────────────
-# Downloads the ingester binary from a tagged GitHub Release.
-# Only used when the `prebuilt-runtime` build target is selected.
-# TARGETARCH is set automatically by Docker BuildKit (amd64 / arm64).
+FROM base-runtime AS runtime
+COPY --from=builder /app/target/release/ingester /usr/local/bin/ingester
+
 FROM debian:trixie-slim AS downloader
 ARG INGESTER_VERSION
+# TARGETARCH is set automatically by Docker BuildKit (amd64 / arm64).
 ARG TARGETARCH
 
-# Inherit global proxy CA setting for curl binary downloads
 ARG CUSTOM_CA_CERT_BASE64
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -101,25 +82,6 @@ RUN test -n "$INGESTER_VERSION" || { echo "Error: INGESTER_VERSION build arg mus
     && install -m 755 /tmp/${BINARY} /usr/local/bin/ingester \
     && rm /tmp/${BINARY} /tmp/${BINARY}.sha256
 
-# ── Stage 4: Prebuilt runtime ─────────────────────────────────────────────────
-# Uses the binary downloaded by Stage 3 — the Rust builder stage is NOT
-# executed when Docker BuildKit resolves this target.
-#
-# Usage (from docker/ directory):
-#   INGESTER_BUILD_TARGET=prebuilt-runtime INGESTER_VERSION=v0.1.4 \
-#     docker compose build ingester
-FROM debian:trixie-slim AS prebuilt-runtime
-
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libstdc++6 \
-    libgcc-s1 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
+# prebuilt-runtime: uses the downloader binary; BuildKit skips the builder stage entirely.
+FROM base-runtime AS prebuilt-runtime
 COPY --from=downloader /usr/local/bin/ingester /usr/local/bin/ingester
-
-ENTRYPOINT ["ingester"]
-CMD ["--help"]
