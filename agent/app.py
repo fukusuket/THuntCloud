@@ -398,6 +398,25 @@ def render_sidebar() -> None:
         else:
             filtered = [p for p in prompts if p.get("category") == selected_category]
 
+        # Bulk-run button: only shown when a specific category is selected and has SQL queries
+        sql_queries = [p for p in filtered if p.get("sql", "").strip()]
+        if selected_category != "— All categories —" and sql_queries:
+            if st.button(
+                f"⚡ Run All ({len(sql_queries)} queries)",
+                use_container_width=True,
+                help="Run all queries in this category",
+            ):
+                st.session_state["_pending_bulk_queries"] = [
+                    {
+                        "sql": p["sql"].strip(),
+                        "description": p.get("description", ""),
+                        "chart_config": p.get("chart"),
+                        "label": p["label"],
+                    }
+                    for p in sql_queries
+                ]
+                st.rerun()
+
         preset_labels = ["— Select a preset —"] + [p["label"] for p in filtered]
         selected_label = st.selectbox(
             "Preset",
@@ -535,6 +554,21 @@ def render_chat() -> None:
             description=pending_preset_description,
             chart_config=pending_chart_config,
         )
+        st.rerun()
+
+    # Handle bulk execution of all SQL queries in a selected category
+    pending_bulk_queries = st.session_state.pop("_pending_bulk_queries", None)
+    if pending_bulk_queries:
+        total = len(pending_bulk_queries)
+        progress_bar = st.progress(0, text=f"Running 0 / {total} queries…")
+        for i, q in enumerate(pending_bulk_queries, 1):
+            progress_bar.progress(i / total, text=f"Running {i} / {total}: {q['label']}")
+            _handle_direct_sql(
+                q["sql"],
+                db_path,
+                description=q["description"],
+                chart_config=q["chart_config"],
+            )
         st.rerun()
 
     # Handle AI analysis request triggered from the results area
