@@ -61,6 +61,52 @@ def test_alerts_attach_reports_disabled() -> None:
     ), "ALERTS_ATTACH_REPORTS must be False to suppress alerts/reports UI."
 
 
+def _extract_cache_config(var_name: str) -> dict:
+    """Parse superset_config.py and return the named cache config dict."""
+    with open(CONFIG_PATH, encoding="utf-8") as fh:
+        source = fh.read()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == var_name:
+                    if isinstance(node.value, ast.Dict):
+                        result = {}
+                        for k, v in zip(node.value.keys, node.value.values):
+                            if isinstance(k, ast.Constant) and isinstance(v, ast.Constant):
+                                result[k.value] = v.value
+                        return result
+    return {}
+
+
+def test_data_cache_config_present() -> None:
+    """DATA_CACHE_CONFIG must be defined to enable chart query result caching."""
+    config = _extract_cache_config("DATA_CACHE_CONFIG")
+    assert config, "DATA_CACHE_CONFIG must be defined in superset_config.py"
+
+
+def test_data_cache_type_filesystem() -> None:
+    """DATA_CACHE_CONFIG must use FileSystemCache (no Redis dependency)."""
+    config = _extract_cache_config("DATA_CACHE_CONFIG")
+    assert config.get("CACHE_TYPE") == "FileSystemCache", (
+        "DATA_CACHE_CONFIG CACHE_TYPE must be 'FileSystemCache'"
+    )
+
+
+def test_data_cache_timeout_8h() -> None:
+    """DATA_CACHE_CONFIG timeout must be 28800 seconds (8 hours)."""
+    config = _extract_cache_config("DATA_CACHE_CONFIG")
+    assert config.get("CACHE_DEFAULT_TIMEOUT") == 28800, (
+        "DATA_CACHE_CONFIG CACHE_DEFAULT_TIMEOUT must be 28800 (8 hours)"
+    )
+
+
+def test_cache_config_present() -> None:
+    """CACHE_CONFIG must be defined to enable UI/filter state caching."""
+    config = _extract_cache_config("CACHE_CONFIG")
+    assert config, "CACHE_CONFIG must be defined in superset_config.py"
+
+
 def test_duckdb_dialect_explicitly_registered() -> None:
     """DU-15: superset_config.py must call registry.register() for the duckdb+duckdb_engine dialect.
 

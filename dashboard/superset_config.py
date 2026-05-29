@@ -40,6 +40,21 @@ PREVENT_UNSAFE_DB_CONNECTIONS = True
 # CSRF — disable for local development convenience (re-enable for production).
 WTF_CSRF_ENABLED = False
 
+# Chart query results cache — FileSystemCache persists across container restarts via
+# the superset_home named volume.  Data is static between ingester runs, so 8 h TTL
+# covers a typical investigation session without serving stale results indefinitely.
+DATA_CACHE_CONFIG = {
+    "CACHE_TYPE": "FileSystemCache",
+    "CACHE_DEFAULT_TIMEOUT": 28800,  # 8 hours
+    "CACHE_DIR": f"{DATA_DIR}/data_cache",
+}
+
+CACHE_CONFIG = {
+    "CACHE_TYPE": "FileSystemCache",
+    "CACHE_DEFAULT_TIMEOUT": 28800,  # 8 hours
+    "CACHE_DIR": f"{DATA_DIR}/cache",
+}
+
 # Feature flags
 FEATURE_FLAGS = {
     # Disable Alerts & Reports to reduce complexity in v1.0.
