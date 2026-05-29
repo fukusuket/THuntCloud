@@ -245,7 +245,7 @@ position:
       - ROW-s3-2
       - ROW-rds-1
     meta:
-      text: "\U0001fab3 S3 & RDS"
+      text: "\U0001f5c4️ S3 & RDS"
       defaultText: "Tab 4"
       tooltip: "S3 bucket policy / ACL changes and RDS snapshot cross-account share"
   ROW-di-1:
