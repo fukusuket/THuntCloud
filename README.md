@@ -63,22 +63,22 @@ aws s3 cp s3://<your-bucket-prefix> <local-output-dir>/ --recursive --include "*
 ```bash
 # Clone the repository
 git clone https://github.com/fukusuket/THuntCloud.git
+cd THuntCloud
 
 # Place the downloaded logs into the Docker logs directory
-cp -r <local-output-dir>/ THuntCloud/docker/logs/
-
-# Move to the Docker directory
-cd THuntCloud/docker
+cp -r <local-output-dir>/ docker/logs/
 
 # Ingest CloudTrail logs into DuckDB
-docker compose --profile ingest run --rm ingester ingest --path /data/logs --strip-raw-event
+make ingest
 
 # (Optional) Ingest AWS Config snapshots.
-docker compose --profile ingest run --rm ingester config-import --path /data/config
+make config-import
 
 # Start all services (agent + dashboard)
-docker compose up -d --build
+make up
 ```
+
+> Run `make help` to see all available targets.
 
 **Step 3.** 🪽 Open your browser and start hunting!🪽
 
@@ -91,10 +91,7 @@ docker compose up -d --build
 Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) in `docker/data/geoip/`, then:
 
 ```bash
-docker compose --profile ingest run --rm ingester ingest \
-  --path /data/logs \
-  --geoip-city /data/geoip/GeoLite2-City.mmdb \
-  --geoip-asn  /data/geoip/GeoLite2-ASN.mmdb
+make ingest-geoip
 ```
 
 ---
