@@ -38,6 +38,7 @@ params:
         )
       filterOptionName: filter_throttling
   row_limit: 10000
+  order_desc: true
   stack: true
   x_axis_title: Time
   y_axis_title: Throttling Errors
@@ -59,6 +60,6 @@ cache_timeout: null
 #     'ServiceUnavailableException'
 # )
 # GROUP BY 1, 2
-# ORDER BY 1 DESC, 3 DESC
+# ORDER BY event_time DESC, throttle_count DESC
 # LIMIT 500
 

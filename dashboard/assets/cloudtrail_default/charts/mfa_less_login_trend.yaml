@@ -69,5 +69,5 @@ cache_timeout: null
 # WHERE event_source = 'signin.amazonaws.com'
 #   AND event_name   = 'ConsoleLogin'
 # GROUP BY 1
-# ORDER BY 1
+# ORDER BY event_time DESC
 

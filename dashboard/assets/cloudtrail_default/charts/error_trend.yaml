@@ -32,7 +32,7 @@ params:
       filterOptionName: filter_error_not_null
   row_limit: 10000
   stack: true
-  order_desc: false
+  order_desc: true
   x_axis_label: "Time (hourly)"
   y_axis_label: Error Count
   color_scheme: supersetColors
@@ -48,4 +48,4 @@ cache_timeout: null
 # FROM cloudtrail_events
 # WHERE error_code IS NOT NULL
 # GROUP BY 1, 2
-# ORDER BY 1 ASC
+# ORDER BY event_time DESC

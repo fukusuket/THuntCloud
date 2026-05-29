@@ -44,6 +44,7 @@ params:
         )
       filterOptionName: filter_priv_esc
   row_limit: 10000
+  order_desc: true
   stack: true
   x_axis_title: Date
   y_axis_title: Event Count
@@ -66,5 +67,5 @@ cache_timeout: null
 #     'AddUserToGroup', 'CreateRole', 'UpdateAssumeRolePolicy'
 # )
 # GROUP BY 1, 2
-# ORDER BY 1, 3 DESC
+# ORDER BY event_time DESC, event_count DESC
 

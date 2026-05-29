@@ -45,5 +45,5 @@ cache_timeout: null
 #     COUNT(*) FILTER (WHERE read_only = false)                AS write_events
 # FROM cloudtrail_events
 # GROUP BY 1
-# ORDER BY 1
+# ORDER BY event_time DESC
 
