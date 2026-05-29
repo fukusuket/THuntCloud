@@ -190,7 +190,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 |---|-------|-------------|-----|
 | 1 | 🪣 S3 Data Access Anomalies | Detects bulk GetObject calls (≥100/hour) indicating exfiltration | ✅ |
 | 2 | 📸 EC2 Public Snapshot / AMI Sharing | Detects EBS snapshots or AMIs shared publicly (group=all) | ✅ |
-| 3 | 🪳 S3 Bucket Policy / ACL Changes | Detects S3 bucket policy and ACL modifications | ✅ |
+| 3 | 🪣 S3 Bucket Policy / ACL Changes | Detects S3 bucket policy and ACL modifications | ✅ |
 | 4 | 📂 S3 Versioning / Logging Disabled | Detects S3 versioning suspension and server access logging disable | ✅ |
 | 5 | 🔁 S3 Cross-Account Replication | Detects PutBucketReplication (silent object copy to attacker account) | ✅ |
 | 6 | 💾 RDS Snapshot Cross-Account Share | Detects RDS/Aurora snapshots shared to external AWS accounts | ✅ |
@@ -292,128 +292,116 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 ### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 53 charts
 
-| Category | Charts | What It Shows |
-|----------|:------:|---------------|
-| Overview & Baseline | 6 | Event volume over time · top API calls · read/write ratio · region distribution · errors · source IPs |
-| 🔑 Identity & Access | 10 | Root usage · console logins · MFA trend · login heatmap (JST) · privilege escalation · SSO · AssumeRole · Organizations · Glue/SageMaker privilege escalation |
-| 🪣 Data & Storage | 7 | EC2/RDS snapshot sharing · S3 policy/ACL changes · S3 protection config · Secrets Manager anomalies · ECS task definition backdoor · EBS Direct API exfiltration |
-| 🌐 Network & Infrastructure | 4 | NACL/route table changes · VPC flow log changes · Route53 DNS · throttling spikes |
-| 🛡 Detection & Response | 4 | Defense evasion events · Config tampering · EventBridge/CW tampering · top access denied actions |
-| ⚡ Compute & Serverless | 2 | SSM remote execution · EKS/ECR container events |
-| 🔎 Behavior & Tooling | 5 | User agent analysis · sensitive API calls · velocity spikes · dormant accounts reactivated · new service sources |
-| 🚨 High-Risk API Monitor (HRM) | 7 | HRM time series · top calls/actors/IPs · defense evasion detail · credential access detail · by region |
-| 🕒 First / Last Seen | 4 | Per API call · per IAM identity · per source IP · per user agent |
-| 🌍 GeoIP Analysis ✦ | 4 | World map · top countries/cities/ASNs by request volume |
+| Tab | Charts | What It Shows |
+|-----|:------:|---------------|
+| 🔑 Identity & Access | 9 | Console logins · MFA trend · login heatmap (JST) · sensitive APIs · root usage · IAM entity activity · privilege escalation · SSO · Glue/SageMaker privesc |
+| 🎯 Threat Detection | 12 | Event volume trend · read/write ratio · throttling · defense evasion · access denied · error trend · Organizations/SCP · first-time services · VPC flow log · Config tampering · NACL/route · EventBridge/CW tampering |
+| 📊 API Activity | 7 | Top API calls · region distribution · source IPs · user agents · secrets anomaly · AssumeRole from external IP · Route53 DNS changes |
+| 🖥️ Computing | 5 | SSM remote execution · EC2 public snapshot · EKS/ECR container events · ECS task definition backdoor · EBS Direct API exfiltration |
+| 🪣 S3 & RDS | 3 | S3 protection config · S3 bucket policy / ACL changes · RDS snapshot cross-account share |
+| 🌍 GeoIP Intelligence | 4 | World map · top countries / cities / ASNs by request volume |
+| 🕒 Temporal Analysis | 6 | First/last seen per IAM identity / source IP / API call / user agent · dormant accounts reactivated · velocity spikes |
+| 🚨 High-Risk API Monitor | 7 | HRM time series · top calls / actors / IPs · defense evasion detail · credential access detail · by region |
 
 <details>
 <summary>📋 Full list — all 53 charts (click to expand)</summary>
 
 ### Dashboard Charts (Apache Superset — `dashboard/`)
 
-#### Overview & Baseline
+#### 🔑 Identity & Access
+
+| # | Chart Name | Description |
+|---|------------|-------------|
+| 1 | Console Login Activity | Console sign-in events grouped by IAM identity (DSH-08) |
+| 2 | MFA-less Login Trend | Daily console logins split by MFA usage (DSH-28) |
+| 3 | Login Activity Heatmap (Hour × Day) | Console login counts by day-of-week and hour-of-day in JST (DSH-19) |
+| 4 | Sensitive API Calls | Invocations of known security-sensitive AWS API actions (DSH-12) |
+| 5 | Root Account Usage | All API calls made by the AWS Root account (DSH-13) |
+| 6 | IAM Entity Activity | Top 50 IAM entities ranked by total API calls, with write ratio and error rate |
+| 7 | Privilege Escalation Timeline | Daily counts of privilege-escalation API calls by event name (DSH-30) |
+| 8 | IAM Identity Center (SSO) Events | AWS IAM Identity Center management events from sso.amazonaws.com (DSH-44) |
+| 9 | Glue & SageMaker Privilege Escalation | Glue DevEndpoint and SageMaker Notebook events used for IAM privilege escalation via iam:PassRole (DSH-50) |
+
+#### 🎯 Threat Detection
 
 | # | Chart Name | Description |
 |---|------------|-------------|
 | 1 | CloudTrail Events Over Time | Hourly Read vs Write event volume over time (DSH-01) |
-| 2 | Top 20 API Calls | The 20 most frequently called AWS API actions (DSH-02) |
-| 3 | Write/Read Ratio Trend | Hourly breakdown of read vs write API calls (DSH-20) |
-| 4 | Region Activity | Distribution of CloudTrail events across AWS regions (DSH-14) |
-| 5 | Error Event Trend | Hourly error events broken down by error_code (DSH-04) |
-| 6 | Top Source IP Addresses | Top 100 external source IPs by request count (DSH-05) |
+| 2 | Write/Read Ratio Trend | Hourly breakdown of read vs write API calls (DSH-20) |
+| 3 | Throttling Exception Spikes | Hourly throttling/rate-limit errors by AWS service (DSH-21) |
+| 4 | Defense Evasion Events | All CloudTrail events matching known defense-evasion techniques (DSH-22) |
+| 5 | Top Access Denied Actions | Top 20 API actions returning AccessDenied errors (DSH-09) |
+| 6 | Error Event Trend | Hourly error events broken down by error_code (DSH-04) |
+| 7 | Organizations / SCP Changes | AWS Organizations management events including SCP policy changes (DSH-24) |
+| 8 | First-Time Service Sources | All distinct AWS service sources ordered by first appearance date (DSH-26) |
+| 9 | VPC Flow Log Changes | VPC Flow Log creation and deletion events (DSH-42) |
+| 10 | AWS Config Tampering | AWS Config recorder and rule tampering events (DSH-43) |
+| 11 | Network ACL / Route Table Changes | NACL and route table modification events (DSH-46) |
+| 12 | EventBridge / CloudWatch Rule Tampering | EventBridge and CloudWatch Events rule tampering (DSH-47) |
 
-#### Identity & Access
-
-| # | Chart Name | Description |
-|---|------------|-------------|
-| 7 | Root Account Usage | All API calls made by the AWS Root account (DSH-13) |
-| 8 | Console Login Activity | Console sign-in events grouped by IAM identity (DSH-08) |
-| 9 | MFA-less Login Trend | Daily console logins split by MFA usage (DSH-28) |
-| 10 | Login Activity Heatmap (Hour × Day) | Console login counts by day-of-week and hour-of-day in JST (DSH-19) |
-| 11 | IAM Entity Activity | Top 50 IAM entities ranked by total API calls, with write ratio and error rate |
-| 12 | Privilege Escalation Timeline | Daily counts of privilege-escalation API calls by event name (DSH-30) |
-| 13 | IAM Identity Center (SSO) Events | AWS IAM Identity Center management events from sso.amazonaws.com (DSH-44) |
-| 14 | AssumedRole from External IP | AssumeRole calls from public (non-private) IP addresses (DSH-27) |
-| 15 | Organizations / SCP Changes | AWS Organizations management events including SCP policy changes (DSH-24) |
-| 16 | Glue & SageMaker Privilege Escalation | Glue DevEndpoint and SageMaker Notebook events used for IAM privilege escalation via iam:PassRole (DSH-50) |
-
-#### Data & Storage
+#### 📊 API Activity
 
 | # | Chart Name | Description |
 |---|------------|-------------|
-| 16 | EC2 Public Snapshot / AMI Sharing | EBS snapshot and AMI public-sharing events (DSH-41) |
-| 17 | RDS Snapshot Cross-Account Share | RDS and Aurora snapshot sharing events (DSH-40) |
-| 18 | S3 Bucket Policy / ACL Changes | S3 bucket policy and ACL modification events (DSH-45) |
-| 19 | S3 Protection Config Changes | S3 events that weaken bucket security posture (DSH-25) |
-| 20 | Secrets Access Anomaly | Identities accessing Secrets Manager or SSM Parameter Store ≥10 times in one hour |
-| 21 | ECS Task Definition Backdoor | ECS task definition registration and service update events — Pacu ecs__backdoor_task_def pattern (DSH-49) |
-| 22 | EBS Direct API Snapshot Exfiltration | EBS Direct API calls (ListSnapshotBlocks / GetSnapshotBlock) used to stream snapshot data without EC2 (DSH-51) |
+| 1 | Top 20 API Calls | The 20 most frequently called AWS API actions (DSH-02) |
+| 2 | Region Activity | Distribution of CloudTrail events across AWS regions (DSH-14) |
+| 3 | Top Source IP Addresses | Top 100 external source IPs by request count (DSH-05) |
+| 4 | User Agent Analysis | Top 50 user agents by request count with error and write breakdowns (DSH-11) |
+| 5 | Secrets Access Anomaly | Identities accessing Secrets Manager or SSM Parameter Store ≥10 times in one hour |
+| 6 | AssumedRole from External IP | AssumeRole calls from public (non-private) IP addresses (DSH-27) |
+| 7 | Route53 DNS Changes | Route 53 hosted-zone and resolver configuration changes (DSH-29) |
 
-#### Network & Infrastructure
-
-| # | Chart Name | Description |
-|---|------------|-------------|
-| 21 | Network ACL / Route Table Changes | NACL and route table modification events (DSH-46) |
-| 22 | VPC Flow Log Changes | VPC Flow Log creation and deletion events (DSH-42) |
-| 23 | Route53 DNS Changes | Route 53 hosted-zone and resolver configuration changes (DSH-29) |
-| 24 | Throttling Exception Spikes | Hourly throttling/rate-limit errors by AWS service (DSH-21) |
-
-#### Detection & Response
+#### 🖥️ Computing
 
 | # | Chart Name | Description |
 |---|------------|-------------|
-| 25 | Defense Evasion Events | All CloudTrail events matching known defense-evasion techniques (DSH-22) |
-| 26 | AWS Config Tampering | AWS Config recorder and rule tampering events (DSH-43) |
-| 27 | EventBridge / CloudWatch Rule Tampering | EventBridge and CloudWatch Events rule tampering (DSH-47) |
-| 28 | Top Access Denied Actions | Top 20 API actions returning AccessDenied errors (DSH-09) |
+| 1 | SSM Session / Run Command Execution | AWS Systems Manager remote-execution events (DSH-39) |
+| 2 | EC2 Public Snapshot / AMI Sharing | EBS snapshot and AMI public-sharing events (DSH-41) |
+| 3 | EKS / ECR Container Platform Events | EKS cluster and ECR container registry events (DSH-48) |
+| 4 | ECS Task Definition Backdoor | ECS task definition registration and service update events — Pacu ecs__backdoor_task_def pattern (DSH-49) |
+| 5 | EBS Direct API Snapshot Exfiltration | EBS Direct API calls (ListSnapshotBlocks / GetSnapshotBlock) used to stream snapshot data without EC2 (DSH-51) |
 
-#### Compute & Serverless
-
-| # | Chart Name | Description |
-|---|------------|-------------|
-| 29 | SSM Session / Run Command Execution | AWS Systems Manager remote-execution events (DSH-39) |
-| 30 | EKS / ECR Container Platform Events | EKS cluster and ECR container registry events (DSH-48) |
-
-#### Behavior & Tooling
+#### 🪣 S3 & RDS
 
 | # | Chart Name | Description |
 |---|------------|-------------|
-| 31 | User Agent Analysis | Top 50 user agents by request count with error and write breakdowns (DSH-11) |
-| 32 | Sensitive API Calls | Invocations of known security-sensitive AWS API actions (DSH-12) |
-| 33 | Event Velocity Spikes per Identity | Identities with 50+ events per hour burst activity (DSH-38) |
-| 34 | Dormant Accounts Reactivated | Identities with inactivity gaps of 72+ hours that resumed activity (DSH-37) |
-| 35 | First-Time Service Sources | All distinct AWS service sources ordered by first appearance date (DSH-26) |
+| 1 | S3 Protection Config Changes | S3 events that weaken bucket security posture (DSH-25) |
+| 2 | S3 Bucket Policy / ACL Changes | S3 bucket policy and ACL modification events (DSH-45) |
+| 3 | RDS Snapshot Cross-Account Share | RDS and Aurora snapshot sharing events (DSH-40) |
 
-#### High-Risk API Monitor (HRM)
-
-| # | Chart Name | Description |
-|---|------------|-------------|
-| 36 | High-Risk API Events Over Time | Daily call volume for APIs commonly observed in attack campaigns (HRM-39) |
-| 37 | Top High-Risk API Calls | API actions from the high-risk watchlist ranked by total call count (HRM-40) |
-| 38 | Top Actors — High-Risk APIs | IAM principals ranked by total calls to high-risk watchlist APIs (HRM-42) |
-| 39 | Top Source IPs — High-Risk APIs | Source IPs ranked by total calls to high-risk watchlist APIs (HRM-43) |
-| 40 | Defense Evasion API Events | Detailed event log for APIs used to disable or tamper with audit controls (HRM-44) |
-| 41 | Credential Access API Events | Detailed event log for APIs used to retrieve secrets and credentials (HRM-45) |
-| 42 | High-Risk API Calls by Region | High-risk watchlist API calls distributed by AWS region (HRM-46) |
-
-#### First / Last Seen Tracking
-
-| # | Chart Name | Description |
-|---|------------|-------------|
-| 43 | First / Last Seen per API Call | API actions ordered by first appearance — new calls may indicate novel attack tooling (DSH-33) |
-| 44 | First / Last Seen per IAM Identity | IAM identities with first/last seen timestamps, event counts, and distinct APIs |
-| 45 | First / Last Seen per Source IP | Source IPs with first/last seen, distinct identities, and distinct APIs |
-| 46 | First / Last Seen per User Agent | User agents ordered by first appearance — new tooling detection (DSH-34) |
-
-#### GeoIP Analysis
+#### 🌍 GeoIP Intelligence
 
 > Requires GeoLite2 `.mmdb` files. GeoIP columns are NULL if ingested without GeoIP.
 
 | # | Chart Name | Description |
 |---|------------|-------------|
-| 47 | Global Request Origin Map | World map showing geographic distribution of CloudTrail API call origins |
-| 48 | Top Countries by Request Volume | Top 20 source countries by API call volume with write-event and unique-caller breakdowns |
-| 49 | Top Cities by Request Volume | Top 25 cities by API call volume with write-event and unique-caller breakdowns |
-| 50 | Top ASN Organizations by Request Volume | Top 25 ASN organizations by API call volume |
+| 1 | Global Request Origin Map | World map showing geographic distribution of CloudTrail API call origins |
+| 2 | Top Countries by Request Volume | Top 20 source countries by API call volume with write-event and unique-caller breakdowns |
+| 3 | Top Cities by Request Volume | Top 25 cities by API call volume with write-event and unique-caller breakdowns |
+| 4 | Top ASN Organizations by Request Volume | Top 25 ASN organizations by API call volume |
+
+#### 🕒 Temporal Analysis
+
+| # | Chart Name | Description |
+|---|------------|-------------|
+| 1 | First / Last Seen per IAM Identity | IAM identities with first/last seen timestamps, event counts, and distinct APIs |
+| 2 | First / Last Seen per Source IP | Source IPs with first/last seen, distinct identities, and distinct APIs |
+| 3 | First / Last Seen per API Call | API actions ordered by first appearance — new calls may indicate novel attack tooling (DSH-33) |
+| 4 | First / Last Seen per User Agent | User agents ordered by first appearance — new tooling detection (DSH-34) |
+| 5 | Dormant Accounts Reactivated | Identities with inactivity gaps of 72+ hours that resumed activity (DSH-37) |
+| 6 | Event Velocity Spikes per Identity | Identities with 50+ events per hour burst activity (DSH-38) |
+
+#### 🚨 High-Risk API Monitor (HRM)
+
+| # | Chart Name | Description |
+|---|------------|-------------|
+| 1 | High-Risk API Events Over Time | Daily call volume for APIs commonly observed in attack campaigns (HRM-39) |
+| 2 | Top High-Risk API Calls | API actions from the high-risk watchlist ranked by total call count (HRM-40) |
+| 3 | Top Actors — High-Risk APIs | IAM principals ranked by total calls to high-risk watchlist APIs (HRM-42) |
+| 4 | Top Source IPs — High-Risk APIs | Source IPs ranked by total calls to high-risk watchlist APIs (HRM-43) |
+| 5 | Defense Evasion API Events | Detailed event log for APIs used to disable or tamper with audit controls (HRM-44) |
+| 6 | Credential Access API Events | Detailed event log for APIs used to retrieve secrets and credentials (HRM-45) |
+| 7 | High-Risk API Calls by Region | High-risk watchlist API calls distributed by AWS region (HRM-46) |
 
 </details>
 

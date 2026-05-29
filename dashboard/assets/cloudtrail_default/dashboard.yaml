@@ -1511,6 +1511,231 @@ metadata:
       description: "Exclude the selected read_only value (NOT filter)."
       chartsInScope: []
       tabsInScope: []
+    - id: NATIVE_FILTER-event-type
+      name: "Event Type  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_type
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: false
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter by event type: AwsApiCall, AwsConsoleSignIn, AwsServiceEvent."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-event-type-not
+      name: "Event Type  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: event_type
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: false
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected event types (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-account-id
+      name: "Account ID  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_identity_account_id
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter to a specific AWS account ID (caller). Useful in multi-account orgs."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-account-id-not
+      name: "Account ID  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: user_identity_account_id
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude the selected caller account IDs (NOT filter)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-recipient-account-id
+      name: "Recipient Account ID"
+      filterType: filter_select
+      targets:
+        - column:
+            name: recipient_account_id
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter by the account that received the event. Combine with Account ID to detect cross-account access."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-country
+      name: "Country  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: geo_country_name
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter all charts to requests from the selected countries (GeoIP enrichment required)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-country-not
+      name: "Country  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: geo_country_name
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude requests from the selected countries (NOT filter, GeoIP enrichment required)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-asn-org
+      name: "ASN Organization  + Include"
+      filterType: filter_select
+      targets:
+        - column:
+            name: geo_org
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: false
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Filter to requests from the selected ASN organizations (GeoIP enrichment required)."
+      chartsInScope: []
+      tabsInScope: []
+    - id: NATIVE_FILTER-asn-org-not
+      name: "ASN Organization  NOT"
+      filterType: filter_select
+      targets:
+        - column:
+            name: geo_org
+          datasetUuid: d8444b4a-ac55-4710-a777-a5b940bebabe
+      defaultDataMask:
+        filterState:
+          value: null
+      controlValues:
+        enableEmptyFilter: false
+        defaultToFirstItem: false
+        multiSelect: true
+        searchAllOptions: true
+        inverseSelection: true
+      cascadeParentIds: []
+      scope:
+        rootPath:
+          - ROOT_ID
+        excluded: []
+      type: NATIVE_FILTER
+      description: "Exclude requests from the selected ASN organizations (NOT filter). Use to remove AWS/Google noise."
+      chartsInScope: []
+      tabsInScope: []
   charts:
     - slice_name: CloudTrail Events Over Time
       viz_type: echarts_timeseries_bar
