@@ -562,7 +562,9 @@ def render_chat() -> None:
         total = len(pending_bulk_queries)
         progress_bar = st.progress(0, text=f"Running 0 / {total} queries…")
         for i, q in enumerate(pending_bulk_queries, 1):
-            progress_bar.progress(i / total, text=f"Running {i} / {total}: {q['label']}")
+            progress_bar.progress(
+                i / total, text=f"Running {i} / {total}: {q['label']}"
+            )
             _handle_direct_sql(
                 q["sql"],
                 db_path,
