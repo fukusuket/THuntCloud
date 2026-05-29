@@ -14,14 +14,14 @@
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
 [![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-101-brightgreen)](#-built-in-hunts-builtin_huntsyaml----101-queries)
-[![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-53-blue)](#-dashboard-charts-apache-superset----dashboard----53-charts)
+[![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-59-blue)](#-dashboard-charts-apache-superset----dashboard----59-charts)
 
 ### Key Features
 ### 🔍 101 Built-in Hunts + AI Chat
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
-### 📊 53 Pre-built Dashboard Charts
+### 📊 59 Pre-built Dashboard Charts
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
 
@@ -290,7 +290,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 ---
 
-### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 53 charts
+### 📊 Dashboard Charts (Apache Superset — `dashboard/`) — 59 charts
 
 | Tab | Charts | What It Shows |
 |-----|:------:|---------------|
@@ -298,13 +298,13 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 🎯 Threat Detection | 12 | Event volume trend · read/write ratio · throttling · defense evasion · access denied · error trend · Organizations/SCP · first-time services · VPC flow log · Config tampering · NACL/route · EventBridge/CW tampering |
 | 📊 API Activity | 7 | Top API calls · region distribution · source IPs · user agents · secrets anomaly · AssumeRole from external IP · Route53 DNS changes |
 | 🖥️ Computing | 5 | SSM remote execution · EC2 public snapshot · EKS/ECR container events · ECS task definition backdoor · EBS Direct API exfiltration |
-| 🪣 S3 & RDS | 3 | S3 protection config · S3 bucket policy / ACL changes · RDS snapshot cross-account share |
+| 🪣 S3 & RDS | 9 | S3 protection config · S3 policy / ACL changes · bulk download · bulk deletion · versioning/logging disabled · cross-account replication · RDS snapshot share · RDS deleted without snapshot · AWS Backup tampering |
 | 🌍 GeoIP Intelligence | 4 | World map · top countries / cities / ASNs by request volume |
 | 🕒 Temporal Analysis | 6 | First/last seen per IAM identity / source IP / API call / user agent · dormant accounts reactivated · velocity spikes |
 | 🚨 High-Risk API Monitor | 7 | HRM time series · top calls / actors / IPs · defense evasion detail · credential access detail · by region |
 
 <details>
-<summary>📋 Full list — all 53 charts (click to expand)</summary>
+<summary>📋 Full list — all 59 charts (click to expand)</summary>
 
 ### Dashboard Charts (Apache Superset — `dashboard/`)
 
@@ -368,6 +368,12 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | 1 | S3 Protection Config Changes | S3 events that weaken bucket security posture (DSH-25) |
 | 2 | S3 Bucket Policy / ACL Changes | S3 bucket policy and ACL modification events (DSH-45) |
 | 3 | RDS Snapshot Cross-Account Share | RDS and Aurora snapshot sharing events (DSH-40) |
+| 4 | S3 Bulk Download (Exfiltration) | Identities performing ≥100 GetObject calls per hour — automated data exfiltration pattern (DSH-52) |
+| 5 | S3 Bulk Object Deletion | Identities performing ≥50 DeleteObject/DeleteObjects calls per hour — ransomware data destruction pattern (DSH-53) |
+| 6 | S3 Versioning / Logging Disabled | PutBucketVersioning (Suspended) and PutBucketLogging (disabled) — anti-forensics precursor to data destruction (DSH-54) |
+| 7 | S3 Cross-Account Replication | PutBucketReplication / DeleteBucketReplication — persistent silent exfiltration channel to attacker-controlled account (DSH-55) |
+| 8 | RDS Deleted without Final Snapshot | DeleteDBInstance / DeleteDBCluster with skipFinalSnapshot=true — irrecoverable data destruction (DSH-56) |
+| 9 | AWS Backup Tampering | Backup Vault / Plan / RecoveryPoint deletion and Vault Lock removal — ransomware first step to eliminate recovery options (DSH-57) |
 
 #### 🌍 GeoIP Intelligence
 

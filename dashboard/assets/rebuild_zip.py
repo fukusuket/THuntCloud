@@ -89,6 +89,13 @@ FILE_MAP = {
     "charts/ecs_task_definition.yaml": "charts/ECS_Task_Definition_Backdoor.yaml",
     "charts/glue_sagemaker_privesc.yaml": "charts/Glue_SageMaker_Privilege_Escalation.yaml",
     "charts/ebs_direct_api.yaml": "charts/EBS_Direct_API_Snapshot_Exfiltration.yaml",
+    # Phase-5 new charts (DSH-52 to DSH-57) — S3 & RDS DFIR
+    "charts/s3_bulk_download.yaml": "charts/S3_Bulk_Download_Exfiltration.yaml",
+    "charts/s3_bulk_deletion.yaml": "charts/S3_Bulk_Object_Deletion.yaml",
+    "charts/s3_versioning_logging_disabled.yaml": "charts/S3_Versioning_Logging_Disabled.yaml",
+    "charts/s3_cross_account_replication.yaml": "charts/S3_Cross_Account_Replication.yaml",
+    "charts/rds_deleted_no_snapshot.yaml": "charts/RDS_Deleted_without_Final_Snapshot.yaml",
+    "charts/backup_tampering.yaml": "charts/AWS_Backup_Tampering.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):
