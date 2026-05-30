@@ -167,6 +167,13 @@ def _uuid_for_chart_file(fragment: str) -> str | None:
         ("assumed_role_external", "DSH-27 AssumedRole External IP"),
         ("priv_esc_timeline", "DSH-30 Privilege Escalation Timeline"),
         ("route53_dns_changes", "DSH-29 Route53 DNS Changes"),
+        # Phase-6 — EC2 DFIR charts
+        ("ec2_instance_launches", "DSH-58 EC2 Instance Launches"),
+        ("ec2_key_pair",          "DSH-59 EC2 Key Pair Creation"),
+        ("ec2_instance_profile",  "DSH-60 EC2 Instance Profile Changes"),
+        ("ec2_user_data",         "DSH-61 EC2 User Data Modification"),
+        ("ec2_mass_stop",         "DSH-62 EC2 Mass Stop / Terminate"),
+        ("ec2_spot_fleet",        "DSH-63 EC2 Spot Fleet Abuse"),
         # Sprint-5 — High-Risk API Monitor
         ("hrm_timeseries", "HRM-39 High-Risk API Timeseries"),
         ("hrm_top_calls", "HRM-40 High-Risk Top API Calls"),
@@ -257,6 +264,12 @@ def test_computing_charts_in_tab_computing() -> None:
         "CHART-container-platform",
         "CHART-ecs-task-def",
         "CHART-ebs-direct-api",
+        "CHART-ec2-instance-launches",
+        "CHART-ec2-key-pair",
+        "CHART-ec2-instance-profile",
+        "CHART-ec2-user-data",
+        "CHART-ec2-mass-stop",
+        "CHART-ec2-spot-fleet",
     ):
         assert chart_id in charts, f"{chart_id} not found in TAB-computing"
 

@@ -96,6 +96,13 @@ FILE_MAP = {
     "charts/s3_cross_account_replication.yaml": "charts/S3_Cross_Account_Replication.yaml",
     "charts/rds_deleted_no_snapshot.yaml": "charts/RDS_Deleted_without_Final_Snapshot.yaml",
     "charts/backup_tampering.yaml": "charts/AWS_Backup_Tampering.yaml",
+    # Phase-6 new charts (DSH-58 to DSH-63) — EC2 DFIR
+    "charts/ec2_instance_launches.yaml": "charts/EC2_Instance_Launches.yaml",
+    "charts/ec2_key_pair.yaml": "charts/EC2_Key_Pair_Creation.yaml",
+    "charts/ec2_instance_profile.yaml": "charts/EC2_Instance_Profile_Changes.yaml",
+    "charts/ec2_user_data.yaml": "charts/EC2_User_Data_Modification.yaml",
+    "charts/ec2_mass_stop_terminate.yaml": "charts/EC2_Mass_Stop_Terminate.yaml",
+    "charts/ec2_spot_fleet_abuse.yaml": "charts/EC2_Spot_Fleet_Reserved_Instance_Abuse.yaml",
 }
 
 if os.path.exists(OUTPUT_ZIP):

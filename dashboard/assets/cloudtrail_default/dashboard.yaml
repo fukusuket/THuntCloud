@@ -2,7 +2,7 @@
 # 8-tab layout: Identity & Access | Threat Detection |
 # API Activity | Computing | S3 & RDS | GeoIP Intelligence |
 # Temporal Analysis | High-Risk API Monitor.
-# 59 charts total:
+# 65 charts total:
 #   Phase-1  DSH-01 to DSH-43   (43 charts — baseline, identity, data, network, compute)
 #   Phase-2  DSH-44 to DSH-46   ( 3 charts — SSO, S3 policy, NACL/route)
 #   Phase-3  DSH-47 to DSH-48   ( 2 charts — EventBridge/CW tampering, EKS/ECR events)
@@ -10,6 +10,9 @@
 #   Phase-5  DSH-52 to DSH-57   ( 6 charts — S3 & RDS DFIR: bulk download, bulk deletion,
 #                                             versioning/logging disabled, cross-account replication,
 #                                             RDS deleted without snapshot, AWS Backup tampering)
+#   Phase-6  DSH-58 to DSH-63   ( 6 charts — EC2 DFIR: instance launches, key pair creation,
+#                                             instance profile changes, user data modification,
+#                                             mass stop/terminate, spot fleet abuse)
 # Import via: superset import-dashboards -p cloudtrail_default.zip -u admin
 uuid: c3d4e5f6-a7b8-9012-cdef-123456789012
 version: 1.0.0
@@ -56,13 +59,13 @@ position:
     type: TAB
     id: TAB-identity
     children:
-      - ROW-ia-1
-      - ROW-ia-2
-      - ROW-ia-3
-      - ROW-ia-4
-      - ROW-ia-5
-      - ROW-ia-6
-      - ROW-ia-7
+      - ROW-ia-4    # Root Account Usage + IAM Entity Activity [CRITICAL]
+      - ROW-ia-5    # Privilege Escalation Timeline [CRITICAL]
+      - ROW-ia-7    # Glue/SageMaker Privilege Escalation [CRITICAL]
+      - ROW-ia-3    # Sensitive API Calls [HIGH]
+      - ROW-ia-1    # Console Login + MFA-less Login Trend [HIGH]
+      - ROW-ia-2    # Login Activity Heatmap [MEDIUM]
+      - ROW-ia-6    # SSO Events [MEDIUM]
     meta:
       text: "\U0001f511 Identity & Access"
       defaultText: "Tab 1"
@@ -126,15 +129,15 @@ position:
     type: TAB
     id: TAB-threat
     children:
-      - ROW-td-1
-      - ROW-td-2
-      - ROW-td-3
-      - ROW-td-4
-      - ROW-td-5
-      - ROW-td-6
-      - ROW-td-7
-      - ROW-td-8
-      - ROW-td-9
+      - ROW-td-3    # Defense Evasion [CRITICAL]
+      - ROW-td-7    # VPC Flow Log Changes + Config Tampering [CRITICAL]
+      - ROW-td-9    # EventBridge/CW Rule Tampering [CRITICAL]
+      - ROW-td-5    # Org/SCP Changes [HIGH]
+      - ROW-td-8    # NACL/Route Table Changes [HIGH]
+      - ROW-td-4    # Access Denied + Error Trend [MEDIUM]
+      - ROW-td-2    # Write/Read Ratio + Throttling Spikes [MEDIUM]
+      - ROW-td-6    # First-Time Services [MEDIUM]
+      - ROW-td-1    # Event Timeseries [CONTEXT]
     meta:
       text: "\U0001f3af Threat Detection"
       defaultText: "Tab 2"
@@ -214,11 +217,11 @@ position:
     type: TAB
     id: TAB-data
     children:
-      - ROW-di-1
-      - ROW-di-2
-      - ROW-di-3
-      - ROW-di-4
-      - ROW-di-5
+      - ROW-di-3    # Secrets Access Anomaly [CRITICAL]
+      - ROW-di-4    # Assumed Role External IP [CRITICAL]
+      - ROW-di-5    # Route53 DNS Changes [HIGH]
+      - ROW-di-2    # Source IP + User Agent [MEDIUM]
+      - ROW-di-1    # Top API Calls + Region Activity [CONTEXT]
     meta:
       text: "\U0001f4ca API Activity"
       defaultText: "Tab 3"
@@ -229,11 +232,17 @@ position:
     type: TAB
     id: TAB-computing
     children:
-      - ROW-di-6
-      - ROW-di-7b
-      - ROW-di-9
-      - ROW-di-10
-      - ROW-di-11
+      - ROW-di-16   # EC2 Mass Stop / Terminate [CRITICAL]
+      - ROW-di-15   # EC2 User Data Modification [CRITICAL]
+      - ROW-di-14   # EC2 Instance Profile Changes [CRITICAL]
+      - ROW-di-10   # ECS Task Definition Backdoor [HIGH]
+      - ROW-di-6    # SSM Session / Run Command [HIGH]
+      - ROW-di-11   # EBS Direct API Exfiltration [HIGH]
+      - ROW-di-7b   # EC2 Public Snapshot / AMI Sharing [HIGH]
+      - ROW-di-13   # EC2 Key Pair Creation [HIGH]
+      - ROW-di-12   # EC2 Instance Launches [MEDIUM]
+      - ROW-di-17   # EC2 Spot Fleet Abuse [MEDIUM]
+      - ROW-di-9    # Container Platform Events [MEDIUM]
     meta:
       text: "\U0001f5a5️ Computing"
       defaultText: "Tab 4"
@@ -244,15 +253,15 @@ position:
     type: TAB
     id: TAB-s3-rds
     children:
-      - ROW-s3-1
-      - ROW-s3-2
-      - ROW-rds-1
-      - ROW-s3-3
-      - ROW-s3-4
-      - ROW-s3-5
-      - ROW-s3-6
-      - ROW-rds-2
-      - ROW-s3-7
+      - ROW-s3-3    # S3 Bulk Download [CRITICAL]
+      - ROW-s3-4    # S3 Bulk Deletion [CRITICAL]
+      - ROW-s3-5    # S3 Versioning/Logging Disabled [CRITICAL]
+      - ROW-s3-7    # AWS Backup Tampering [CRITICAL]
+      - ROW-rds-2   # RDS Deleted without Final Snapshot [HIGH]
+      - ROW-rds-1   # RDS Snapshot Cross-Account Share [HIGH]
+      - ROW-s3-6    # S3 Cross-Account Replication [HIGH]
+      - ROW-s3-2    # S3 Bucket Policy/ACL Changes [MEDIUM]
+      - ROW-s3-1    # S3 Protection Config Changes [MEDIUM]
     meta:
       text: "\U0001faa3 S3 & RDS"
       defaultText: "Tab 4"
@@ -331,6 +340,49 @@ position:
     id: ROW-di-11
     children:
       - CHART-ebs-direct-api
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  # Phase-6 new rows: EC2 DFIR (DSH-58 to DSH-63)
+  ROW-di-12:
+    type: ROW
+    id: ROW-di-12
+    children:
+      - CHART-ec2-instance-launches
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-13:
+    type: ROW
+    id: ROW-di-13
+    children:
+      - CHART-ec2-key-pair
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-14:
+    type: ROW
+    id: ROW-di-14
+    children:
+      - CHART-ec2-instance-profile
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-15:
+    type: ROW
+    id: ROW-di-15
+    children:
+      - CHART-ec2-user-data
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-16:
+    type: ROW
+    id: ROW-di-16
+    children:
+      - CHART-ec2-mass-stop
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  ROW-di-17:
+    type: ROW
+    id: ROW-di-17
+    children:
+      - CHART-ec2-spot-fleet
     meta:
       background: BACKGROUND_TRANSPARENT
 
@@ -436,12 +488,12 @@ position:
     type: TAB
     id: TAB-temporal
     children:
-      - ROW-ta-1
-      - ROW-ta-2
-      - ROW-ta-3
-      - ROW-ta-5
-      - ROW-ta-6
-      - ROW-ta-7
+      - ROW-ta-7    # Event Velocity Spikes [CRITICAL]
+      - ROW-ta-6    # Dormant Accounts Reactivated [CRITICAL]
+      - ROW-ta-1    # First/Last Seen IAM Identity [HIGH]
+      - ROW-ta-2    # First/Last Seen Source IP [HIGH]
+      - ROW-ta-3    # First/Last Seen API Call [HIGH]
+      - ROW-ta-5    # First/Last Seen User Agent [MEDIUM]
     meta:
       text: "\U0001f552 Temporal Analysis"
       defaultText: "Tab 5"
@@ -834,10 +886,10 @@ position:
     type: TAB
     id: TAB-hrm
     children:
-      - ROW-hrm-1
-      - ROW-hrm-2
-      - ROW-hrm-3
-      - ROW-hrm-4
+      - ROW-hrm-4   # Defense Evasion + Credential Access (table) [CRITICAL]
+      - ROW-hrm-2   # Top High-Risk API Calls [HIGH]
+      - ROW-hrm-3   # Top Actors + Source IPs + By Region [MEDIUM]
+      - ROW-hrm-1   # High-Risk API Timeseries [CONTEXT]
     meta:
       text: "\U0001f6a8 High-Risk API Monitor"
       defaultText: "Tab 6"
@@ -1159,6 +1211,73 @@ position:
       width: 12
       height: 75
       sliceName: EKS / ECR Container Platform Events
+
+  # Phase-6 new charts (DSH-58 to DSH-63) — EC2 DFIR
+  CHART-ec2-instance-launches:
+    type: CHART
+    id: CHART-ec2-instance-launches
+    children: []
+    meta:
+      chartId: 65
+      uuid: 58dae1f2-a3b4-5678-3456-580000000058
+      width: 12
+      height: 75
+      sliceName: EC2 Instance Launches
+
+  CHART-ec2-key-pair:
+    type: CHART
+    id: CHART-ec2-key-pair
+    children: []
+    meta:
+      chartId: 66
+      uuid: 59ebf203-b4c5-6789-4567-590000000059
+      width: 12
+      height: 75
+      sliceName: EC2 Key Pair Creation
+
+  CHART-ec2-instance-profile:
+    type: CHART
+    id: CHART-ec2-instance-profile
+    children: []
+    meta:
+      chartId: 67
+      uuid: 60fc0314-c5d6-789a-5678-600000000060
+      width: 12
+      height: 75
+      sliceName: EC2 Instance Profile Changes
+
+  CHART-ec2-user-data:
+    type: CHART
+    id: CHART-ec2-user-data
+    children: []
+    meta:
+      chartId: 68
+      uuid: 610d1425-d6e7-89ab-6789-610000000061
+      width: 12
+      height: 75
+      sliceName: EC2 User Data Modification
+
+  CHART-ec2-mass-stop:
+    type: CHART
+    id: CHART-ec2-mass-stop
+    children: []
+    meta:
+      chartId: 69
+      uuid: 621e2536-e7f8-9012-789a-620000000062
+      width: 12
+      height: 75
+      sliceName: EC2 Mass Stop / Terminate
+
+  CHART-ec2-spot-fleet:
+    type: CHART
+    id: CHART-ec2-spot-fleet
+    children: []
+    meta:
+      chartId: 70
+      uuid: 632f3647-f809-0123-89ab-630000000063
+      width: 12
+      height: 75
+      sliceName: EC2 Spot Fleet / Reserved Instance Abuse
 
 metadata:
   native_filter_configuration:
