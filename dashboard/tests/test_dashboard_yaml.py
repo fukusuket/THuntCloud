@@ -169,11 +169,11 @@ def _uuid_for_chart_file(fragment: str) -> str | None:
         ("route53_dns_changes", "DSH-29 Route53 DNS Changes"),
         # Phase-6 — EC2 DFIR charts
         ("ec2_instance_launches", "DSH-58 EC2 Instance Launches"),
-        ("ec2_key_pair",          "DSH-59 EC2 Key Pair Creation"),
-        ("ec2_instance_profile",  "DSH-60 EC2 Instance Profile Changes"),
-        ("ec2_user_data",         "DSH-61 EC2 User Data Modification"),
-        ("ec2_mass_stop",         "DSH-62 EC2 Mass Stop / Terminate"),
-        ("ec2_spot_fleet",        "DSH-63 EC2 Spot Fleet Abuse"),
+        ("ec2_key_pair", "DSH-59 EC2 Key Pair Creation"),
+        ("ec2_instance_profile", "DSH-60 EC2 Instance Profile Changes"),
+        ("ec2_user_data", "DSH-61 EC2 User Data Modification"),
+        ("ec2_mass_stop", "DSH-62 EC2 Mass Stop / Terminate"),
+        ("ec2_spot_fleet", "DSH-63 EC2 Spot Fleet Abuse"),
         # Sprint-5 — High-Risk API Monitor
         ("hrm_timeseries", "HRM-39 High-Risk API Timeseries"),
         ("hrm_top_calls", "HRM-40 High-Risk Top API Calls"),
@@ -220,9 +220,15 @@ def test_s3_and_rds_charts_in_tab_s3_rds() -> None:
     for row_id in tab.get("children", []):
         row = position.get(row_id, {})
         charts.extend(row.get("children", []))
-    assert "CHART-s3-protection" in charts, "CHART-s3-protection not found in TAB-s3-rds"
-    assert "CHART-s3-policy-changes" in charts, "CHART-s3-policy-changes not found in TAB-s3-rds"
-    assert "CHART-rds-snapshot-share" in charts, "CHART-rds-snapshot-share not found in TAB-s3-rds"
+    assert (
+        "CHART-s3-protection" in charts
+    ), "CHART-s3-protection not found in TAB-s3-rds"
+    assert (
+        "CHART-s3-policy-changes" in charts
+    ), "CHART-s3-policy-changes not found in TAB-s3-rds"
+    assert (
+        "CHART-rds-snapshot-share" in charts
+    ), "CHART-rds-snapshot-share not found in TAB-s3-rds"
 
 
 def test_s3_protection_not_in_tab_threat() -> None:
@@ -234,9 +240,9 @@ def test_s3_protection_not_in_tab_threat() -> None:
     for row_id in tab_threat.get("children", []):
         row = position.get(row_id, {})
         charts_in_threat.extend(row.get("children", []))
-    assert "CHART-s3-protection" not in charts_in_threat, (
-        "CHART-s3-protection should have been moved out of TAB-threat"
-    )
+    assert (
+        "CHART-s3-protection" not in charts_in_threat
+    ), "CHART-s3-protection should have been moved out of TAB-threat"
 
 
 def test_computing_tab_is_top_level() -> None:
@@ -293,9 +299,9 @@ def test_computing_charts_not_in_tab_data() -> None:
         "CHART-s3-policy-changes",
         "CHART-rds-snapshot-share",
     ):
-        assert chart_id not in charts_in_data, (
-            f"{chart_id} should not remain in TAB-data"
-        )
+        assert (
+            chart_id not in charts_in_data
+        ), f"{chart_id} should not remain in TAB-data"
 
 
 # ---------------------------------------------------------------------------

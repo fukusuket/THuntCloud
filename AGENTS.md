@@ -12,9 +12,9 @@ Four Docker containers share one DuckDB file via a **bind mount** (`docker/data/
 | Container | Language | DuckDB mode | Port |
 |-----------|----------|-------------|------|
 | `ingester` | Rust 1.85+ | READ_WRITE (sole writer) | — |
-| `agent` | Python 3.12+ / Streamlit | READ_ONLY | 8501 |
+| `agent` | Python 3.14+ / Streamlit | READ_ONLY | 8501 |
 | `dashboard` | Apache Superset | READ_ONLY | 8088 |
-| `config_viz` | Python 3.12+ / FastAPI + React 18 | READ_ONLY | 8502 |
+| `config_viz` | Python 3.14+ / FastAPI + React 18 | READ_ONLY | 8502 |
 
 The bind-mount (not a named volume) is intentional — Docker Engine on Linux/WSL2 misresolves
 relative paths for named-volume `driver_opts`, so each service declares its own `volumes:` entry
@@ -338,7 +338,7 @@ THuntCloud/
 │   ├── PLAN.md                # Implementation plan (Phase A/B/C — all complete)
 │   ├── README.md              # config_viz module documentation
 │   ├── Dockerfile             # Multi-stage: Node build → Python runtime
-│   ├── backend/               # FastAPI backend (Python 3.12+)
+│   ├── backend/               # FastAPI backend (Python 3.14+)
 │   │   ├── __init__.py
 │   │   ├── main.py            # FastAPI app + 4 REST endpoints + /icons static mount
 │   │   ├── db.py              # DuckDB READ_ONLY connection (get_conn dependency)

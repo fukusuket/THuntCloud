@@ -770,4 +770,3 @@ def test_ba23_s3_access_point_depth_is_two(client_s3):
     response = client_s3.get("/api/snapshots/snap-009/graph")
     nodes = {n["id"]: n for n in response.json()["nodes"]}
     assert nodes["s3-ap-001"]["data"]["depth"] == 2
-

@@ -24,7 +24,7 @@ services:
       # Set INGESTER_BUILD_TARGET=runtime to opt in.
       target: ${INGESTER_BUILD_TARGET:-prebuilt-runtime}
       args:
-        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.13}
+        INGESTER_VERSION: ${INGESTER_VERSION:-v0.1.14}
         <<: *ca-cert-arg
     container_name: threat-hunting-ingester
     volumes:

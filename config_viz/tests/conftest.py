@@ -669,4 +669,3 @@ def client_s3(tmp_db_s3):
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
-

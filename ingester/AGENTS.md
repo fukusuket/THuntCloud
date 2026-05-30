@@ -94,7 +94,7 @@ pub struct TlsDetails {
 /// Column layout mirrors the DB schema: core → geo (populated externally) → extended.
 pub struct CloudTrailEvent {
     // ── Core fields ──────────────────────────────────────────────────────
-    pub event_time:            String,
+    pub event_time:            Option<String>,
     pub event_name:            String,
     pub event_source:          String,
     pub aws_region:            String,

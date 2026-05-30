@@ -8,7 +8,7 @@ CLOUDTRAIL_COLUMNS: list[dict] = [
     {
         "name": "event_time",
         "type": "TIMESTAMP",
-        "nullable": False,
+        "nullable": True,
         "description": "Timestamp of the API call",
     },
     {

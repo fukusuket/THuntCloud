@@ -311,7 +311,7 @@ sequenceDiagram
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `event_time` | TIMESTAMP | Time the API call was made |
+| `event_time` | TIMESTAMP (nullable) | Time the API call was made; NULL when `eventTime` is absent from the record |
 | `event_name` | VARCHAR | API action name (e.g. `GetCallerIdentity`) |
 | `event_source` | VARCHAR | AWS service endpoint (e.g. `sts.amazonaws.com`) |
 | `aws_region` | VARCHAR | AWS region of the API call |
@@ -345,6 +345,20 @@ sequenceDiagram
 
 JSON blobs (`request_parameters`, `response_elements`, `raw_event`) are stored as `VARCHAR`.
 Use `json_extract_string(column, '$.field')` for ad-hoc queries.
+
+**ART Indexes on `cloudtrail_events`:**
+
+| Index | Column | Purpose |
+|-------|--------|---------|
+| `idx_event_name` | `event_name` | Equality / IN filters on API action name |
+| `idx_event_source` | `event_source` | Equality filters on AWS service endpoint |
+| `idx_user_identity_type` | `user_identity_type` | Equality filters on identity type (Root, IAMUser, …) |
+| `idx_error_code` | `error_code` | Equality filters on error code (AccessDenied, …) |
+| `idx_source_ip_address` | `source_ip_address` | IP-based threat hunting queries |
+| `idx_user_identity_access_key_id` | `user_identity_access_key_id` | Access key tracing queries |
+| `idx_recipient_account_id` | `recipient_account_id` | Multi-account environment filtering |
+
+Range-filter columns (e.g. `event_time`) rely on DuckDB's automatic zone maps (per-row-group min/max) and do not have explicit indexes.
 
 ---
 

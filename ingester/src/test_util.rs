@@ -81,7 +81,7 @@ pub fn make_enricher() -> GeoipEnricher {
 /// all optional fields set to `None`.
 pub fn minimal_event() -> CloudTrailEvent {
     CloudTrailEvent {
-        event_time: "2024-01-15T10:30:00Z".to_string(),
+        event_time: Some("2024-01-15T10:30:00Z".to_string()),
         event_name: "DescribeInstances".to_string(),
         event_source: "ec2.amazonaws.com".to_string(),
         aws_region: "us-east-1".to_string(),
@@ -113,7 +113,7 @@ pub fn minimal_event() -> CloudTrailEvent {
 /// Build a fully-populated [`CloudTrailEvent`] with all optional fields set.
 pub fn full_event() -> CloudTrailEvent {
     CloudTrailEvent {
-        event_time: "2024-01-15T10:30:00Z".to_string(),
+        event_time: Some("2024-01-15T10:30:00Z".to_string()),
         event_name: "DescribeInstances".to_string(),
         event_source: "ec2.amazonaws.com".to_string(),
         aws_region: "us-east-1".to_string(),

@@ -73,7 +73,9 @@ def _extract_cache_config(var_name: str) -> dict:
                     if isinstance(node.value, ast.Dict):
                         result = {}
                         for k, v in zip(node.value.keys, node.value.values):
-                            if isinstance(k, ast.Constant) and isinstance(v, ast.Constant):
+                            if isinstance(k, ast.Constant) and isinstance(
+                                v, ast.Constant
+                            ):
                                 result[k.value] = v.value
                         return result
     return {}
@@ -88,17 +90,17 @@ def test_data_cache_config_present() -> None:
 def test_data_cache_type_filesystem() -> None:
     """DATA_CACHE_CONFIG must use FileSystemCache (no Redis dependency)."""
     config = _extract_cache_config("DATA_CACHE_CONFIG")
-    assert config.get("CACHE_TYPE") == "FileSystemCache", (
-        "DATA_CACHE_CONFIG CACHE_TYPE must be 'FileSystemCache'"
-    )
+    assert (
+        config.get("CACHE_TYPE") == "FileSystemCache"
+    ), "DATA_CACHE_CONFIG CACHE_TYPE must be 'FileSystemCache'"
 
 
 def test_data_cache_timeout_8h() -> None:
     """DATA_CACHE_CONFIG timeout must be 28800 seconds (8 hours)."""
     config = _extract_cache_config("DATA_CACHE_CONFIG")
-    assert config.get("CACHE_DEFAULT_TIMEOUT") == 28800, (
-        "DATA_CACHE_CONFIG CACHE_DEFAULT_TIMEOUT must be 28800 (8 hours)"
-    )
+    assert (
+        config.get("CACHE_DEFAULT_TIMEOUT") == 28800
+    ), "DATA_CACHE_CONFIG CACHE_DEFAULT_TIMEOUT must be 28800 (8 hours)"
 
 
 def test_cache_config_present() -> None:

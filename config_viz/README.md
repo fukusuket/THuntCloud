@@ -1,7 +1,7 @@
 # config_viz — AWS Config Resource Graph Viewer
 
 A read-only web UI that visualises AWS Config snapshot resources as an interactive graph.  
-Built with **FastAPI** (Python 3.12) on the backend and **React 18 + React Flow** on the frontend.
+Built with **FastAPI** (Python 3.14) on the backend and **React 18 + React Flow** on the frontend.
 
 > **Implementation status**
 >
@@ -17,7 +17,7 @@ Built with **FastAPI** (Python 3.12) on the backend and **React 18 + React Flow*
 
 ```
 config_viz/
-├── backend/          # FastAPI app (Python 3.12+)
+├── backend/          # FastAPI app (Python 3.14+)
 │   ├── main.py       # FastAPI app + 4 REST endpoints + static file serving
 │   ├── db.py         # DuckDB READ_ONLY connection (get_conn dependency)
 │   ├── query.py      # SQL queries + keyword blocklist + EXPLAIN validation
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS config_edges (
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.14+
 - Node.js 20+
 - [Rust ingester](../ingester/README.md) — to populate the DuckDB tables
 

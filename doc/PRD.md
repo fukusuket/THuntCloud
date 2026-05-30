@@ -175,7 +175,7 @@ An interactive threat hunting UI that leverages an AI-Agent to assist with analy
 
 #### Overview
 An interactive web UI that visualises AWS Config snapshot resources as a hierarchical graph.
-Built with FastAPI (Python 3.12) on the backend and React 18 + React Flow on the frontend.
+Built with FastAPI (Python 3.14) on the backend and React 18 + React Flow on the frontend.
 
 #### Technology Stack
 - Backend: FastAPI + DuckDB Python client (READ_ONLY)

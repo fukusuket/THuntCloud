@@ -81,6 +81,12 @@ pub fn ensure_indexes(conn: &Connection) -> Result<()> {
             ON cloudtrail_events (user_identity_type);
         CREATE INDEX IF NOT EXISTS idx_error_code
             ON cloudtrail_events (error_code);
+        CREATE INDEX IF NOT EXISTS idx_source_ip_address
+            ON cloudtrail_events (source_ip_address);
+        CREATE INDEX IF NOT EXISTS idx_user_identity_access_key_id
+            ON cloudtrail_events (user_identity_access_key_id);
+        CREATE INDEX IF NOT EXISTS idx_recipient_account_id
+            ON cloudtrail_events (recipient_account_id);
         ",
     )
     .context("Failed to create indexes on cloudtrail_events")

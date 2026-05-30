@@ -17,7 +17,7 @@ and pre-built preset queries.
 
 | Item | Value |
 |------|-------|
-| Language | Python 3.12+ |
+| Language | Python 3.14+ |
 | Framework | Streamlit |
 | AI Integration | OpenAI API (`gpt-5.4` default; `gpt-5.5`, `gpt-5.4-mini` also available) |
 | DB Client | `duckdb` Python package |

@@ -268,7 +268,7 @@ pub struct TlsDetails {
 ///   `serde_json::Value` tree traversal at insert time.
 #[derive(Debug, Clone)]
 pub struct CloudTrailEvent {
-    pub event_time: String,
+    pub event_time: Option<String>,
     pub event_name: String,
     pub event_source: String,
     pub aws_region: String,
@@ -398,7 +398,7 @@ pub fn parse_cloudtrail_log(json: &str) -> Result<CloudTrailLog> {
         };
 
         records.push(CloudTrailEvent {
-            event_time: ev.event_time.unwrap_or_default(),
+            event_time: ev.event_time,
             event_name: ev.event_name.unwrap_or_default(),
             event_source: ev.event_source.unwrap_or_default(),
             aws_region: ev.aws_region.unwrap_or_default(),
@@ -463,7 +463,7 @@ mod tests {
 
         assert_eq!(log.records.len(), 1);
         let event = &log.records[0];
-        assert_eq!(event.event_time, "2024-01-15T10:30:00Z");
+        assert_eq!(event.event_time.as_deref(), Some("2024-01-15T10:30:00Z"));
         assert_eq!(event.event_name, "DescribeInstances");
         assert_eq!(event.event_source, "ec2.amazonaws.com");
         assert_eq!(event.aws_region, "us-east-1");

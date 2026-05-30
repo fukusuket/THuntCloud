@@ -12,7 +12,7 @@
 [![CI](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml/badge.svg)](https://github.com/fukusuket/THuntCloud/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](docker/docker-compose.yml)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](ingester/Cargo.toml)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](agent/requirements.txt)
+[![Python](https://img.shields.io/badge/python-3.14%2B-blue.svg)](agent/requirements.txt)
 [![Built-in Hunts](https://img.shields.io/badge/built--in%20hunts-101-brightgreen)](#-built-in-hunts-builtin_huntsyaml----101-queries)
 [![Dashboard Charts](https://img.shields.io/badge/dashboard%20charts-59-blue)](#-dashboard-charts-apache-superset----dashboard----59-charts)
 
@@ -107,7 +107,7 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 | Module | Language | Role | README |
 |--------|----------|------|--------|
 | `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
-| `agent` | Python 3.12+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
+| `agent` | Python 3.14+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
 | `dashboard` | Apache Superset 6.1 | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
 | `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
 
