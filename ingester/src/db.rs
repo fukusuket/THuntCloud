@@ -57,7 +57,33 @@ pub fn ensure_table(conn: &Connection) -> Result<()> {
     .context("Failed to create database tables")?;
 
     ensure_geo_columns(conn)?;
-    ensure_extended_columns(conn)
+    ensure_extended_columns(conn)?;
+    ensure_indexes(conn)
+}
+
+/// Create ART indexes on high-frequency equality-filter columns.
+///
+/// Targets columns that are: (a) used in WHERE equality / IN clauses across
+/// the built-in hunt queries, and (b) selective enough that the index prune
+/// beats DuckDB's vectorised full-scan.  Range-filter columns such as
+/// `event_time` are intentionally omitted — DuckDB's automatic zone maps
+/// (per-row-group min/max) already handle those efficiently.
+///
+/// Uses `CREATE INDEX IF NOT EXISTS` so the function is idempotent.
+pub fn ensure_indexes(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE INDEX IF NOT EXISTS idx_event_name
+            ON cloudtrail_events (event_name);
+        CREATE INDEX IF NOT EXISTS idx_event_source
+            ON cloudtrail_events (event_source);
+        CREATE INDEX IF NOT EXISTS idx_user_identity_type
+            ON cloudtrail_events (user_identity_type);
+        CREATE INDEX IF NOT EXISTS idx_error_code
+            ON cloudtrail_events (error_code);
+        ",
+    )
+    .context("Failed to create indexes on cloudtrail_events")
 }
 
 /// Add the 7 geo-enrichment columns to `cloudtrail_events` if they do not exist.
