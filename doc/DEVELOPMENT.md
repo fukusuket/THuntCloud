@@ -15,7 +15,7 @@ Non-English text anywhere in the codebase or version history is not permitted.
 | Tool              | Version      | Purpose                              |
 | ----------------- | ------------ | ------------------------------------ |
 | Rust              | 1.85+        | ingester development                 |
-| Python            | 3.12+        | agent development                    |
+| Python            | 3.14+        | agent development                    |
 | Docker Desktop    | Latest       | Container orchestration              |
 | Docker Compose    | v2           | Multi-service management             |
 | DuckDB CLI        | 1.2+         | (Optional) Ad-hoc database inspection|

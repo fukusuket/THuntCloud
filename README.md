@@ -71,14 +71,9 @@ cp -r <local-output-dir>/ docker/logs/
 # Ingest CloudTrail logs into DuckDB
 make ingest
 
-# (Optional) Ingest AWS Config snapshots.
-make config-import
-
 # Start all services (agent + dashboard)
 make up
 ```
-
-> Run `make help` to see all available targets.
 
 **Step 3.** 🪽 Open your browser and start hunting!🪽
 
@@ -94,6 +89,11 @@ Place [GeoLite2 `.mmdb` files](https://dev.maxmind.com/geoip/geolite2-free-geolo
 make ingest-geoip
 ```
 
+**(Optional)** AWS Config snapshot ingestion for resource graph visualization.
+Place AWS Config snapshot files in `docker/logs/config/`, then:
+```bash
+make ingest-config
+```
 ---
 
 ## Corporate Proxy / Custom CA Certificate
