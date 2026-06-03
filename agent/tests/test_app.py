@@ -1845,3 +1845,208 @@ def test_export_session_analyst_note_defaults_to_empty():
     result = _export_session([entry], title="Test Hunt")
     parsed = json.loads(result)
     assert parsed["queries"][0]["analyst_note"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-BADGE — _result_badge and _build_expander_title
+# ---------------------------------------------------------------------------
+
+
+def test_result_badge_no_results():
+    """_result_badge returns '⬜ no results' for empty DataFrame.
+
+    Test #UI-BADGE-1: collapsed card shows no-results state at a glance.
+    """
+    from app import _result_badge
+    from report import ReportEntry
+
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    mock_state = {"row_limit": 500}
+    with patch("streamlit.session_state", mock_state):
+        badge = _result_badge(entry)
+    assert badge == "⬜ no results"
+
+
+def test_result_badge_with_results_below_limit():
+    """_result_badge returns '✅ N rows' when results are below the row limit.
+
+    Test #UI-BADGE-2: green badge for normal result sets.
+    """
+    from app import _result_badge
+    from report import ReportEntry
+
+    entry = ReportEntry(
+        sql="SELECT 1", results=pd.DataFrame({"event_name": ["A", "B", "C"]})
+    )
+    mock_state = {"row_limit": 500}
+    with patch("streamlit.session_state", mock_state):
+        badge = _result_badge(entry)
+    assert badge == "✅ 3 rows"
+
+
+def test_result_badge_at_row_limit():
+    """_result_badge returns '⚠️ N rows' when results equal the row limit.
+
+    Test #UI-BADGE-3: warning badge signals possible truncation.
+    """
+    from app import _result_badge
+    from report import ReportEntry
+
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame({"event_name": ["A"] * 500}),
+    )
+    mock_state = {"row_limit": 500}
+    with patch("streamlit.session_state", mock_state):
+        badge = _result_badge(entry)
+    assert badge == "⚠️ 500 rows"
+
+
+def test_build_expander_title_with_label_and_category():
+    """_build_expander_title includes category, label, and result badge.
+
+    Test #UI-BADGE-4: full title format for preset queries.
+    """
+    from app import _build_expander_title
+    from report import ReportEntry
+
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame({"event_name": ["A"]}),
+        label="🔑 Root Account Activity",
+        category="🔑 Identity & Access",
+    )
+    mock_state = {"row_limit": 500}
+    with patch("streamlit.session_state", mock_state):
+        title = _build_expander_title(entry, 1)
+    assert "🔑 Identity & Access" in title
+    assert "🔑 Root Account Activity" in title
+    assert "✅ 1 rows" in title
+    assert "│" in title
+
+
+def test_build_expander_title_no_label_fallback():
+    """_build_expander_title falls back to 'Query #N' when label is empty.
+
+    Test #UI-BADGE-5: backward-compatible for AI-generated queries.
+    """
+    from app import _build_expander_title
+    from report import ReportEntry
+
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    mock_state = {"row_limit": 500}
+    with patch("streamlit.session_state", mock_state):
+        title = _build_expander_title(entry, 3)
+    assert "Query #3" in title
+    assert "⬜ no results" in title
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-FILTER — _apply_entry_filter
+# ---------------------------------------------------------------------------
+
+
+def _make_entry(
+    has_results: bool, label: str = "", category: str = "", description: str = ""
+):
+    """Helper: create a ReportEntry with or without results."""
+    from report import ReportEntry
+
+    results = pd.DataFrame({"a": [1]}) if has_results else pd.DataFrame()
+    return ReportEntry(
+        sql="SELECT 1",
+        results=results,
+        label=label,
+        category=category,
+        description=description,
+    )
+
+
+def test_apply_entry_filter_all_returns_all():
+    """_apply_entry_filter with 'All' returns all entries unchanged.
+
+    Test #UI-FILTER-1: no filter applied.
+    """
+    from app import _apply_entry_filter
+
+    entries = [(0, _make_entry(True)), (1, _make_entry(False)), (2, _make_entry(True))]
+    result = _apply_entry_filter(entries, "All", "")
+    assert len(result) == 3
+
+
+def test_apply_entry_filter_results_only():
+    """_apply_entry_filter with '✅ Results' keeps only entries with rows.
+
+    Test #UI-FILTER-2: entries without results are excluded.
+    """
+    from app import _apply_entry_filter
+
+    entries = [(0, _make_entry(True)), (1, _make_entry(False)), (2, _make_entry(True))]
+    result = _apply_entry_filter(entries, "✅ Results", "")
+    assert len(result) == 2
+    assert all(not e.results.empty for _, e in result)
+
+
+def test_apply_entry_filter_no_results_only():
+    """_apply_entry_filter with '⬜ No results' keeps only empty entries.
+
+    Test #UI-FILTER-3: entries with results are excluded.
+    """
+    from app import _apply_entry_filter
+
+    entries = [(0, _make_entry(True)), (1, _make_entry(False)), (2, _make_entry(True))]
+    result = _apply_entry_filter(entries, "⬜ No results", "")
+    assert len(result) == 1
+    assert result[0][1].results.empty
+
+
+def test_apply_entry_filter_keyword_match():
+    """_apply_entry_filter with keyword keeps entries matching label/category/description.
+
+    Test #UI-FILTER-4: keyword filter is case-insensitive.
+    """
+    from app import _apply_entry_filter
+
+    entries = [
+        (0, _make_entry(True, label="Root Account Activity", category="Identity")),
+        (1, _make_entry(True, label="S3 Bucket Access", category="Storage")),
+        (2, _make_entry(False, label="MFA Disabled", category="Identity")),
+    ]
+    result = _apply_entry_filter(entries, "All", "identity")
+    assert len(result) == 2
+    labels = [e.label for _, e in result]
+    assert "Root Account Activity" in labels
+    assert "MFA Disabled" in labels
+
+
+def test_apply_entry_filter_keyword_no_match():
+    """_apply_entry_filter returns empty list when keyword matches nothing.
+
+    Test #UI-FILTER-5: no entries match an unknown keyword.
+    """
+    from app import _apply_entry_filter
+
+    entries = [
+        (0, _make_entry(True, label="Root Account Activity")),
+        (1, _make_entry(True, label="S3 Bucket Access")),
+    ]
+    result = _apply_entry_filter(entries, "All", "nonexistent_xyz")
+    assert result == []
+
+
+def test_apply_entry_filter_combined_result_and_keyword():
+    """_apply_entry_filter applies both result filter and keyword together.
+
+    Test #UI-FILTER-6: combined filter narrows results correctly.
+    """
+    from app import _apply_entry_filter
+
+    entries = [
+        (0, _make_entry(True, label="Root Account Activity", category="Identity")),
+        (1, _make_entry(False, label="MFA Disabled", category="Identity")),
+        (2, _make_entry(True, label="S3 Access", category="Storage")),
+    ]
+    # Results only + keyword "identity" → only index 0
+    result = _apply_entry_filter(entries, "✅ Results", "identity")
+    assert len(result) == 1
+    assert result[0][1].label == "Root Account Activity"

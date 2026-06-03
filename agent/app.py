@@ -545,10 +545,98 @@ def render_sidebar() -> None:
             st.session_state.model = selected_model
 
 
+def _result_badge(entry: ReportEntry) -> str:
+    """Return a short result-count badge string for the expander title.
+
+    Shows row count so analysts can see result presence at a glance
+    even when the card is collapsed.
+
+    - ``✅ N rows``      — results present, below the row limit
+    - ``⚠️ N rows``     — results present but at (or above) the row limit
+                          (truncation likely)
+    - ``⬜ no results`` — empty DataFrame or None
+    """
+    if entry.results is None or entry.results.empty:
+        return "⬜ no results"
+    row_count = len(entry.results)
+    row_limit = st.session_state.get("row_limit", DEFAULT_ROW_LIMIT)
+    if row_count >= row_limit:
+        return f"⚠️ {row_count:,} rows"
+    return f"✅ {row_count:,} rows"
+
+
+def _apply_entry_filter(
+    entries: list[tuple[int, ReportEntry]],
+    result_filter: str,
+    keyword: str,
+) -> list[tuple[int, ReportEntry]]:
+    """Filter a list of (index, ReportEntry) tuples by result state and keyword.
+
+    Args:
+        entries:       List of (query_history_index, entry) pairs to filter.
+        result_filter: One of ``"All"``, ``"✅ Results"``, ``"⬜ No results"``.
+        keyword:       Case-insensitive substring matched against label,
+                       category, and description.  Empty string skips matching.
+
+    Returns:
+        Filtered list preserving original order.
+    """
+    out = []
+    kw = keyword.strip().lower()
+    for idx, entry in entries:
+        has_results = entry.results is not None and not entry.results.empty
+        if result_filter == "✅ Results" and not has_results:
+            continue
+        if result_filter == "⬜ No results" and has_results:
+            continue
+        if kw:
+            searchable = " ".join(
+                [entry.label, entry.category, entry.description]
+            ).lower()
+            if kw not in searchable:
+                continue
+        out.append((idx, entry))
+    return out
+
+
+def _render_query_filter() -> tuple[str, str]:
+    """Render the compact filter bar at the top of the main area.
+
+    Provides result-state filtering (All / Results / No results) and a
+    free-text keyword filter applied against label, category, and description.
+
+    Returns:
+        Tuple of (result_filter, keyword).
+    """
+    c1, c2, c3 = st.columns([3, 4, 1], vertical_alignment="bottom")
+    with c1:
+        result_filter = st.radio(
+            "Show",
+            options=["All", "✅ Results", "⬜ No results"],
+            horizontal=True,
+            key="_qf_result_filter",
+            label_visibility="collapsed",
+        )
+    with c2:
+        keyword = st.text_input(
+            "Keyword",
+            placeholder="🔍 label / category / description…",
+            key="_qf_keyword",
+            label_visibility="collapsed",
+        )
+    with c3:
+        if st.button("✕ Clear", use_container_width=True, help="Clear filters"):
+            st.session_state["_qf_result_filter"] = "All"
+            st.session_state["_qf_keyword"] = ""
+            st.rerun()
+    return result_filter or "All", keyword or ""
+
+
 def _build_expander_title(entry: ReportEntry, index: int) -> str:
     """Build the expander title for a query result card.
 
-    Uses label and category when available; falls back to "Query #N".
+    Combines label / category with a result-count badge so the state is
+    visible without expanding the card.
 
     Args:
         entry: The ReportEntry whose metadata is used.
@@ -557,11 +645,12 @@ def _build_expander_title(entry: ReportEntry, index: int) -> str:
     Returns:
         A string suitable for use as an st.expander label.
     """
+    badge = _result_badge(entry)
     if entry.label:
         if entry.category:
-            return f"{entry.category}  ›  {entry.label}"
-        return entry.label
-    return f"Query #{index}"
+            return f"{entry.category}  ›  {entry.label}  │  {badge}"
+        return f"{entry.label}  │  {badge}"
+    return f"Query #{index}  │  {badge}"
 
 
 def _render_result_card(
@@ -647,8 +736,12 @@ def render_chat() -> None:
     Displays chat history (AGT-01), SQL editor (AGT-03), results table (AGT-04),
     AI analysis (AGT-05), bulk results section (UI-03), and progress bar (UI-04).
     """
-    st.header("🔍 THuntCloud — AI Threat Hunting Agent")
-    st.caption("Ask natural language questions about your CloudTrail logs.")
+
+    # ---- Page title ----
+    st.title("🔍 THuntCloud")
+
+    # ---- Filter bar (always visible at the top) ----
+    result_filter, keyword = _render_query_filter()
 
     db_path = _get_duckdb_path()
 
@@ -733,10 +826,18 @@ def render_chat() -> None:
         if e.source != "chat"
     ]
     if nonchat_entries:
+        filtered_entries = _apply_entry_filter(nonchat_entries, result_filter, keyword)
         st.divider()
-        st.markdown("## 🤖 Query Results")
-        for idx, entry in nonchat_entries:
-            _render_result_card(idx, entry, is_last=False, expanded=False)
+        count_str = f"{len(filtered_entries)} / {len(nonchat_entries)}"
+        st.markdown(
+            f"## 🤖 Query Results  <small style='font-size:0.6em;color:gray'>({count_str})</small>",
+            unsafe_allow_html=True,
+        )
+        if filtered_entries:
+            for idx, entry in filtered_entries:
+                _render_result_card(idx, entry, is_last=False, expanded=False)
+        else:
+            st.caption("No queries match the current filter.")
 
     # ---- SQL editor for the last query (AGT-03) ----
     if st.session_state.last_sql:
