@@ -54,6 +54,10 @@ class ReportEntry:
     analysis: str = ""
     description: str = ""
     chart_config: dict | None = None
+    analyst_note: str = ""  # UI-01: freeform Markdown note by the analyst
+    label: str = ""  # UI-02: display name (e.g. "🔑 Root Account Activity")
+    category: str = ""  # UI-02: category group (e.g. "🔑 Identity & Access")
+    source: str = "chat"  # UI-03: "chat" | "bulk"
     # Prevent pandas DataFrame equality issues in dataclass comparisons
     _results_placeholder: None = field(default=None, init=False, repr=False)
 
@@ -67,8 +71,9 @@ def _render_entry(index: int, entry: ReportEntry) -> str:
     """Render one ReportEntry as a Markdown section.
 
     Outputs the SQL query, results table, and a fact-based summary.
-    The summary contains only observed facts from the query results;
-    speculative threat assessments are excluded by the LLM prompt.
+    When label and/or category are set they appear prominently in the heading.
+    When analyst_note is non-empty it is included under its own heading.
+    Sensitive credential-like strings are automatically redacted throughout.
 
     Args:
         index: 1-based query number used for the section heading.
@@ -87,15 +92,31 @@ def _render_entry(index: int, entry: ReportEntry) -> str:
     results_block = _sanitize(results_md)
     summary_block = _sanitize(entry.analysis) if entry.analysis else "(no summary)"
 
+    # Build heading: include label and category when available
+    if entry.label:
+        if entry.category:
+            heading = f"## Query {index} — {entry.category}  ›  {entry.label}"
+        else:
+            heading = f"## Query {index} — {entry.label}"
+    else:
+        heading = f"## Query {index}"
+
+    # Analyst note section (only when non-empty)
+    analyst_note_section = ""
+    if entry.analyst_note:
+        analyst_note_block = _sanitize(entry.analyst_note)
+        analyst_note_section = f"\n### Analyst Note\n\n{analyst_note_block}\n"
+
     return (
-        f"## Query {index}\n\n"
+        f"{heading}\n\n"
         f"### SQL\n\n"
         f"```sql\n{sql_block}\n```\n\n"
         f"### Results\n\n"
         f"{results_block}\n\n"
         f"### Summary\n\n"
-        f"{summary_block}\n\n"
-        f"---"
+        f"{summary_block}\n"
+        f"{analyst_note_section}"
+        f"\n---"
     )
 
 

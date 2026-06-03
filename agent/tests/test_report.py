@@ -90,6 +90,142 @@ def test_report_entry_chart_config_stores_dict():
     assert entry.chart_config == config
 
 
+# ---------------------------------------------------------------------------
+# Tests #UI-01 — Analyst note per query
+# ---------------------------------------------------------------------------
+
+
+def test_report_entry_has_analyst_note_field():
+    """ReportEntry must accept an analyst_note field defaulting to empty string.
+
+    Test #UI-01-1: backward-compatible — existing callers are unaffected.
+    """
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    assert hasattr(entry, "analyst_note"), "ReportEntry must have an 'analyst_note' field"
+    assert entry.analyst_note == ""
+
+
+def test_report_entry_analyst_note_stores_value():
+    """ReportEntry.analyst_note must persist the provided value.
+
+    Test #UI-01-2: verifies the field is writable.
+    """
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        analyst_note="Suspicious root activity — investigate further.",
+    )
+    assert entry.analyst_note == "Suspicious root activity — investigate further."
+
+
+def test_generate_report_includes_analyst_note_section():
+    """generate_report() includes '### Analyst Note' when analyst_note is non-empty.
+
+    Test #UI-01-3: the note must appear under its own heading in the report.
+    """
+    entry = ReportEntry(
+        sql="SELECT event_name FROM cloudtrail_events LIMIT 5",
+        results=pd.DataFrame({"event_name": ["CreateUser"]}),
+        analysis="- 1 event found.",
+        analyst_note="Analyst observation: single CreateUser from root.",
+    )
+    report = generate_report([entry])
+    assert "### Analyst Note" in report
+    assert "Analyst observation: single CreateUser from root." in report
+
+
+def test_generate_report_omits_analyst_note_section_when_empty():
+    """generate_report() omits '### Analyst Note' when analyst_note is empty.
+
+    Test #UI-01-4: heading must not appear for empty notes to keep reports clean.
+    """
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        analysis="",
+        analyst_note="",
+    )
+    report = generate_report([entry])
+    assert "### Analyst Note" not in report
+
+
+def test_report_sanitizes_analyst_note():
+    """Sensitive patterns in analyst_note must be redacted.
+
+    Test #UI-01-5: redaction covers all text sections including analyst notes.
+    """
+    key_id = "AKIAIOSFODNN7EXAMPLE"
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        analyst_note=f"Possible leaked key: {key_id}",
+    )
+    report = generate_report([entry])
+    assert key_id not in report
+    assert "REDACTED" in report
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-02 — Category / query name fields in ReportEntry
+# ---------------------------------------------------------------------------
+
+
+def test_report_entry_has_label_and_category_fields():
+    """ReportEntry must accept label and category fields defaulting to empty string.
+
+    Test #UI-02-1: backward-compatible — existing callers are unaffected.
+    """
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    assert hasattr(entry, "label"), "ReportEntry must have a 'label' field"
+    assert hasattr(entry, "category"), "ReportEntry must have a 'category' field"
+    assert entry.label == ""
+    assert entry.category == ""
+
+
+def test_report_entry_label_and_category_store_values():
+    """ReportEntry label and category must persist provided values.
+
+    Test #UI-02-2: verifies the fields are writable.
+    """
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        label="🔑 Root Account Activity",
+        category="🔑 Identity & Access",
+    )
+    assert entry.label == "🔑 Root Account Activity"
+    assert entry.category == "🔑 Identity & Access"
+
+
+def test_generate_report_includes_label_in_heading():
+    """generate_report() includes label in the query section heading when non-empty.
+
+    Test #UI-02-3: the label must appear prominently in the report section.
+    """
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        label="🔑 Root Account Activity",
+    )
+    report = generate_report([entry])
+    assert "🔑 Root Account Activity" in report
+
+
+def test_generate_report_includes_category_when_set():
+    """generate_report() includes category in the report section when non-empty.
+
+    Test #UI-02-4: category must appear as context in the report.
+    """
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame(),
+        category="🔑 Identity & Access",
+        label="🔑 Root Account Activity",
+    )
+    report = generate_report([entry])
+    assert "🔑 Identity & Access" in report
+
+
 def test_report_sanitizes_sensitive_data():
     """Credentials in query results and summary text are redacted."""
     secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # 40-char secret-like string

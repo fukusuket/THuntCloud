@@ -1722,3 +1722,123 @@ def test_query_index_increments_across_multiple_queries(tmp_duckdb):
     assert len(mock_state["messages"]) == 2
     assert mock_state["messages"][0].get("query_index") == 0
     assert mock_state["messages"][1].get("query_index") == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-01 — analyst_notes session state default
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_has_analyst_notes_default():
+    """SESSION_STATE_DEFAULTS must include analyst_notes defaulting to empty dict.
+
+    Test #UI-01-S1: verifies _init_session_state() creates the key.
+    """
+    mock_state = {}
+    with patch("streamlit.session_state", mock_state):
+        from app import _init_session_state
+
+        _init_session_state()
+
+    assert "analyst_notes" in mock_state, "Expected 'analyst_notes' key in session state"
+    assert mock_state["analyst_notes"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-04 — bulk_progress session state default
+# ---------------------------------------------------------------------------
+
+
+def test_session_state_has_bulk_progress_default():
+    """SESSION_STATE_DEFAULTS must include bulk_progress defaulting to None.
+
+    Test #UI-04-1: verifies _init_session_state() creates the key.
+    """
+    mock_state = {}
+    with patch("streamlit.session_state", mock_state):
+        from app import _init_session_state
+
+        _init_session_state()
+
+    assert "bulk_progress" in mock_state, "Expected 'bulk_progress' key in session state"
+    assert mock_state["bulk_progress"] is None
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-02 — label/category passed through _handle_direct_sql
+# ---------------------------------------------------------------------------
+
+
+def test_handle_direct_sql_stores_label_and_category_in_query_history(tmp_duckdb):
+    """_handle_direct_sql() must store label and category in the ReportEntry.
+
+    Test #UI-02-H1: verifies label/category kwargs are threaded to query_history.
+    """
+    from tests.conftest import MockSessionState
+
+    sql = "SELECT event_name FROM cloudtrail_events LIMIT 5"
+
+    mock_state = MockSessionState(
+        api_key="",
+        model="gpt-5.4",
+        messages=[],
+        query_history=[],
+        last_sql="",
+        last_results=None,
+        last_summary="",
+        date_start=None,
+        date_end=None,
+    )
+
+    with (
+        patch("streamlit.session_state", mock_state),
+        patch("streamlit.spinner") as mock_spinner,
+        patch("streamlit.warning"),
+    ):
+        mock_spinner.return_value.__enter__ = MagicMock(return_value=None)
+        mock_spinner.return_value.__exit__ = MagicMock(return_value=False)
+
+        from handlers import _handle_direct_sql
+
+        _handle_direct_sql(
+            sql,
+            tmp_duckdb,
+            label="🔑 Root Account Activity",
+            category="🔑 Identity & Access",
+        )
+
+    assert mock_state["query_history"][0].label == "🔑 Root Account Activity"
+    assert mock_state["query_history"][0].category == "🔑 Identity & Access"
+
+
+def test_export_session_includes_analyst_note():
+    """_export_session() must include analyst_note in each query entry.
+
+    Test #UI-01-S2: notes must survive JSON export for re-import.
+    """
+    from app import _export_session
+    from report import ReportEntry
+
+    entry = ReportEntry(
+        sql="SELECT 1",
+        results=pd.DataFrame({"a": [1]}),
+        analyst_note="Important finding here.",
+    )
+    result = _export_session([entry], title="Test Hunt")
+    parsed = json.loads(result)
+    assert parsed["queries"][0]["analyst_note"] == "Important finding here."
+
+
+def test_export_session_analyst_note_defaults_to_empty():
+    """_export_session() must export empty string when no analyst_note is set.
+
+    Test #UI-01-S3: backward-compatible — existing sessions without notes work.
+    """
+    from app import _export_session
+    from report import ReportEntry
+
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    result = _export_session([entry], title="Test Hunt")
+    parsed = json.loads(result)
+    assert parsed["queries"][0]["analyst_note"] == ""
+

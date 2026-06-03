@@ -60,12 +60,15 @@ def _handle_direct_sql(
     db_path: str,
     description: str = "",
     chart_config: dict | None = None,
+    bulk_mode: bool = False,
+    label: str = "",
+    category: str = "",
 ) -> None:
     """Execute a pre-built SQL query directly without requiring an API key.
 
     Runs the SQL against the DuckDB database in read-only mode, stores results
-    in session state, and appends a message to the chat history.  An optional
-    AI summary is generated when an API key is present.
+    in session state, and appends a message to the chat history (unless
+    ``bulk_mode=True``, in which case no chat message is added).
 
     The DuckDB connection is opened inside a ``duckdb_connection`` context
     manager so it is always closed, even when an exception occurs.
@@ -74,10 +77,11 @@ def _handle_direct_sql(
         sql:          Validated DuckDB SQL from a built-in preset entry.
         db_path:      Path to the DuckDB database file.
         description:  Optional human-readable description of the preset query.
-                      Stored in the ReportEntry so it can be displayed in the
-                      Query Results History area.
         chart_config: Optional chart configuration dict (type, x, y, bucket).
-                      Stored in the ReportEntry for rendering in the UI.
+        bulk_mode:    When True, skip appending a chat message. Use for bulk
+                      execution so results appear in the dedicated bulk section.
+        label:        Display name for the query (e.g. "🔑 Root Account Activity").
+        category:     Category group (e.g. "🔑 Identity & Access").
     """
     # Apply date range filter (wraps sql in a date-scoped CTE when active).
     sql = apply_date_filter(sql, st.session_state.date_start, st.session_state.date_end)
@@ -103,18 +107,22 @@ def _handle_direct_sql(
     st.session_state.last_results = results if error_message is None else None
     st.session_state.last_summary = ""
 
-    # Build assistant message
-    if error_message:
-        assistant_content = error_message
-    else:
-        row_info = _format_row_info(results, st.session_state.row_limit)
-        assistant_content = f"**Direct SQL query executed.** **Results:** {row_info}"
+    # Append a chat message only in non-bulk (chat) mode.
+    if not bulk_mode:
+        if error_message:
+            assistant_content = error_message
+        else:
+            row_info = _format_row_info(results, st.session_state.row_limit)
+            assistant_content = (
+                f"**Direct SQL query executed.** **Results:** {row_info}"
+            )
 
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_content}
-    )
+        st.session_state.messages.append(
+            {"role": "assistant", "content": assistant_content}
+        )
 
     if error_message is None:
+        source = "bulk" if bulk_mode else "chat"
         st.session_state.query_history.append(
             ReportEntry(
                 sql=effective_sql,
@@ -122,12 +130,16 @@ def _handle_direct_sql(
                 analysis="",
                 description=description,
                 chart_config=chart_config,
+                label=label,
+                category=category,
+                source=source,
             )
         )
-        # Link this message to its query_history entry for interleaved rendering.
-        st.session_state.messages[-1]["query_index"] = (
-            len(st.session_state.query_history) - 1
-        )
+        if not bulk_mode:
+            # Link this message to its query_history entry for interleaved rendering.
+            st.session_state.messages[-1]["query_index"] = (
+                len(st.session_state.query_history) - 1
+            )
 
 
 def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:

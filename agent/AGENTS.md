@@ -55,12 +55,13 @@ agent/
     ├── test_llm.py
     ├── test_prompts.py
     ├── test_report.py
+    ├── test_handlers.py       # UI-03 bulk_mode / source field tests
     └── test_app.py
 ```
 
 ## Implemented Tests
 
-134 tests across 8 test files. Key coverage areas per module:
+291 tests across 9 test files. Key coverage areas per module:
 
 ### config.py (`test_config.py` — 10 tests)
 - `test_get_duckdb_path_returns_env_var` — Config loads `DUCKDB_PATH` from environment.
@@ -117,15 +118,31 @@ agent/
 - `test_analysis_system_prompt_is_nonempty` / `test_analysis_system_prompt_fact_based_rule`
 - `test_analysis_user_template_has_sql_placeholder` / `test_analysis_user_template_renders_correctly`
 
-### report.py (`test_report.py` — 6 tests)
+### report.py (`test_report.py` — 15 tests)
 - `test_generate_report_markdown` — Session produces Markdown report.
 - `test_report_includes_timestamp` — Report header contains generation timestamp.
 - `test_report_includes_all_queries` — All query/result/analysis triples included.
 - `test_report_sanitizes_sensitive_data` — AWS ARNs and account IDs redacted.
 - `test_report_entry_chart_config_defaults_to_none` — `chart_config` field defaults to `None`.
 - `test_report_entry_chart_config_stores_dict` — `chart_config` stores a dict correctly.
+- **UI-01:** `test_report_entry_has_analyst_note_field` — `analyst_note` defaults to `""`.
+- **UI-01:** `test_report_entry_analyst_note_stores_value` — `analyst_note` persists value.
+- **UI-01:** `test_generate_report_includes_analyst_note_section` — `### Analyst Note` in report.
+- **UI-01:** `test_generate_report_omits_analyst_note_section_when_empty` — Omitted when empty.
+- **UI-01:** `test_report_sanitizes_analyst_note` — Sensitive patterns redacted in notes.
+- **UI-02:** `test_report_entry_has_label_and_category_fields` — `label`/`category` default to `""`.
+- **UI-02:** `test_report_entry_label_and_category_store_values` — Fields persist provided values.
+- **UI-02:** `test_generate_report_includes_label_in_heading` — Label in query section heading.
+- **UI-02:** `test_generate_report_includes_category_when_set` — Category in report section.
 
-### app.py (`test_app.py` — 50+ tests)
+### handlers.py (`test_handlers.py` — 5 tests) — NEW
+- **UI-03:** `test_handle_direct_sql_bulk_mode_does_not_append_message` — `bulk_mode=True` skips chat.
+- **UI-03:** `test_handle_direct_sql_bulk_mode_appends_to_query_history` — Results stored.
+- **UI-03:** `test_handle_direct_sql_bulk_mode_sets_source_bulk` — `source == "bulk"` set.
+- **UI-03:** `test_handle_direct_sql_default_mode_sets_source_chat` — `source == "chat"` default.
+- **UI-03:** `test_handle_direct_sql_bulk_mode_stores_label_and_category` — Metadata stored.
+
+### app.py (`test_app.py` — 60+ tests)
 - Session state initialisation and idempotency
 - Model options, built-in hunt YAML validation
 - Direct SQL execution (no API key path, date filter application)
@@ -137,6 +154,10 @@ agent/
 - Edit/rerun SQL handler
 - `ReportEntry.description` field storage
 - Query index in messages
+- **UI-01:** `analyst_notes` session state default (`{}`)
+- **UI-01:** `_export_session()` includes `analyst_note` per query
+- **UI-02:** `_handle_direct_sql()` stores label/category in ReportEntry
+- **UI-04:** `bulk_progress` session state default (`None`)
 
 ## OpenAI API Mocking Strategy
 

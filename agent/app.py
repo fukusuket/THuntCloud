@@ -62,6 +62,8 @@ SESSION_STATE_DEFAULTS: dict = {
     "row_limit": DEFAULT_ROW_LIMIT,  # maximum rows returned per query
     "conversation_context": [],  # recent (user_query, sql, summary) turns for LLM context
     "db_variant": DB_VARIANT_FULL,  # active DB variant; "Lite" only available when DUCKDB_PATH_LITE is set
+    "analyst_notes": {},  # UI-01: dict[int, str] — query_index → analyst note text
+    "bulk_progress": None,  # UI-04: None | {"current": int, "total": int, "label": str}
 }
 
 
@@ -247,7 +249,7 @@ def _export_session(
     """Export the current session as a JSON string.
 
     Serialises all ReportEntry objects to a JSON payload for download
-    or later re-import (AGT-08).
+    or later re-import (AGT-08).  Includes analyst_note for each query.
 
     Args:
         entries: List of ReportEntry objects from the current session.
@@ -260,6 +262,7 @@ def _export_session(
         {
             "sql": entry.sql,
             "row_count": len(entry.results) if entry.results is not None else 0,
+            "analyst_note": entry.analyst_note,
         }
         for entry in entries
     ]
@@ -357,21 +360,6 @@ def render_sidebar() -> None:
             end_s = str(new_end) if new_end else "—"
             st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
 
-        # Result limit (per-query row cap)
-        st.subheader("⚙️ Result Limit")
-        new_row_limit = st.number_input(
-            "Max rows",
-            min_value=1,
-            max_value=100_000,
-            value=st.session_state.row_limit,
-            step=100,
-            help=(
-                "Maximum number of rows returned per query. "
-                "Overrides any LIMIT clause already present in the SQL."
-            ),
-        )
-        if int(new_row_limit) != st.session_state.row_limit:
-            st.session_state.row_limit = int(new_row_limit)
 
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
@@ -412,6 +400,7 @@ def render_sidebar() -> None:
                         "description": p.get("description", ""),
                         "chart_config": p.get("chart"),
                         "label": p["label"],
+                        "category": p.get("category", ""),
                     }
                     for p in sql_queries
                 ]
@@ -443,6 +432,10 @@ def render_sidebar() -> None:
                         st.session_state["_pending_direct_sql"] = matched["sql"].strip()
                         st.session_state["_pending_preset_description"] = desc
                         st.session_state["_pending_chart_config"] = matched.get("chart")
+                        st.session_state["_pending_preset_label"] = matched["label"]
+                        st.session_state["_pending_preset_category"] = matched.get(
+                            "category", ""
+                        )
                         st.rerun()
                 else:
                     st.button(
@@ -452,31 +445,10 @@ def render_sidebar() -> None:
                         help="No pre-built SQL for this preset",
                     )
 
-        st.divider()
-
-        # AGT-09: API key input
-        st.subheader("🔑 API Configuration")
-        api_key_input = st.text_input(
-            "OpenAI API Key",
-            value=st.session_state.api_key,
-            type="password",
-            help="Your OpenAI API key. Never stored outside this browser session.",
-        )
-        if api_key_input != st.session_state.api_key:
-            st.session_state.api_key = api_key_input
-
-        # Model selection
-        selected_model = st.selectbox(
-            "Model",
-            options=MODEL_OPTIONS,
-            index=(
-                MODEL_OPTIONS.index(st.session_state.model)
-                if st.session_state.model in MODEL_OPTIONS
-                else 0
-            ),
-        )
-        if selected_model != st.session_state.model:
-            st.session_state.model = selected_model
+        # UI-04: progress bar slot — positioned right below preset queries.
+        # Created here (inside the sidebar) so it always appears at this fixed
+        # position. render_chat() retrieves and updates it during bulk execution.
+        st.session_state["_bulk_progress_slot"] = st.empty()
 
         st.divider()
 
@@ -526,14 +498,155 @@ def render_sidebar() -> None:
                 st.session_state.last_results = None
                 st.session_state.last_summary = ""
                 st.session_state.conversation_context = []
+                st.session_state.analyst_notes = {}
                 st.rerun()
+
+        st.divider()
+
+        # Result limit (per-query row cap)
+        st.subheader("⚙️ Result Limit")
+        new_row_limit = st.number_input(
+            "Max rows",
+            min_value=1,
+            max_value=100_000,
+            value=st.session_state.row_limit,
+            step=100,
+            help=(
+                "Maximum number of rows returned per query. "
+                "Overrides any LIMIT clause already present in the SQL."
+            ),
+        )
+        if int(new_row_limit) != st.session_state.row_limit:
+            st.session_state.row_limit = int(new_row_limit)
+
+        st.divider()
+
+        # AGT-09: API key input (placed last — rarely changed after initial setup)
+        st.subheader("🔑 API Configuration")
+        api_key_input = st.text_input(
+            "OpenAI API Key",
+            value=st.session_state.api_key,
+            type="password",
+            help="Your OpenAI API key. Never stored outside this browser session.",
+        )
+        if api_key_input != st.session_state.api_key:
+            st.session_state.api_key = api_key_input
+
+        # Model selection
+        selected_model = st.selectbox(
+            "Model",
+            options=MODEL_OPTIONS,
+            index=(
+                MODEL_OPTIONS.index(st.session_state.model)
+                if st.session_state.model in MODEL_OPTIONS
+                else 0
+            ),
+        )
+        if selected_model != st.session_state.model:
+            st.session_state.model = selected_model
+
+
+def _build_expander_title(entry: ReportEntry, index: int) -> str:
+    """Build the expander title for a query result card.
+
+    Uses label and category when available; falls back to "Query #N".
+
+    Args:
+        entry: The ReportEntry whose metadata is used.
+        index: 1-based display number.
+
+    Returns:
+        A string suitable for use as an st.expander label.
+    """
+    if entry.label:
+        if entry.category:
+            return f"{entry.category}  ›  {entry.label}"
+        return entry.label
+    return f"Query #{index}"
+
+
+def _render_result_card(
+    query_idx: int,
+    entry: ReportEntry,
+    is_last: bool = False,
+    expanded: bool = True,
+) -> None:
+    """Render a single query result as an expander card.
+
+    Displays SQL, results table, chart, AI analysis, and analyst note.
+    Shared between chat-interleaved and bulk-results views.
+
+    Args:
+        query_idx: 0-based index into query_history.
+        entry:     The ReportEntry to render.
+        is_last:   When True, shows the "Ask AI" button for the latest entry.
+        expanded:  Whether the expander starts open.
+    """
+    title = _build_expander_title(entry, query_idx + 1)
+    with st.expander(title, expanded=expanded):
+        # Category + label as large heading inside the card
+        if entry.label:
+            if entry.category:
+                st.markdown(f"### {entry.category}  ›  {entry.label}")
+            else:
+                st.markdown(f"### {entry.label}")
+        if entry.description:
+            st.caption(f"ℹ️ {entry.description}")
+        st.code(entry.sql, language="sql")
+
+        if entry.results is not None and not entry.results.empty:
+            if len(entry.results) >= st.session_state.row_limit:
+                st.warning(
+                    f"⚠️ Results are truncated to **{st.session_state.row_limit:,} rows**. "
+                    "Add a `LIMIT` clause or narrow your query for more specific results."
+                )
+            st.dataframe(entry.results, use_container_width=True)
+            render_chart(entry.results, entry.chart_config)
+        else:
+            st.info("No results returned.")
+
+        if entry.analysis:
+            st.markdown("#### 🤖 AI Analysis")
+            st.info(entry.analysis)
+        elif is_last:
+            st.divider()
+            has_api_key = bool(st.session_state.api_key)
+            if st.button(
+                "🤖 Ask AI — Analyze These Results",
+                key="analyze_last_btn",
+                use_container_width=True,
+                disabled=not has_api_key,
+                help=(
+                    "Generate an AI analysis of the query results above."
+                    if has_api_key
+                    else "Enter your OpenAI API key in the sidebar to enable AI analysis."
+                ),
+            ):
+                st.session_state["_pending_ai_analysis"] = True
+                st.rerun()
+
+        # UI-01: Analyst note text area
+        st.divider()
+        note_key = f"analyst_note_{query_idx}"
+        current_note = st.session_state.analyst_notes.get(query_idx, entry.analyst_note)
+        new_note = st.text_area(
+            "📝 Analyst Note (Markdown)",
+            value=current_note,
+            key=note_key,
+            height=80,
+            placeholder="Write your investigation notes here…",
+            label_visibility="visible",
+        )
+        if new_note != current_note:
+            st.session_state.analyst_notes[query_idx] = new_note
+            entry.analyst_note = new_note
 
 
 def render_chat() -> None:
     """Render the main chat area.
 
     Displays chat history (AGT-01), SQL editor (AGT-03), results table (AGT-04),
-    and AI analysis (AGT-05).
+    AI analysis (AGT-05), bulk results section (UI-03), and progress bar (UI-04).
     """
     st.header("🔍 THuntCloud — AI Threat Hunting Agent")
     st.caption("Ask natural language questions about your CloudTrail logs.")
@@ -547,30 +660,44 @@ def render_chat() -> None:
     pending_direct_sql = st.session_state.pop("_pending_direct_sql", None)
     pending_preset_description = st.session_state.pop("_pending_preset_description", "")
     pending_chart_config = st.session_state.pop("_pending_chart_config", None)
+    pending_preset_label = st.session_state.pop("_pending_preset_label", "")
+    pending_preset_category = st.session_state.pop("_pending_preset_category", "")
     if pending_direct_sql:
         _handle_direct_sql(
             pending_direct_sql,
             db_path,
             description=pending_preset_description,
             chart_config=pending_chart_config,
+            label=pending_preset_label,
+            category=pending_preset_category,
         )
         st.rerun()
 
-    # Handle bulk execution of all SQL queries in a selected category
+    # Handle bulk execution of all SQL queries in a selected category (UI-03/04)
     pending_bulk_queries = st.session_state.pop("_pending_bulk_queries", None)
     if pending_bulk_queries:
         total = len(pending_bulk_queries)
-        progress_bar = st.progress(0, text=f"Running 0 / {total} queries…")
+        # UI-04: use the slot created by render_sidebar() just below preset queries.
+        # Falls back to a new sidebar placeholder if the slot is missing (e.g. tests).
+        progress_placeholder = st.session_state.get(
+            "_bulk_progress_slot"
+        ) or st.sidebar.empty()
         for i, q in enumerate(pending_bulk_queries, 1):
-            progress_bar.progress(
-                i / total, text=f"Running {i} / {total}: {q['label']}"
-            )
+            with progress_placeholder.container():
+                st.progress(
+                    i / total,
+                    text=f"🤖 Running {i}/{total}: {q['label']}",
+                )
             _handle_direct_sql(
                 q["sql"],
                 db_path,
                 description=q["description"],
                 chart_config=q["chart_config"],
+                bulk_mode=True,
+                label=q["label"],
+                category=q.get("category", ""),
             )
+        progress_placeholder.empty()
         st.rerun()
 
     # Handle AI analysis request triggered from the results area
@@ -580,10 +707,12 @@ def render_chat() -> None:
         st.rerun()
 
     # ---- Chat history interleaved with query results (AGT-01 / AGT-04) ----
-    # Each assistant message that has a "query_index" key renders its associated
-    # query result immediately after the message bubble, so every exchange of
-    # (user question → assistant answer → results) appears as one coherent block.
     query_history_len = len(st.session_state.query_history)
+    chat_indices = [
+        i for i, e in enumerate(st.session_state.query_history) if e.source == "chat"
+    ]
+    last_chat_idx = max(chat_indices, default=-1)
+
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -591,44 +720,21 @@ def render_chat() -> None:
         query_idx = msg.get("query_index")
         if query_idx is not None and query_idx < query_history_len:
             entry = st.session_state.query_history[query_idx]
-            is_last = query_idx == query_history_len - 1
+            if entry.source == "chat":
+                is_last = query_idx == last_chat_idx
+                _render_result_card(query_idx, entry, is_last=is_last)
 
-            with st.expander(f"Query #{query_idx + 1}", expanded=True):
-                if entry.description:
-                    st.markdown(f"ℹ️ **{entry.description}**")
-                st.code(entry.sql, language="sql")
-
-                if entry.results is not None and not entry.results.empty:
-                    if len(entry.results) >= st.session_state.row_limit:
-                        st.warning(
-                            f"⚠️ Results are truncated to **{st.session_state.row_limit:,} rows**. "
-                            "Add a `LIMIT` clause or narrow your query for more specific results."
-                        )
-                    st.dataframe(entry.results, use_container_width=True)
-                    render_chart(entry.results, entry.chart_config)
-                else:
-                    st.info("No results returned.")
-
-                if entry.analysis:
-                    st.markdown("#### 🤖 AI Analysis")
-                    st.info(entry.analysis)
-                elif is_last:
-                    # Show "Ask AI" button only for the latest entry that lacks analysis
-                    st.divider()
-                    has_api_key = bool(st.session_state.api_key)
-                    if st.button(
-                        "🤖 Ask AI — Analyze These Results",
-                        key="analyze_last_btn",
-                        use_container_width=True,
-                        disabled=not has_api_key,
-                        help=(
-                            "Generate an AI analysis of the query results above."
-                            if has_api_key
-                            else "Enter your OpenAI API key in the sidebar to enable AI analysis."
-                        ),
-                    ):
-                        st.session_state["_pending_ai_analysis"] = True
-                        st.rerun()
+    # ---- Bulk results section (UI-03) ----
+    bulk_entries = [
+        (i, e)
+        for i, e in enumerate(st.session_state.query_history)
+        if e.source == "bulk"
+    ]
+    if bulk_entries:
+        st.divider()
+        st.markdown("## 🤖 Bulk Hunt Results")
+        for idx, entry in bulk_entries:
+            _render_result_card(idx, entry, is_last=False)
 
     # ---- SQL editor for the last query (AGT-03) ----
     if st.session_state.last_sql:
