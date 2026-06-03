@@ -360,7 +360,6 @@ def render_sidebar() -> None:
             end_s = str(new_end) if new_end else "—"
             st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
 
-
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
         prompts = _load_builtin_prompts()
@@ -670,6 +669,7 @@ def render_chat() -> None:
             chart_config=pending_chart_config,
             label=pending_preset_label,
             category=pending_preset_category,
+            bulk_mode=True,  # no chat bubble — show in Query Results section
         )
         st.rerun()
 
@@ -679,9 +679,9 @@ def render_chat() -> None:
         total = len(pending_bulk_queries)
         # UI-04: use the slot created by render_sidebar() just below preset queries.
         # Falls back to a new sidebar placeholder if the slot is missing (e.g. tests).
-        progress_placeholder = st.session_state.get(
-            "_bulk_progress_slot"
-        ) or st.sidebar.empty()
+        progress_placeholder = (
+            st.session_state.get("_bulk_progress_slot") or st.sidebar.empty()
+        )
         for i, q in enumerate(pending_bulk_queries, 1):
             with progress_placeholder.container():
                 st.progress(
@@ -725,16 +725,18 @@ def render_chat() -> None:
                 _render_result_card(query_idx, entry, is_last=is_last)
 
     # ---- Bulk results section (UI-03) ----
-    bulk_entries = [
+    # ---- Direct SQL / Bulk results section (UI-03) ----
+    # All non-chat entries (source != "chat") are shown here, collapsed by default.
+    nonchat_entries = [
         (i, e)
         for i, e in enumerate(st.session_state.query_history)
-        if e.source == "bulk"
+        if e.source != "chat"
     ]
-    if bulk_entries:
+    if nonchat_entries:
         st.divider()
-        st.markdown("## 🤖 Bulk Hunt Results")
-        for idx, entry in bulk_entries:
-            _render_result_card(idx, entry, is_last=False)
+        st.markdown("## 🤖 Query Results")
+        for idx, entry in nonchat_entries:
+            _render_result_card(idx, entry, is_last=False, expanded=False)
 
     # ---- SQL editor for the last query (AGT-03) ----
     if st.session_state.last_sql:

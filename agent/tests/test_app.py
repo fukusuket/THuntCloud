@@ -1740,7 +1740,9 @@ def test_session_state_has_analyst_notes_default():
 
         _init_session_state()
 
-    assert "analyst_notes" in mock_state, "Expected 'analyst_notes' key in session state"
+    assert (
+        "analyst_notes" in mock_state
+    ), "Expected 'analyst_notes' key in session state"
     assert mock_state["analyst_notes"] == {}
 
 
@@ -1760,7 +1762,9 @@ def test_session_state_has_bulk_progress_default():
 
         _init_session_state()
 
-    assert "bulk_progress" in mock_state, "Expected 'bulk_progress' key in session state"
+    assert (
+        "bulk_progress" in mock_state
+    ), "Expected 'bulk_progress' key in session state"
     assert mock_state["bulk_progress"] is None
 
 
@@ -1841,4 +1845,3 @@ def test_export_session_analyst_note_defaults_to_empty():
     result = _export_session([entry], title="Test Hunt")
     parsed = json.loads(result)
     assert parsed["queries"][0]["analyst_note"] == ""
-

@@ -101,7 +101,9 @@ def test_report_entry_has_analyst_note_field():
     Test #UI-01-1: backward-compatible — existing callers are unaffected.
     """
     entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
-    assert hasattr(entry, "analyst_note"), "ReportEntry must have an 'analyst_note' field"
+    assert hasattr(
+        entry, "analyst_note"
+    ), "ReportEntry must have an 'analyst_note' field"
     assert entry.analyst_note == ""
 
 
