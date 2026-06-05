@@ -35,7 +35,7 @@ params:
   groupby:
     - expressionType: SQL
       sqlExpression: >-
-        CASE EXTRACT(DOW FROM event_time)
+        CASE EXTRACT(DOW FROM (event_time AT TIME ZONE 'Asia/Tokyo'))
           WHEN 0 THEN '0_Sun'
           WHEN 1 THEN '1_Mon'
           WHEN 2 THEN '2_Tue'
@@ -68,7 +68,7 @@ cache_timeout: null
 
 # SQL used to power this chart:
 # SELECT
-#     CASE EXTRACT(DOW FROM event_time)
+#     CASE EXTRACT(DOW FROM (event_time AT TIME ZONE 'Asia/Tokyo'))
 #       WHEN 0 THEN '0_Sun' WHEN 1 THEN '1_Mon' WHEN 2 THEN '2_Tue'
 #       WHEN 3 THEN '3_Wed' WHEN 4 THEN '4_Thu' WHEN 5 THEN '5_Fri'
 #       WHEN 6 THEN '6_Sat'

@@ -21,11 +21,6 @@ params:
   time_range: "No filter"
   metrics:
     - expressionType: SQL
-      sqlExpression: "COUNT(*)"
-      label: total_logins
-      hasCustomLabel: true
-      optionName: metric_total_mfa_logins
-    - expressionType: SQL
       sqlExpression: >-
         COUNT(*) FILTER (
           WHERE json_extract_string(raw_event, '$.additionalEventData.MFAUsed') = 'No'
@@ -58,7 +53,6 @@ cache_timeout: null
 # SQL used to power this chart:
 # SELECT
 #     DATE_TRUNC('day', event_time)  AS day_bucket,
-#     COUNT(*)                        AS total_logins,
 #     COUNT(*) FILTER (
 #         WHERE json_extract_string(raw_event, '$.additionalEventData.MFAUsed') = 'No'
 #     )                               AS mfa_less_logins,

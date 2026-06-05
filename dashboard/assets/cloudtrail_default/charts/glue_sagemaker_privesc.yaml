@@ -86,13 +86,18 @@ cache_timeout: null
 #     event_source = 'glue.amazonaws.com'
 #     AND event_name IN (
 #         'CreateDevEndpoint', 'UpdateDevEndpoint', 'DeleteDevEndpoint',
-#         'GetDevEndpoint', 'GetConnections', 'GetConnection', 'CreateConnection'
+#         'GetDevEndpoint',    'GetDevEndpoints',
+#         'GetConnections',    'GetConnection',
+#         'CreateConnection',  'DeleteConnection'
 #     )
 # ) OR (
 #     event_source = 'sagemaker.amazonaws.com'
 #     AND event_name IN (
-#         'CreateNotebookInstance', 'CreatePresignedNotebookInstanceUrl',
-#         'UpdateNotebookInstance', 'StartNotebookInstance', 'CreateTrainingJob'
+#         'CreateNotebookInstance',              'UpdateNotebookInstance',
+#         'DeleteNotebookInstance',              'StartNotebookInstance',
+#         'StopNotebookInstance',
+#         'CreatePresignedNotebookInstanceUrl',
+#         'CreateTrainingJob',                   'CreateProcessingJob'
 #     )
 # )
 # ORDER BY event_time DESC

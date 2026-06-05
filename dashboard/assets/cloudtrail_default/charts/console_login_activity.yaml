@@ -48,7 +48,7 @@ params:
   adhoc_filters:
     - clause: WHERE
       expressionType: SQL
-      sqlExpression: "event_type = 'AwsConsoleSignIn'"
+      sqlExpression: "event_source = 'signin.amazonaws.com' AND event_name = 'ConsoleLogin'"
       filterOptionName: filter_event_type
   row_limit: 50
   order_desc: true

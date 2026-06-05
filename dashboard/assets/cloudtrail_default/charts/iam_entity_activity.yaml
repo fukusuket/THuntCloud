@@ -56,7 +56,7 @@ cache_timeout: null
 
 # SQL used to power this chart:
 # SELECT
-#     COALESCE(user_identity_arn, 'Unknown')                        AS iam_entity,
+#     user_identity_arn,
 #     user_identity_type,
 #     COUNT(*)                                                       AS total_events,
 #     COUNT(CASE WHEN read_only = false THEN 1 END)                  AS write_events,
@@ -67,7 +67,7 @@ cache_timeout: null
 #     )                                                              AS write_ratio_pct,
 #     MAX(event_time)                                                AS last_seen
 # FROM cloudtrail_events
-# GROUP BY 1, 2
+# GROUP BY user_identity_arn, user_identity_type
 # ORDER BY total_events DESC
 # LIMIT 50
 

@@ -25,6 +25,11 @@ params:
       label: throttle_count
       hasCustomLabel: true
       optionName: metric_throttle_count
+    - expressionType: SQL
+      sqlExpression: "COUNT(DISTINCT user_identity_arn)"
+      label: affected_principals
+      hasCustomLabel: true
+      optionName: metric_affected_principals
   groupby:
     - event_source
   adhoc_filters:
