@@ -797,6 +797,13 @@ def render_chat() -> None:
     AI analysis (AGT-05), bulk results section (UI-03), and progress bar (UI-04).
     """
 
+    # Show info banner when no API key is configured (BANNER-1)
+    if not st.session_state.api_key:
+        st.info(
+            "💡 No OpenAI API key configured. "
+            "Use **Direct SQL** preset queries from the sidebar to run threat hunts without an API key.",
+        )
+
     # ---- Filter bar (always visible at the top) ----
     result_filter, keyword = _render_query_filter()
 
