@@ -41,13 +41,6 @@ _BUILTIN_PROMPTS_PATH = Path(__file__).parent / "builtin_hunts.yaml"
 # Available OpenAI models for the sidebar model selector.
 MODEL_OPTIONS: list[str] = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"]
 
-# Info banner shown in the chat area when no API key is configured.
-_NO_API_KEY_BANNER = (
-    "💡 **No API key needed for preset queries.** "
-    "Select a category in the sidebar and click **⚡ Direct SQL** to run "
-    "pre-built threat hunting queries instantly."
-)
-
 # Session state keys and their default values.
 SESSION_STATE_DEFAULTS: dict = {
     "messages": [],  # chat history: list of {role, content}
@@ -895,9 +888,6 @@ def render_chat() -> None:
                 _handle_edit_rerun_sql(edited_sql, db_path)
                 st.rerun()
 
-    # ---- No API key guidance banner (Proposal 3) ----
-    if not st.session_state.api_key:
-        st.info(_NO_API_KEY_BANNER)
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset
