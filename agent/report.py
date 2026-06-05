@@ -67,11 +67,84 @@ class ReportEntry:
 # ---------------------------------------------------------------------------
 
 
+def _result_count(entry: ReportEntry) -> int:
+    """Return the number of rows in the entry's result DataFrame (0 if empty).
+
+    Args:
+        entry: The ReportEntry to inspect.
+
+    Returns:
+        Row count as an integer.
+    """
+    if entry.results is not None and not entry.results.empty:
+        return len(entry.results)
+    return 0
+
+
+def _build_heading(index: int, entry: ReportEntry) -> str:
+    """Build the ``##`` level heading text including result count badge.
+
+    Args:
+        index: 1-based query number.
+        entry: The ReportEntry whose label/category/row count are used.
+
+    Returns:
+        Heading string without the leading ``## `` prefix.
+    """
+    count = _result_count(entry)
+    count_badge = f"({count:,} rows)"
+
+    if entry.label:
+        if entry.category:
+            return f"Query {index} — {entry.category}  ›  {entry.label}  {count_badge}"
+        return f"Query {index} — {entry.label}  {count_badge}"
+    return f"Query {index}  {count_badge}"
+
+
+def _heading_anchor(heading_text: str) -> str:
+    """Convert a heading text to a GitHub-flavored Markdown anchor fragment.
+
+    Lowercases the text, replaces spaces with hyphens, and strips characters
+    that are not alphanumeric, hyphens, or underscores.
+
+    Args:
+        heading_text: Plain heading text (without ``##`` prefix).
+
+    Returns:
+        Anchor fragment string (without leading ``#``).
+    """
+    anchor = heading_text.lower()
+    anchor = re.sub(r"[^\w\s-]", "", anchor)
+    anchor = re.sub(r"\s+", "-", anchor.strip())
+    return anchor
+
+
+def _render_toc(entries: list[ReportEntry]) -> str:
+    """Render a Markdown table of contents for all report entries.
+
+    Each line is a numbered list item linking to the corresponding section
+    anchor, including the result count.
+
+    Args:
+        entries: Ordered list of ReportEntry objects.
+
+    Returns:
+        A Markdown string containing the TOC block.
+    """
+    lines = ["## Table of Contents", ""]
+    for i, entry in enumerate(entries, 1):
+        heading_text = _build_heading(i, entry)
+        anchor = _heading_anchor(heading_text)
+        lines.append(f"{i}. [{heading_text}](#{anchor})")
+    return "\n".join(lines)
+
+
 def _render_entry(index: int, entry: ReportEntry) -> str:
     """Render one ReportEntry as a Markdown section.
 
     Outputs the SQL query, results table, and a fact-based summary.
     When label and/or category are set they appear prominently in the heading.
+    Result count is appended to the heading.
     When analyst_note is non-empty it is included under its own heading.
     Sensitive credential-like strings are automatically redacted throughout.
 
@@ -92,14 +165,7 @@ def _render_entry(index: int, entry: ReportEntry) -> str:
     results_block = _sanitize(results_md)
     summary_block = _sanitize(entry.analysis) if entry.analysis else "(no summary)"
 
-    # Build heading: include label and category when available
-    if entry.label:
-        if entry.category:
-            heading = f"## Query {index} — {entry.category}  ›  {entry.label}"
-        else:
-            heading = f"## Query {index} — {entry.label}"
-    else:
-        heading = f"## Query {index}"
+    heading = f"## {_build_heading(index, entry)}"
 
     # Analyst note section (only when non-empty)
     analyst_note_section = ""
@@ -127,8 +193,9 @@ def generate_report(
     """Generate a Markdown threat hunting report from a list of ReportEntries.
 
     Each entry is rendered as a numbered section containing the SQL query,
-    a results table, and a fact-based summary. The summary lists only observed
-    facts (counts, top values) without speculative threat assessments.
+    a results table, and a fact-based summary. A table of contents with
+    result counts is inserted after the header. The summary lists only
+    observed facts (counts, top values) without speculative threat assessments.
     Sensitive credential-like strings are automatically redacted throughout.
 
     Args:
@@ -141,6 +208,7 @@ def generate_report(
     timestamp = datetime.now(timezone.utc).isoformat()
 
     header = f"# {title}\n\n**Generated:** {timestamp}\n\n---\n"
+    toc = _render_toc(entries)
     sections = [_render_entry(i + 1, entry) for i, entry in enumerate(entries)]
 
-    return "\n\n".join([header] + sections) + "\n"
+    return "\n\n".join([header, toc, "---"] + sections) + "\n"
