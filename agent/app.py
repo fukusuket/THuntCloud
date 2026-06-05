@@ -644,6 +644,7 @@ def _render_query_filter() -> tuple[str, str]:
     Returns:
         Tuple of (result_filter, keyword).
     """
+    st.subheader("🔍 Query Results Filter", divider=False)
     c1, c2, c3 = st.columns([3, 4, 1], vertical_alignment="bottom")
     with c1:
         result_filter = st.radio(
@@ -773,8 +774,6 @@ def render_chat() -> None:
     AI analysis (AGT-05), bulk results section (UI-03), and progress bar (UI-04).
     """
 
-    # ---- Page title ----
-    st.title("🔍 THuntCloud")
 
     # ---- Filter bar (always visible at the top) ----
     result_filter, keyword = _render_query_filter()
