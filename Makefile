@@ -13,6 +13,12 @@ GEOIP_ASN  ?= /data/geoip/GeoLite2-ASN.mmdb
 # ── サービス管理 ──────────────────────────────────────────
 up:              ## Start all services
 	$(DC) up -d --build
+	@echo ""
+	@echo "  🚀 \033[1mTHuntCloud is up and running!\033[0m"
+	@echo ""
+	@echo "  🔍  \033[36mhttp://localhost:8501\033[0m  — Built-in queries and AI Chat"
+	@echo "  📊  \033[36mhttp://localhost:8088\033[0m  — Dashboard  \033[2m(admin / admin)\033[0m"
+	@echo ""
 
 down:            ## Stop all services
 	$(DC) down
