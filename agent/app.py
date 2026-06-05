@@ -397,23 +397,21 @@ def render_sidebar() -> None:
                 categories.append(cat)
                 seen_cats.add(cat)
 
-        selected_category = st.selectbox(
-            "Category",
-            options=["— All categories —"] + categories,
-            key="_preset_category",
-        )
+        # Read current category from session state so bulk-run buttons can be
+        # rendered ABOVE the selectbox while still reflecting the current selection.
+        current_category = st.session_state.get("_preset_category", "— All categories —")
 
-        # Filter prompts by selected category
-        if selected_category == "— All categories —":
+        # Filter prompts by current category
+        if current_category == "— All categories —":
             filtered = prompts
         else:
-            filtered = [p for p in prompts if p.get("category") == selected_category]
+            filtered = [p for p in prompts if p.get("category") == current_category]
 
-        # Bulk-run buttons
+        # Bulk-run buttons — placed ABOVE the Category selectbox
         sql_queries = [p for p in filtered if p.get("sql", "").strip()]
         all_sql_queries = _build_all_hunt_queries(prompts)
 
-        if selected_category == "— All categories —":
+        if current_category == "— All categories —":
             # "Run All Hunts" — runs every SQL query across all categories
             if all_sql_queries and st.button(
                 f"⚡ Run All Hunts ({len(all_sql_queries)} queries)",
@@ -440,6 +438,21 @@ def render_sidebar() -> None:
                     for p in sql_queries
                 ]
                 st.rerun()
+
+        # Category selectbox — rendered after bulk-run buttons
+        selected_category = st.selectbox(
+            "Category",
+            options=["— All categories —"] + categories,
+            key="_preset_category",
+        )
+
+        # Re-filter when the selectbox value differs from what was used above
+        # (i.e. the user just changed the category on this run).
+        if selected_category != current_category:
+            if selected_category == "— All categories —":
+                filtered = prompts
+            else:
+                filtered = [p for p in prompts if p.get("category") == selected_category]
 
         preset_labels = ["— Select a preset —"] + [p["label"] for p in filtered]
         selected_label = st.selectbox(
