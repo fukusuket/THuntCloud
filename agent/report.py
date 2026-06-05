@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import pandas as pd
-import markdown as md_lib
 
 # ---------------------------------------------------------------------------
 # Sensitive data redaction patterns
@@ -215,85 +214,285 @@ def generate_report(
     return "\n\n".join([header, toc, "---"] + sections) + "\n"
 
 
+def _render_toc_html(entries: list[ReportEntry]) -> str:
+    """Render the table of contents as an HTML ``<nav>`` element.
+
+    Args:
+        entries: Ordered list of ReportEntry objects.
+
+    Returns:
+        HTML string for the sticky left-sidebar navigation.
+    """
+    items = []
+    for i, entry in enumerate(entries, 1):
+        heading_text = _build_heading(i, entry)
+        anchor = _heading_anchor(heading_text)
+        # Use a shorter label for the sidebar (label only, no count badge)
+        count = _result_count(entry)
+        badge_cls = "badge-ok" if count > 0 else "badge-empty"
+        short_label = entry.label if entry.label else f"Query {i}"
+        category_span = (
+            f'<span class="toc-cat">{entry.category}</span>' if entry.category else ""
+        )
+        items.append(
+            f'<li>'
+            f'<a href="#{anchor}">'
+            f'<span class="toc-num">{i}.</span> '
+            f'{category_span}'
+            f'<span class="toc-label">{short_label}</span>'
+            f'<span class="badge {badge_cls}">{count:,}</span>'
+            f'</a>'
+            f'</li>'
+        )
+    items_html = "\n".join(items)
+    return f"""<nav id="toc">
+  <div class="toc-title">📋 Contents</div>
+  <ol>{items_html}</ol>
+</nav>"""
+
+
+def _render_entry_html(index: int, entry: ReportEntry) -> str:
+    """Render one ReportEntry as an HTML ``<section>`` block.
+
+    Args:
+        index: 1-based query number.
+        entry: The ReportEntry to render.
+
+    Returns:
+        HTML string for the section.
+    """
+    heading_text = _build_heading(index, entry)
+    anchor = _heading_anchor(heading_text)
+
+    # Results table
+    if entry.results is not None and not entry.results.empty:
+        results_html = entry.results.head(1000).to_html(index=False, border=0)
+        results_html = f'<div class="table-wrap">{results_html}</div>'
+    else:
+        results_html = '<p class="no-results">No results returned.</p>'
+
+    sql_block = _sanitize(entry.sql)
+    results_html_sanitized = _sanitize(results_html)
+    summary_block = (
+        f"<p>{_sanitize(entry.analysis)}</p>"
+        if entry.analysis
+        else '<p class="no-results">(no summary)</p>'
+    )
+
+    analyst_section = ""
+    if entry.analyst_note:
+        note = _sanitize(entry.analyst_note)
+        analyst_section = f'<h3>📝 Analyst Note</h3><div class="analyst-note">{note}</div>'
+
+    category_badge = (
+        f'<span class="cat-badge">{entry.category}</span>' if entry.category else ""
+    )
+
+    return f"""<section id="{anchor}">
+  <h2>{category_badge}{heading_text}</h2>
+  <h3>SQL</h3>
+  <pre><code class="language-sql">{sql_block}</code></pre>
+  <h3>Results</h3>
+  {results_html_sanitized}
+  <h3>Summary</h3>
+  {summary_block}
+  {analyst_section}
+</section>
+<hr>"""
+
+
 def generate_html_report(
     entries: list[ReportEntry],
     title: str = "Threat Hunting Report",
 ) -> str:
-    """Generate a self-contained HTML threat hunting report.
+    """Generate a self-contained HTML threat hunting report with sidebar TOC.
 
-    Converts the Markdown report to HTML and wraps it in a styled HTML
-    document with a dark-themed CSS suitable for security analysis.
-    Tables, code blocks, and anchor links in the table of contents are
-    all rendered correctly.
+    Renders a two-column layout: a fixed left sidebar showing the table of
+    contents with per-query result counts, and a scrollable right panel
+    containing the full query details.  Light color scheme.
 
     Args:
         entries: Ordered list of query-result-summary triples.
         title:   Report title shown in the page title and top heading.
 
     Returns:
-        A complete HTML document as a string.
+        A complete self-contained HTML document as a string.
     """
-    md_text = generate_report(entries, title=title)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    sidebar_w = "420px"
 
-    body_html = md_lib.markdown(
-        md_text,
-        extensions=["tables", "fenced_code", "toc"],
+    toc_html = _render_toc_html(entries)
+    sections_html = "\n".join(
+        _render_entry_html(i + 1, entry) for i, entry in enumerate(entries)
     )
 
-    css = """
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: #0f1117;
-        color: #e0e0e0;
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 2rem 1.5rem;
-        line-height: 1.7;
-    }
-    h1 { color: #4fc3f7; border-bottom: 2px solid #4fc3f7; padding-bottom: .4rem; }
-    h2 { color: #81d4fa; border-bottom: 1px solid #37474f; padding-bottom: .3rem; margin-top: 2.5rem; }
-    h3 { color: #b0bec5; }
-    a { color: #4fc3f7; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    hr { border: none; border-top: 1px solid #37474f; margin: 2rem 0; }
-    pre {
-        background: #1e2330;
-        border: 1px solid #37474f;
-        border-radius: 6px;
-        padding: 1rem;
-        overflow-x: auto;
-        font-size: .875rem;
-    }
-    code {
-        background: #1e2330;
-        border-radius: 3px;
-        padding: .15em .4em;
-        font-size: .9em;
-    }
-    pre code { background: transparent; padding: 0; }
-    table {
-        border-collapse: collapse;
-        width: 100%;
-        font-size: .875rem;
-        margin: 1rem 0;
-    }
-    th {
-        background: #1e2330;
-        color: #81d4fa;
-        border: 1px solid #37474f;
-        padding: .5rem .75rem;
-        text-align: left;
-    }
-    td {
-        border: 1px solid #37474f;
-        padding: .45rem .75rem;
-    }
-    tr:nth-child(even) td { background: #161b25; }
-    .toc { background: #1e2330; border: 1px solid #37474f; border-radius: 6px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
-    .toc ol { margin: .4rem 0 0; padding-left: 1.4rem; }
-    .toc li { margin: .25rem 0; }
-    blockquote { border-left: 4px solid #37474f; margin: 0; padding-left: 1rem; color: #90a4ae; }
-    """
+    css = f"""
+/* ── Reset / Base ───────────────────────── */
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+html {{ scroll-behavior: smooth; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f7fa;
+    color: #1a1a2e;
+    line-height: 1.7;
+    font-size: 14px;
+}}
+
+/* ── Header ─────────────────────────────── */
+header {{
+    background: #1e3a5f;
+    border-bottom: 2px solid #1565c0;
+    padding: .75rem 1.5rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 54px;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}}
+header h1 {{ color: #ffffff; font-size: 1.1rem; white-space: nowrap; }}
+header .meta {{ color: #90caf9; font-size: .78rem; }}
+
+/* ── TOC sidebar ─────────────────────────── */
+#toc {{
+    width: {sidebar_w};
+    background: #ffffff;
+    border-right: 1px solid #dde3ec;
+    position: fixed;
+    top: 54px;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+    padding: 1rem .75rem 2rem;
+    z-index: 100;
+    box-shadow: 2px 0 6px rgba(0,0,0,.06);
+}}
+#toc::-webkit-scrollbar {{ width: 5px; }}
+#toc::-webkit-scrollbar-thumb {{ background: #b0bec5; border-radius: 3px; }}
+.toc-title {{
+    color: #1565c0;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin-bottom: .6rem;
+    padding-bottom: .4rem;
+    border-bottom: 2px solid #e3eaf4;
+}}
+#toc ol {{ list-style: none; padding: 0; }}
+#toc li {{ margin: .15rem 0; }}
+#toc a {{
+    display: flex;
+    align-items: baseline;
+    gap: .3rem;
+    color: #37474f;
+    text-decoration: none;
+    font-size: .8rem;
+    padding: .28rem .5rem;
+    border-radius: 5px;
+    flex-wrap: wrap;
+    transition: background .12s, color .12s;
+}}
+#toc a:hover {{ background: #e8f0fe; color: #1565c0; }}
+.toc-num {{ color: #90a4ae; font-size: .72rem; flex-shrink: 0; }}
+.toc-cat {{ color: #78909c; font-size: .72rem; }}
+.toc-label {{ flex: 1; min-width: 0; word-break: break-word; }}
+.badge {{
+    font-size: .68rem;
+    padding: .1em .5em;
+    border-radius: 10px;
+    flex-shrink: 0;
+    font-weight: 700;
+}}
+.badge-ok    {{ background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }}
+.badge-empty {{ background: #f5f5f5; color: #9e9e9e; border: 1px solid #e0e0e0; }}
+
+/* ── Main content ────────────────────────── */
+main {{
+    margin-left: {sidebar_w};
+    margin-top: 54px;
+    padding: 2rem 3rem 4rem;
+}}
+
+/* ── Sections ────────────────────────────── */
+section {{ margin-bottom: 2rem; }}
+h2 {{
+    color: #1565c0;
+    font-size: 1.05rem;
+    border-bottom: 2px solid #e3eaf4;
+    padding-bottom: .35rem;
+    margin: 2.2rem 0 .8rem;
+    scroll-margin-top: 70px;
+}}
+h3 {{
+    color: #37474f;
+    font-size: .9rem;
+    font-weight: 600;
+    margin: 1.2rem 0 .4rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}}
+.cat-badge {{
+    display: inline-block;
+    background: #e8f0fe;
+    color: #1565c0;
+    font-size: .68rem;
+    padding: .1em .5em;
+    border-radius: 4px;
+    margin-right: .5rem;
+    vertical-align: middle;
+    font-weight: 600;
+    border: 1px solid #bbdefb;
+}}
+
+/* ── Code ────────────────────────────────── */
+pre {{
+    background: #f8f9fb;
+    border: 1px solid #dde3ec;
+    border-left: 3px solid #1565c0;
+    border-radius: 0 6px 6px 0;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-size: .83rem;
+    margin: .5rem 0;
+}}
+code {{ font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }}
+
+/* ── Tables ──────────────────────────────── */
+.table-wrap {{ overflow-x: auto; margin: .5rem 0; border-radius: 6px; border: 1px solid #dde3ec; }}
+table {{ border-collapse: collapse; width: 100%; font-size: .8rem; }}
+th {{
+    background: #e8f0fe;
+    color: #1a237e;
+    border-bottom: 2px solid #bbdefb;
+    border-right: 1px solid #dde3ec;
+    padding: .45rem .75rem;
+    text-align: left;
+    white-space: nowrap;
+    font-weight: 600;
+}}
+td {{ border-bottom: 1px solid #eceff1; border-right: 1px solid #eceff1; padding: .4rem .75rem; word-break: break-word; }}
+tr:last-child td {{ border-bottom: none; }}
+tr:nth-child(even) td {{ background: #f8f9fb; }}
+
+/* ── Misc ────────────────────────────────── */
+hr {{ border: none; border-top: 1px solid #e0e7ef; margin: 2rem 0; }}
+.no-results {{ color: #9e9e9e; font-style: italic; }}
+.analyst-note {{
+    background: #fffde7;
+    border-left: 3px solid #f9a825;
+    padding: .75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: .88rem;
+    white-space: pre-wrap;
+    color: #4e342e;
+}}
+a {{ color: #1565c0; }}
+a:hover {{ text-decoration: underline; }}
+"""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -304,7 +503,14 @@ def generate_html_report(
   <style>{css}</style>
 </head>
 <body>
-{body_html}
+<header>
+  <h1>🔍 {title}</h1>
+  <span class="meta">Generated: {timestamp} &nbsp;·&nbsp; {len(entries)} queries</span>
+</header>
+{toc_html}
+<main>
+  {sections_html}
+</main>
 </body>
 </html>
 """
