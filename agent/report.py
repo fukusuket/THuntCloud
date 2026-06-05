@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import pandas as pd
+import markdown as md_lib
 
 # ---------------------------------------------------------------------------
 # Sensitive data redaction patterns
@@ -212,3 +213,98 @@ def generate_report(
     sections = [_render_entry(i + 1, entry) for i, entry in enumerate(entries)]
 
     return "\n\n".join([header, toc, "---"] + sections) + "\n"
+
+
+def generate_html_report(
+    entries: list[ReportEntry],
+    title: str = "Threat Hunting Report",
+) -> str:
+    """Generate a self-contained HTML threat hunting report.
+
+    Converts the Markdown report to HTML and wraps it in a styled HTML
+    document with a dark-themed CSS suitable for security analysis.
+    Tables, code blocks, and anchor links in the table of contents are
+    all rendered correctly.
+
+    Args:
+        entries: Ordered list of query-result-summary triples.
+        title:   Report title shown in the page title and top heading.
+
+    Returns:
+        A complete HTML document as a string.
+    """
+    md_text = generate_report(entries, title=title)
+
+    body_html = md_lib.markdown(
+        md_text,
+        extensions=["tables", "fenced_code", "toc"],
+    )
+
+    css = """
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #0f1117;
+        color: #e0e0e0;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+        line-height: 1.7;
+    }
+    h1 { color: #4fc3f7; border-bottom: 2px solid #4fc3f7; padding-bottom: .4rem; }
+    h2 { color: #81d4fa; border-bottom: 1px solid #37474f; padding-bottom: .3rem; margin-top: 2.5rem; }
+    h3 { color: #b0bec5; }
+    a { color: #4fc3f7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    hr { border: none; border-top: 1px solid #37474f; margin: 2rem 0; }
+    pre {
+        background: #1e2330;
+        border: 1px solid #37474f;
+        border-radius: 6px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-size: .875rem;
+    }
+    code {
+        background: #1e2330;
+        border-radius: 3px;
+        padding: .15em .4em;
+        font-size: .9em;
+    }
+    pre code { background: transparent; padding: 0; }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: .875rem;
+        margin: 1rem 0;
+    }
+    th {
+        background: #1e2330;
+        color: #81d4fa;
+        border: 1px solid #37474f;
+        padding: .5rem .75rem;
+        text-align: left;
+    }
+    td {
+        border: 1px solid #37474f;
+        padding: .45rem .75rem;
+    }
+    tr:nth-child(even) td { background: #161b25; }
+    .toc { background: #1e2330; border: 1px solid #37474f; border-radius: 6px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+    .toc ol { margin: .4rem 0 0; padding-left: 1.4rem; }
+    .toc li { margin: .25rem 0; }
+    blockquote { border-left: 4px solid #37474f; margin: 0; padding-left: 1rem; color: #90a4ae; }
+    """
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title}</title>
+  <style>{css}</style>
+</head>
+<body>
+{body_html}
+</body>
+</html>
+"""

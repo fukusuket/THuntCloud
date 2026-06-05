@@ -27,7 +27,7 @@ from handlers import (
 )
 from llm import MAX_CONTEXT_TURNS  # noqa: F401
 from query import DEFAULT_ROW_LIMIT
-from report import ReportEntry, generate_report
+from report import ReportEntry, generate_report, generate_html_report
 
 logger = logging.getLogger(__name__)
 
@@ -493,20 +493,34 @@ def render_sidebar() -> None:
 
         st.divider()
 
-        # AGT-06: Markdown report download
+        # AGT-06: Markdown / HTML report download
         st.subheader("📄 Report")
         if st.session_state.query_history:
             report_md = generate_report(
                 st.session_state.query_history,
                 title="THuntCloud Threat Hunting Report",
             )
-            st.download_button(
-                label="⬇ Download Markdown Report",
-                data=report_md,
-                file_name="threat_hunting_report.md",
-                mime="text/markdown",
-                use_container_width=True,
+            report_html = generate_html_report(
+                st.session_state.query_history,
+                title="THuntCloud Threat Hunting Report",
             )
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                st.download_button(
+                    label="⬇ Markdown",
+                    data=report_md,
+                    file_name="threat_hunting_report.md",
+                    mime="text/markdown",
+                    use_container_width=True,
+                )
+            with dl2:
+                st.download_button(
+                    label="⬇ HTML",
+                    data=report_html,
+                    file_name="threat_hunting_report.html",
+                    mime="text/html",
+                    use_container_width=True,
+                )
         else:
             st.caption("Run at least one query to generate a report.")
 
@@ -866,7 +880,7 @@ def render_chat() -> None:
         st.divider()
         count_str = f"{len(filtered_entries)} / {len(nonchat_entries)}"
         st.markdown(
-            f"## 🤖 Query Results  <small style='font-size:0.6em;color:gray'>({count_str})</small>",
+            f"#### 🤖 Query Results  <small style='font-size:0.8em;color:gray'>({count_str})</small>",
             unsafe_allow_html=True,
         )
         if filtered_entries:
