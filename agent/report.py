@@ -217,37 +217,47 @@ def generate_report(
 def _render_toc_html(entries: list[ReportEntry]) -> str:
     """Render the table of contents as an HTML ``<nav>`` element.
 
+    Entries are grouped by category using ``<details>``/``<summary>`` elements
+    so each category can be expanded or collapsed.  Entries without a category
+    are placed under an "Other" group.
+
     Args:
         entries: Ordered list of ReportEntry objects.
 
     Returns:
-        HTML string for the sticky left-sidebar navigation.
+        HTML string for the collapsible category navigation.
     """
-    items = []
+    # Group entries by category, preserving insertion order.
+    from collections import OrderedDict
+
+    groups: OrderedDict[str, list[tuple[int, ReportEntry]]] = OrderedDict()
     for i, entry in enumerate(entries, 1):
-        heading_text = _build_heading(i, entry)
-        anchor = _heading_anchor(heading_text)
-        # Use a shorter label for the sidebar (label only, no count badge)
-        count = _result_count(entry)
-        badge_cls = "badge-ok" if count > 0 else "badge-empty"
-        short_label = entry.label if entry.label else f"Query {i}"
-        category_span = (
-            f'<span class="toc-cat">{entry.category}</span>' if entry.category else ""
+        cat = entry.category if entry.category else "Other"
+        groups.setdefault(cat, []).append((i, entry))
+
+    blocks = []
+    for cat, group_entries in groups.items():
+        items = []
+        for i, entry in group_entries:
+            heading_text = _build_heading(i, entry)
+            anchor = _heading_anchor(heading_text)
+            count = _result_count(entry)
+            short_label = entry.label if entry.label else f"Query {i}"
+            items.append(
+                f'<li><a href="#{anchor}">{short_label} ({count:,} rows)</a></li>'
+            )
+        items_html = "\n".join(items)
+        blocks.append(
+            f"<details open>\n"
+            f"  <summary>{cat}</summary>\n"
+            f"  <ul>{items_html}</ul>\n"
+            f"</details>"
         )
-        items.append(
-            f"<li>"
-            f'<a href="#{anchor}">'
-            f'<span class="toc-num">{i}.</span> '
-            f"{category_span}"
-            f'<span class="toc-label">{short_label}</span>'
-            f'<span class="badge {badge_cls}">{count:,}</span>'
-            f"</a>"
-            f"</li>"
-        )
-    items_html = "\n".join(items)
+
+    groups_html = "\n".join(blocks)
     return f"""<nav id="toc">
-  <div class="toc-title">📋 Contents</div>
-  <ol>{items_html}</ol>
+  <h2>Contents</h2>
+  {groups_html}
 </nav>"""
 
 
@@ -266,7 +276,7 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
 
     # Results table
     if entry.results is not None and not entry.results.empty:
-        results_html = entry.results.head(1000).to_html(index=False, border=0)
+        results_html = entry.results.head(1000).to_html(index=False, border=1)
         results_html = f'<div class="table-wrap">{results_html}</div>'
     else:
         results_html = '<p class="no-results">No results returned.</p>'
@@ -282,18 +292,12 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
     analyst_section = ""
     if entry.analyst_note:
         note = _sanitize(entry.analyst_note)
-        analyst_section = (
-            f'<h3>📝 Analyst Note</h3><div class="analyst-note">{note}</div>'
-        )
-
-    category_badge = (
-        f'<span class="cat-badge">{entry.category}</span>' if entry.category else ""
-    )
+        analyst_section = f"<h3>Analyst Note</h3><pre class=\"analyst-note\">{note}</pre>"
 
     return f"""<section id="{anchor}">
-  <h2>{category_badge}{heading_text}</h2>
+  <h2>{heading_text}</h2>
   <h3>SQL</h3>
-  <pre><code class="language-sql">{sql_block}</code></pre>
+  <pre><code>{sql_block}</code></pre>
   <h3>Results</h3>
   {results_html_sanitized}
   <h3>Summary</h3>
@@ -307,11 +311,11 @@ def generate_html_report(
     entries: list[ReportEntry],
     title: str = "Threat Hunting Report",
 ) -> str:
-    """Generate a self-contained HTML threat hunting report with sidebar TOC.
+    """Generate a self-contained HTML threat hunting report.
 
-    Renders a two-column layout: a fixed left sidebar showing the table of
-    contents with per-query result counts, and a scrollable right panel
-    containing the full query details.  Light color scheme.
+    Renders a simple single-column layout with a table of contents,
+    followed by each query section containing SQL, results, and summary.
+    Minimal styling only — no decorative colors or complex layout.
 
     Args:
         entries: Ordered list of query-result-summary triples.
@@ -321,179 +325,79 @@ def generate_html_report(
         A complete self-contained HTML document as a string.
     """
     timestamp = datetime.now(timezone.utc).isoformat()
-    sidebar_w = "420px"
 
     toc_html = _render_toc_html(entries)
     sections_html = "\n".join(
         _render_entry_html(i + 1, entry) for i, entry in enumerate(entries)
     )
 
-    css = f"""
-/* ── Reset / Base ───────────────────────── */
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-html {{ scroll-behavior: smooth; }}
-body {{
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #f5f7fa;
-    color: #1a1a2e;
-    line-height: 1.7;
-    font-size: 14px;
-}}
-
-/* ── Header ─────────────────────────────── */
-header {{
-    background: #1e3a5f;
-    border-bottom: 2px solid #1565c0;
-    padding: .75rem 1.5rem;
-    position: fixed;
+    css = """
+* { box-sizing: border-box; }
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+    color: #000;
+    background: #fff;
+}
+#page-header {
+    padding: 0.8em 1.5em;
+    border-bottom: 1px solid #ccc;
+}
+#page-header h1 { margin: 0 0 0.1em; font-size: 1.3em; }
+#page-header p  { margin: 0; font-size: 0.85em; color: #555; }
+#layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: calc(100vh - 60px);
+}
+#toc {
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    height: 54px;
-    z-index: 200;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}}
-header h1 {{ color: #ffffff; font-size: 1.1rem; white-space: nowrap; }}
-header .meta {{ color: #90caf9; font-size: .78rem; }}
-
-/* ── TOC sidebar ─────────────────────────── */
-#toc {{
-    width: {sidebar_w};
-    background: #ffffff;
-    border-right: 1px solid #dde3ec;
-    position: fixed;
-    top: 54px;
-    left: 0;
-    bottom: 0;
+    height: 100vh;
     overflow-y: auto;
-    padding: 1rem .75rem 2rem;
-    z-index: 100;
-    box-shadow: 2px 0 6px rgba(0,0,0,.06);
-}}
-#toc::-webkit-scrollbar {{ width: 5px; }}
-#toc::-webkit-scrollbar-thumb {{ background: #b0bec5; border-radius: 3px; }}
-.toc-title {{
-    color: #1565c0;
-    font-size: .75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .07em;
-    margin-bottom: .6rem;
-    padding-bottom: .4rem;
-    border-bottom: 2px solid #e3eaf4;
-}}
-#toc ol {{ list-style: none; padding: 0; }}
-#toc li {{ margin: .15rem 0; }}
-#toc a {{
-    display: flex;
-    align-items: baseline;
-    gap: .3rem;
-    color: #37474f;
-    text-decoration: none;
-    font-size: .8rem;
-    padding: .28rem .5rem;
-    border-radius: 5px;
-    flex-wrap: wrap;
-    transition: background .12s, color .12s;
-}}
-#toc a:hover {{ background: #e8f0fe; color: #1565c0; }}
-.toc-num {{ color: #90a4ae; font-size: .72rem; flex-shrink: 0; }}
-.toc-cat {{ color: #78909c; font-size: .72rem; }}
-.toc-label {{ flex: 1; min-width: 0; word-break: break-word; }}
-.badge {{
-    font-size: .68rem;
-    padding: .1em .5em;
-    border-radius: 10px;
-    flex-shrink: 0;
-    font-weight: 700;
-}}
-.badge-ok    {{ background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }}
-.badge-empty {{ background: #f5f5f5; color: #9e9e9e; border: 1px solid #e0e0e0; }}
-
-/* ── Main content ────────────────────────── */
-main {{
-    margin-left: {sidebar_w};
-    margin-top: 54px;
-    padding: 2rem 3rem 4rem;
-}}
-
-/* ── Sections ────────────────────────────── */
-section {{ margin-bottom: 2rem; }}
-h2 {{
-    color: #1565c0;
-    font-size: 1.05rem;
-    border-bottom: 2px solid #e3eaf4;
-    padding-bottom: .35rem;
-    margin: 2.2rem 0 .8rem;
-    scroll-margin-top: 70px;
-}}
-h3 {{
-    color: #37474f;
-    font-size: .9rem;
-    font-weight: 600;
-    margin: 1.2rem 0 .4rem;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-}}
-.cat-badge {{
-    display: inline-block;
-    background: #e8f0fe;
-    color: #1565c0;
-    font-size: .68rem;
-    padding: .1em .5em;
-    border-radius: 4px;
-    margin-right: .5rem;
-    vertical-align: middle;
-    font-weight: 600;
-    border: 1px solid #bbdefb;
-}}
-
-/* ── Code ────────────────────────────────── */
-pre {{
-    background: #f8f9fb;
-    border: 1px solid #dde3ec;
-    border-left: 3px solid #1565c0;
-    border-radius: 0 6px 6px 0;
-    padding: 1rem 1.2rem;
+    border-right: 1px solid #ccc;
+    padding: 1em 0.8em;
+    font-size: 0.85em;
+}
+#toc h2 { font-size: 0.95em; margin: 0 0 0.5em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
+#toc details { margin-bottom: 0.4em; }
+#toc summary {
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 0.2em 0.2em;
+    list-style: disclosure-closed;
+    user-select: none;
+}
+#toc details[open] > summary { list-style: disclosure-open; }
+#toc ul { margin: 0.2em 0 0.4em 1em; padding-left: 0; list-style: none; }
+#toc li { margin: 0.25em 0; }
+#toc a { color: #000; text-decoration: none; }
+#toc a:hover { text-decoration: underline; }
+#content {
+    padding: 1.5em 2em 4em;
+    min-width: 0;
+}
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.2em; margin-top: 2em; font-size: 1.1em; }
+h3 { margin-top: 1.2em; font-size: 0.95em; }
+pre {
+    background: #f4f4f4;
+    border: 1px solid #ccc;
+    padding: 0.8em;
     overflow-x: auto;
-    font-size: .83rem;
-    margin: .5rem 0;
-}}
-code {{ font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }}
-
-/* ── Tables ──────────────────────────────── */
-.table-wrap {{ overflow-x: auto; margin: .5rem 0; border-radius: 6px; border: 1px solid #dde3ec; }}
-table {{ border-collapse: collapse; width: 100%; font-size: .8rem; }}
-th {{
-    background: #e8f0fe;
-    color: #1a237e;
-    border-bottom: 2px solid #bbdefb;
-    border-right: 1px solid #dde3ec;
-    padding: .45rem .75rem;
-    text-align: left;
-    white-space: nowrap;
-    font-weight: 600;
-}}
-td {{ border-bottom: 1px solid #eceff1; border-right: 1px solid #eceff1; padding: .4rem .75rem; word-break: break-word; }}
-tr:last-child td {{ border-bottom: none; }}
-tr:nth-child(even) td {{ background: #f8f9fb; }}
-
-/* ── Misc ────────────────────────────────── */
-hr {{ border: none; border-top: 1px solid #e0e7ef; margin: 2rem 0; }}
-.no-results {{ color: #9e9e9e; font-style: italic; }}
-.analyst-note {{
-    background: #fffde7;
-    border-left: 3px solid #f9a825;
-    padding: .75rem 1rem;
-    border-radius: 0 6px 6px 0;
-    font-size: .88rem;
     white-space: pre-wrap;
-    color: #4e342e;
-}}
-a {{ color: #1565c0; }}
-a:hover {{ text-decoration: underline; }}
+    word-break: break-word;
+    font-size: 0.9em;
+}
+code { font-family: monospace; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85em; }
+th, td { border: 1px solid #999; padding: 0.3em 0.6em; text-align: left; }
+th { background: #eee; }
+.table-wrap { overflow-x: auto; }
+.no-results { color: #666; font-style: italic; }
+hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
 """
 
     return f"""<!DOCTYPE html>
@@ -505,14 +409,16 @@ a:hover {{ text-decoration: underline; }}
   <style>{css}</style>
 </head>
 <body>
-<header>
-  <h1>🔍 {title}</h1>
-  <span class="meta">Generated: {timestamp} &nbsp;·&nbsp; {len(entries)} queries</span>
-</header>
+<div id="page-header">
+  <h1>{title}</h1>
+  <p>Generated: {timestamp} &nbsp;&middot;&nbsp; {len(entries)} queries</p>
+</div>
+<div id="layout">
 {toc_html}
-<main>
+<div id="content">
   {sections_html}
-</main>
+</div>
+</div>
 </body>
 </html>
 """
