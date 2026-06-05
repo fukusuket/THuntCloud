@@ -124,3 +124,35 @@ def test_analysis_user_template_renders_correctly():
     )
     assert "SELECT event_name" in rendered
     assert "CreateUser" in rendered
+
+
+# ---------------------------------------------------------------------------
+# DFIR sections (new)
+# ---------------------------------------------------------------------------
+
+
+def test_analysis_system_prompt_contains_dfir_assessment_section():
+    """ANALYSIS_SYSTEM_PROMPT must include a DFIR Assessment section."""
+    assert "DFIR Assessment" in ANALYSIS_SYSTEM_PROMPT
+
+
+def test_analysis_system_prompt_contains_mitre_attack_reference():
+    """ANALYSIS_SYSTEM_PROMPT must reference MITRE ATT&CK for tactic mapping."""
+    assert "MITRE ATT&CK" in ANALYSIS_SYSTEM_PROMPT
+
+
+def test_analysis_system_prompt_contains_investigation_leads_section():
+    """ANALYSIS_SYSTEM_PROMPT must include an Investigation Leads section."""
+    assert "Investigation Leads" in ANALYSIS_SYSTEM_PROMPT
+
+
+def test_analysis_system_prompt_contains_ioc_guidance():
+    """ANALYSIS_SYSTEM_PROMPT must instruct the LLM to surface indicators of compromise."""
+    lower = ANALYSIS_SYSTEM_PROMPT.lower()
+    assert "indicator" in lower or "ioc" in lower
+
+
+def test_analysis_user_template_requests_dfir_sections():
+    """ANALYSIS_USER_TEMPLATE must ask for DFIR Assessment and Investigation Leads."""
+    assert "DFIR Assessment" in ANALYSIS_USER_TEMPLATE
+    assert "Investigation Leads" in ANALYSIS_USER_TEMPLATE

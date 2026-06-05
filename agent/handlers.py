@@ -210,17 +210,18 @@ def _handle_edit_rerun_sql(sql: str, db_path: str) -> None:
     )
 
 
-def _analyze_current_results() -> None:
-    """Analyze the current query results using AI and append the analysis to chat.
+def _analyze_entry_results(entry_idx: int) -> None:
+    """Analyze a specific query_history entry by index using AI.
 
-    Calls generate_analysis() with last_sql and last_results already stored in
-    session state.  Requires an API key; appends a warning message when none is
-    set.  Does nothing when last_results is None or empty.
+    Reads the entry's sql and results, calls generate_analysis(), and stores
+    the result back in entry.analysis.  Updates last_summary only when
+    entry_idx refers to the last entry (backward compatibility).
+
+    Args:
+        entry_idx: 0-based index into st.session_state.query_history.
     """
     api_key = st.session_state.api_key
     model = st.session_state.model
-    sql = st.session_state.last_sql
-    results = st.session_state.last_results
 
     if not api_key:
         st.session_state.messages.append(
@@ -231,18 +232,32 @@ def _analyze_current_results() -> None:
         )
         return
 
-    if results is None or (hasattr(results, "empty") and results.empty):
+    entry = st.session_state.query_history[entry_idx]
+    if entry.results is None or (
+        hasattr(entry.results, "empty") and entry.results.empty
+    ):
         return
 
     with st.spinner("🤖 Analyzing results…"):
-        summary = generate_analysis(sql, results, api_key=api_key, model=model)
+        summary = generate_analysis(
+            entry.sql, entry.results, api_key=api_key, model=model
+        )
 
-    st.session_state.last_summary = summary
+    entry.analysis = summary
 
-    # Persist analysis into the last query_history entry so the history view
-    # can display it without requiring a separate state variable.
-    if st.session_state.query_history and summary:
-        st.session_state.query_history[-1].analysis = summary
+    if entry_idx == len(st.session_state.query_history) - 1:
+        st.session_state.last_summary = summary
+
+
+def _analyze_current_results() -> None:
+    """Analyze the most recent query_history entry using AI.
+
+    Delegates to _analyze_entry_results with the last entry index.
+    Kept for backward compatibility with existing call sites.
+    """
+    if not st.session_state.query_history:
+        return
+    _analyze_entry_results(len(st.session_state.query_history) - 1)
 
 
 def _handle_user_query(user_input: str, db_path: str) -> None:

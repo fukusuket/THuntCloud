@@ -7,6 +7,7 @@ Markdown analysis of query results using the OpenAI chat API.
 import logging
 import os
 import re
+import time
 
 import httpx
 import pandas as pd
@@ -21,10 +22,106 @@ logger = logging.getLogger(__name__)
 # Maximum number of prior conversation turns to inject into the SQL generation prompt.
 MAX_CONTEXT_TURNS: int = 5
 
+# Retry configuration for transient OpenAI API errors.
+MAX_RETRIES: int = 2
+_RETRY_BASE_DELAY: float = 1.0  # seconds; doubled on each subsequent attempt
+
+# Models that do not support a custom temperature value (only the API default is accepted).
+_NO_TEMPERATURE_MODELS: frozenset[str] = frozenset({"gpt-5.5"})
+
 # Module-level OpenAI client cache keyed by api_key.
 # Avoids creating a new httpx connection pool on every LLM call within a
 # single Streamlit request (generate_sql → fix_sql_with_llm → generate_analysis).
 _client_cache: dict[str, OpenAI] = {}
+
+
+def _supports_temperature(model: str) -> bool:
+    """Return True when *model* accepts a custom temperature parameter.
+
+    Some newer models (e.g. gpt-5.5) only accept the API default and reject
+    any explicit temperature value, including 0.
+    """
+    return model not in _NO_TEMPERATURE_MODELS
+
+
+def _is_retryable(exc: OpenAIError) -> bool:
+    """Return True when *exc* represents a transient failure worth retrying.
+
+    Retryable conditions:
+    - HTTP 429 (rate limit)
+    - HTTP 5xx (server-side error)
+    - No status_code attribute (network/connection-level failure such as DNS
+      resolution failure, TCP reset, or read timeout)
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        return True
+    return status == 429 or status >= 500
+
+
+def _user_facing_error(exc: OpenAIError) -> str:
+    """Return a concise, user-friendly error string for *exc*.
+
+    Maps HTTP status codes to actionable messages so analysts see something
+    more helpful than a raw exception repr in the chat area.
+    """
+    status = getattr(exc, "status_code", None)
+    if status == 400:
+        return f"[error] Invalid request: {exc}"
+    if status == 401:
+        return "[error] Authentication failed — verify your API key in the sidebar."
+    if status == 403:
+        return "[error] Permission denied — your API key may lack access to this model."
+    if status == 404:
+        return "[error] Model not found — verify the selected model name is correct."
+    if status == 429:
+        return "[error] Rate limit exceeded — please wait a moment and try again."
+    if status is not None and status >= 500:
+        return "[error] OpenAI service error — please try again later."
+    # No status code: network / connection-level failure.
+    return f"[error] Connection error — {exc}"
+
+
+def _call_with_retry(client: OpenAI, context: str, **create_kwargs) -> str:
+    """Call ``client.chat.completions.create`` with exponential-backoff retries.
+
+    Retries up to MAX_RETRIES times for transient errors (429, 5xx, or no
+    status code).  Non-retryable errors (4xx other than 429) are re-raised
+    immediately so the caller can convert them to user-facing messages.
+
+    Args:
+        client:          The OpenAI client instance.
+        context:         Short label for log messages (e.g. "SQL generation").
+        **create_kwargs: Arguments forwarded verbatim to ``create()``.
+
+    Returns:
+        The message content string from the API response.
+
+    Raises:
+        OpenAIError: On non-retryable errors or after exhausting all retries.
+    """
+    last_exc: OpenAIError | None = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(**create_kwargs)
+            return response.choices[0].message.content or ""
+        except OpenAIError as exc:
+            if not _is_retryable(exc) or attempt >= MAX_RETRIES:
+                raise
+            last_exc = exc
+            delay = _RETRY_BASE_DELAY * (2**attempt)
+            logger.warning(
+                "Transient OpenAI error during %s (attempt %d/%d), retrying in %.1fs: %s",
+                context,
+                attempt + 1,
+                MAX_RETRIES + 1,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+    # Unreachable; satisfies type checker.
+    assert last_exc is not None
+    raise last_exc
 
 
 def _clear_client_cache() -> None:
@@ -135,24 +232,19 @@ def generate_sql(
         A DuckDB SQL string. On API error, returns a user-friendly error message.
     """
     client = _create_client(api_key)
+    messages: list[dict] = [{"role": "system", "content": build_system_prompt()}]
+    if context:
+        messages.extend(_build_context_messages(context, MAX_CONTEXT_TURNS))
+    messages.append({"role": "user", "content": user_query})
+    kwargs: dict = {"model": model, "messages": messages}
+    if _supports_temperature(model):
+        kwargs["temperature"] = 0
     try:
-        messages: list[dict] = [
-            {"role": "system", "content": build_system_prompt()},
-        ]
-        if context:
-            messages.extend(_build_context_messages(context, MAX_CONTEXT_TURNS))
-        messages.append({"role": "user", "content": user_query})
-
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0,
-        )
-        raw = response.choices[0].message.content or ""
+        raw = _call_with_retry(client, "SQL generation", **kwargs)
         return _strip_markdown_fences(raw)
     except OpenAIError as exc:
-        logger.exception("OpenAI API error during SQL generation")
-        return f"[error] OpenAI API error: {exc}"
+        logger.error("OpenAI API error during SQL generation: %s", exc)
+        return _user_facing_error(exc)
 
 
 def fix_sql_with_llm(
@@ -184,20 +276,19 @@ def fix_sql_with_llm(
         f"Please fix the SQL so it is valid DuckDB SQL for the cloudtrail_events table. "
         f"Return only the corrected SQL, with no explanation."
     )
+    messages = [
+        {"role": "system", "content": build_system_prompt()},
+        {"role": "user", "content": user_message},
+    ]
+    kwargs: dict = {"model": model, "messages": messages}
+    if _supports_temperature(model):
+        kwargs["temperature"] = 0
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": build_system_prompt()},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0,
-        )
-        raw = response.choices[0].message.content or ""
+        raw = _call_with_retry(client, "SQL fix", **kwargs)
         return _strip_markdown_fences(raw)
     except OpenAIError as exc:
-        logger.exception("OpenAI API error during SQL fix")
-        return f"[error] OpenAI API error: {exc}"
+        logger.error("OpenAI API error during SQL fix: %s", exc)
+        return _user_facing_error(exc)
 
 
 def generate_analysis(
@@ -229,16 +320,15 @@ def generate_analysis(
     )
     user_message = ANALYSIS_USER_TEMPLATE.format(sql=sql, results=sample)
     client = _create_client(api_key)
+    messages = [
+        {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+    kwargs: dict = {"model": model, "messages": messages}
+    if _supports_temperature(model):
+        kwargs["temperature"] = 0
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0,
-        )
-        return response.choices[0].message.content or ""
+        return _call_with_retry(client, "analysis", **kwargs)
     except OpenAIError as exc:
-        logger.exception("OpenAI API error during summary generation")
-        return f"[error] OpenAI API error: {exc}"
+        logger.error("OpenAI API error during analysis: %s", exc)
+        return _user_facing_error(exc)

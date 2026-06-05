@@ -20,7 +20,7 @@ from config import (
     get_duckdb_path_lite,
 )
 from handlers import (
-    _analyze_current_results,
+    _analyze_entry_results,
     _handle_direct_sql,
     _handle_edit_rerun_sql,
     _handle_user_query,
@@ -207,6 +207,30 @@ def _init_session_state() -> None:
             st.session_state[key] = default
 
 
+def _build_all_hunt_queries(prompts: list[dict]) -> list[dict]:
+    """Return a flat list of bulk-query dicts for every entry that has a sql field.
+
+    Args:
+        prompts: All prompt entries loaded from builtin_hunts.yaml.
+
+    Returns:
+        List of dicts with keys sql, description, chart_config, label, category,
+        covering every entry whose sql field is non-empty.  sql values are stripped
+        of leading/trailing whitespace.
+    """
+    return [
+        {
+            "sql": p["sql"].strip(),
+            "description": p.get("description", ""),
+            "chart_config": p.get("chart"),
+            "label": p["label"],
+            "category": p.get("category", ""),
+        }
+        for p in prompts
+        if p.get("sql", "").strip()
+    ]
+
+
 def _load_builtin_prompts() -> list[dict]:
     """Load built-in threat hunting prompts from the YAML file.
 
@@ -385,9 +409,21 @@ def render_sidebar() -> None:
         else:
             filtered = [p for p in prompts if p.get("category") == selected_category]
 
-        # Bulk-run button: only shown when a specific category is selected and has SQL queries
+        # Bulk-run buttons
         sql_queries = [p for p in filtered if p.get("sql", "").strip()]
-        if selected_category != "— All categories —" and sql_queries:
+        all_sql_queries = _build_all_hunt_queries(prompts)
+
+        if selected_category == "— All categories —":
+            # "Run All Hunts" — runs every SQL query across all categories
+            if all_sql_queries and st.button(
+                f"⚡ Run All Hunts ({len(all_sql_queries)} queries)",
+                use_container_width=True,
+                help="Run all built-in hunt queries across every category",
+            ):
+                st.session_state["_pending_bulk_queries"] = all_sql_queries
+                st.rerun()
+        elif sql_queries:
+            # "Run All" — runs every SQL query in the selected category
             if st.button(
                 f"⚡ Run All ({len(sql_queries)} queries)",
                 use_container_width=True,
@@ -656,18 +692,17 @@ def _build_expander_title(entry: ReportEntry, index: int) -> str:
 def _render_result_card(
     query_idx: int,
     entry: ReportEntry,
-    is_last: bool = False,
     expanded: bool = True,
 ) -> None:
     """Render a single query result as an expander card.
 
-    Displays SQL, results table, chart, AI analysis, and analyst note.
+    Displays SQL, results table, chart, AI analysis, analyst note, and Ask AI button.
+    The Ask AI button appears below the analyst note for any card without analysis.
     Shared between chat-interleaved and bulk-results views.
 
     Args:
         query_idx: 0-based index into query_history.
         entry:     The ReportEntry to render.
-        is_last:   When True, shows the "Ask AI" button for the latest entry.
         expanded:  Whether the expander starts open.
     """
     title = _build_expander_title(entry, query_idx + 1)
@@ -696,22 +731,6 @@ def _render_result_card(
         if entry.analysis:
             st.markdown("#### 🤖 AI Analysis")
             st.info(entry.analysis)
-        elif is_last:
-            st.divider()
-            has_api_key = bool(st.session_state.api_key)
-            if st.button(
-                "🤖 Ask AI — Analyze These Results",
-                key="analyze_last_btn",
-                use_container_width=True,
-                disabled=not has_api_key,
-                help=(
-                    "Generate an AI analysis of the query results above."
-                    if has_api_key
-                    else "Enter your OpenAI API key in the sidebar to enable AI analysis."
-                ),
-            ):
-                st.session_state["_pending_ai_analysis"] = True
-                st.rerun()
 
         # UI-01: Analyst note text area
         st.divider()
@@ -728,6 +747,23 @@ def _render_result_card(
         if new_note != current_note:
             st.session_state.analyst_notes[query_idx] = new_note
             entry.analyst_note = new_note
+
+        # Ask AI button — shown for every card that has no analysis yet.
+        if not entry.analysis:
+            has_api_key = bool(st.session_state.api_key)
+            if st.button(
+                "🤖 Ask AI — Analyze These Results",
+                key=f"ask_ai_btn_{query_idx}",
+                use_container_width=True,
+                disabled=not has_api_key,
+                help=(
+                    "Generate a DFIR analysis of the query results above."
+                    if has_api_key
+                    else "Enter your OpenAI API key in the sidebar to enable AI analysis."
+                ),
+            ):
+                st.session_state["_pending_ai_analysis_idx"] = query_idx
+                st.rerun()
 
 
 def render_chat() -> None:
@@ -793,18 +829,14 @@ def render_chat() -> None:
         progress_placeholder.empty()
         st.rerun()
 
-    # Handle AI analysis request triggered from the results area
-    pending_ai_analysis = st.session_state.pop("_pending_ai_analysis", None)
-    if pending_ai_analysis:
-        _analyze_current_results()
+    # Handle AI analysis request triggered from a result card's Ask AI button.
+    pending_ai_analysis_idx = st.session_state.pop("_pending_ai_analysis_idx", None)
+    if pending_ai_analysis_idx is not None:
+        _analyze_entry_results(pending_ai_analysis_idx)
         st.rerun()
 
     # ---- Chat history interleaved with query results (AGT-01 / AGT-04) ----
     query_history_len = len(st.session_state.query_history)
-    chat_indices = [
-        i for i, e in enumerate(st.session_state.query_history) if e.source == "chat"
-    ]
-    last_chat_idx = max(chat_indices, default=-1)
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -814,8 +846,7 @@ def render_chat() -> None:
         if query_idx is not None and query_idx < query_history_len:
             entry = st.session_state.query_history[query_idx]
             if entry.source == "chat":
-                is_last = query_idx == last_chat_idx
-                _render_result_card(query_idx, entry, is_last=is_last)
+                _render_result_card(query_idx, entry)
 
     # ---- Bulk results section (UI-03) ----
     # ---- Direct SQL / Bulk results section (UI-03) ----
@@ -835,7 +866,7 @@ def render_chat() -> None:
         )
         if filtered_entries:
             for idx, entry in filtered_entries:
-                _render_result_card(idx, entry, is_last=False, expanded=False)
+                _render_result_card(idx, entry, expanded=False)
         else:
             st.caption("No queries match the current filter.")
 

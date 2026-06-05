@@ -177,6 +177,66 @@ def test_builtin_hunts_yaml_has_direct_sql_entries():
 
 
 # ---------------------------------------------------------------------------
+# Tests for "Run All Hunts" button
+# ---------------------------------------------------------------------------
+
+
+def test_build_all_hunt_queries_returns_all_sql_entries():
+    """_build_all_hunt_queries() must return every entry that has a non-empty sql field."""
+    from app import _build_all_hunt_queries, _load_builtin_prompts
+
+    prompts = _load_builtin_prompts()
+    expected = [p for p in prompts if p.get("sql", "").strip()]
+    result = _build_all_hunt_queries(prompts)
+
+    assert len(result) == len(expected)
+
+
+def test_build_all_hunt_queries_output_shape():
+    """_build_all_hunt_queries() items must have sql, description, chart_config, label, category."""
+    from app import _build_all_hunt_queries, _load_builtin_prompts
+
+    prompts = _load_builtin_prompts()
+    result = _build_all_hunt_queries(prompts)
+
+    assert len(result) > 0
+    for item in result:
+        assert "sql" in item
+        assert "description" in item
+        assert "chart_config" in item
+        assert "label" in item
+        assert "category" in item
+
+
+def test_build_all_hunt_queries_strips_whitespace():
+    """_build_all_hunt_queries() must strip leading/trailing whitespace from sql."""
+    from app import _build_all_hunt_queries
+
+    prompts = [
+        {"label": "A", "category": "C", "description": "d", "sql": "  SELECT 1  "},
+        {"label": "B", "category": "C", "description": "d", "sql": ""},
+    ]
+    result = _build_all_hunt_queries(prompts)
+
+    assert len(result) == 1
+    assert result[0]["sql"] == "SELECT 1"
+
+
+def test_build_all_hunt_queries_excludes_entries_without_sql():
+    """_build_all_hunt_queries() must exclude entries that have no sql field."""
+    from app import _build_all_hunt_queries
+
+    prompts = [
+        {"label": "A", "category": "C", "description": "d", "prompt": "p"},
+        {"label": "B", "category": "C", "description": "d", "sql": "SELECT 1"},
+    ]
+    result = _build_all_hunt_queries(prompts)
+
+    assert len(result) == 1
+    assert result[0]["label"] == "B"
+
+
+# ---------------------------------------------------------------------------
 # Test #24 — Direct SQL entries must be valid DuckDB
 # ---------------------------------------------------------------------------
 
@@ -351,18 +411,22 @@ def test_analyze_current_results_sets_last_summary_without_appending_message():
 
     Test #AI-A: The analysis result is displayed below the results table via
     last_summary, NOT appended to the chat message history.
+    _analyze_current_results delegates to _analyze_entry_results for the last entry.
     """
+    from report import ReportEntry
     from tests.conftest import MockSessionState
 
     results_df = pd.DataFrame(
         {"event_name": ["ConsoleLogin"], "aws_region": ["us-east-1"]}
     )
+    sql = "SELECT event_name, aws_region FROM cloudtrail_events"
+    entry = ReportEntry(sql=sql, results=results_df, analysis="")
     mock_state = MockSessionState(
         api_key="sk-test",
         model="gpt-5.4",
         messages=[],
-        query_history=[],
-        last_sql="SELECT event_name, aws_region FROM cloudtrail_events",
+        query_history=[entry],
+        last_sql=sql,
         last_results=results_df,
         last_summary="",
         date_start=None,
@@ -383,7 +447,7 @@ def test_analyze_current_results_sets_last_summary_without_appending_message():
         mock_response.choices[0].message.content = "• 1 ConsoleLogin event observed"
         mock_client.chat.completions.create.return_value = mock_response
 
-        from app import _analyze_current_results
+        from handlers import _analyze_current_results
 
         _analyze_current_results()
 
@@ -397,16 +461,20 @@ def test_analyze_current_results_no_api_key_appends_warning():
 
     Test #AI-B: verifies early-return behavior without an API key.
     generate_analysis must NOT be called.
+    _analyze_current_results delegates to _analyze_entry_results for the last entry.
     """
+    from report import ReportEntry
     from tests.conftest import MockSessionState
 
+    results_df = pd.DataFrame({"a": [1]})
+    entry = ReportEntry(sql="SELECT 1", results=results_df, analysis="")
     mock_state = MockSessionState(
         api_key="",
         model="gpt-5.4",
         messages=[],
-        query_history=[],
+        query_history=[entry],
         last_sql="SELECT 1",
-        last_results=pd.DataFrame({"a": [1]}),
+        last_results=results_df,
         last_summary="",
         date_start=None,
         date_end=None,
@@ -416,7 +484,7 @@ def test_analyze_current_results_no_api_key_appends_warning():
         patch("streamlit.session_state", mock_state),
         patch("llm.OpenAI") as mock_openai_cls,
     ):
-        from app import _analyze_current_results
+        from handlers import _analyze_current_results
 
         _analyze_current_results()
 
@@ -448,7 +516,7 @@ def test_analyze_current_results_no_results_does_nothing():
         patch("streamlit.session_state", mock_state),
         patch("llm.OpenAI") as mock_openai_cls,
     ):
-        from app import _analyze_current_results
+        from handlers import _analyze_current_results
 
         _analyze_current_results()
 
