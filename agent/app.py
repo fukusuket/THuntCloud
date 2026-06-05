@@ -344,38 +344,6 @@ def render_sidebar() -> None:
             active_path = get_duckdb_path_for_variant(st.session_state.db_variant)
             st.caption(f"📁 `{active_path}`")
 
-        # Date range filter
-        st.subheader("📅 Date Range Filter")
-        today = date.today()
-        # Manual date inputs
-        dc1, dc2 = st.columns(2)
-        with dc1:
-            new_start = st.date_input(
-                "From",
-                value=st.session_state.date_start,
-                max_value=today,
-                format="YYYY-MM-DD",
-                key="_date_start_input",
-            )
-        with dc2:
-            new_end = st.date_input(
-                "To",
-                value=st.session_state.date_end,
-                max_value=today,
-                format="YYYY-MM-DD",
-                key="_date_end_input",
-            )
-
-        # Persist date selections
-        st.session_state.date_start = new_start or None
-        st.session_state.date_end = new_end or None
-
-        if new_start and new_end and new_start > new_end:
-            st.error("⚠️ 'From' date must be before or equal to 'To' date.")
-        elif new_start or new_end:
-            start_s = str(new_start) if new_start else "—"
-            end_s = str(new_end) if new_end else "—"
-            st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
 
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
@@ -490,6 +458,38 @@ def render_sidebar() -> None:
         # Created here (inside the sidebar) so it always appears at this fixed
         # position. render_chat() retrieves and updates it during bulk execution.
         st.session_state["_bulk_progress_slot"] = st.empty()
+
+        # Date range filter — placed below preset queries
+        st.subheader("📅 Date Range Filter")
+        today = date.today()
+        dc1, dc2 = st.columns(2)
+        with dc1:
+            new_start = st.date_input(
+                "From",
+                value=st.session_state.date_start,
+                max_value=today,
+                format="YYYY-MM-DD",
+                key="_date_start_input",
+            )
+        with dc2:
+            new_end = st.date_input(
+                "To",
+                value=st.session_state.date_end,
+                max_value=today,
+                format="YYYY-MM-DD",
+                key="_date_end_input",
+            )
+
+        # Persist date selections
+        st.session_state.date_start = new_start or None
+        st.session_state.date_end = new_end or None
+
+        if new_start and new_end and new_start > new_end:
+            st.error("⚠️ 'From' date must be before or equal to 'To' date.")
+        elif new_start or new_end:
+            start_s = str(new_start) if new_start else "—"
+            end_s = str(new_end) if new_end else "—"
+            st.caption(f"🔍 Active filter: **{start_s}** → **{end_s}**")
 
         st.divider()
 
