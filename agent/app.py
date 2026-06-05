@@ -344,7 +344,6 @@ def render_sidebar() -> None:
             active_path = get_duckdb_path_for_variant(st.session_state.db_variant)
             st.caption(f"📁 `{active_path}`")
 
-
         # AGT-07: Preset threat hunting prompts (v2 — category grouping + Direct SQL)
         st.subheader("🎯 Preset Hunt Queries")
         prompts = _load_builtin_prompts()
@@ -360,7 +359,9 @@ def render_sidebar() -> None:
 
         # Read current category from session state so bulk-run buttons can be
         # rendered ABOVE the selectbox while still reflecting the current selection.
-        current_category = st.session_state.get("_preset_category", "— All categories —")
+        current_category = st.session_state.get(
+            "_preset_category", "— All categories —"
+        )
 
         # Filter prompts by current category
         if current_category == "— All categories —":
@@ -413,7 +414,9 @@ def render_sidebar() -> None:
             if selected_category == "— All categories —":
                 filtered = prompts
             else:
-                filtered = [p for p in prompts if p.get("category") == selected_category]
+                filtered = [
+                    p for p in prompts if p.get("category") == selected_category
+                ]
 
         preset_labels = ["— Select a preset —"] + [p["label"] for p in filtered]
         selected_label = st.selectbox(
@@ -794,7 +797,6 @@ def render_chat() -> None:
     AI analysis (AGT-05), bulk results section (UI-03), and progress bar (UI-04).
     """
 
-
     # ---- Filter bar (always visible at the top) ----
     result_filter, keyword = _render_query_filter()
 
@@ -901,7 +903,6 @@ def render_chat() -> None:
             if st.button("▶ Run Edited SQL"):
                 _handle_edit_rerun_sql(edited_sql, db_path)
                 st.rerun()
-
 
     # ---- Chat input (AGT-01) ----
     user_input = st.chat_input("Ask a threat hunting question…") or pending_preset

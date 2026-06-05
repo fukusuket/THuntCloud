@@ -235,14 +235,14 @@ def _render_toc_html(entries: list[ReportEntry]) -> str:
             f'<span class="toc-cat">{entry.category}</span>' if entry.category else ""
         )
         items.append(
-            f'<li>'
+            f"<li>"
             f'<a href="#{anchor}">'
             f'<span class="toc-num">{i}.</span> '
-            f'{category_span}'
+            f"{category_span}"
             f'<span class="toc-label">{short_label}</span>'
             f'<span class="badge {badge_cls}">{count:,}</span>'
-            f'</a>'
-            f'</li>'
+            f"</a>"
+            f"</li>"
         )
     items_html = "\n".join(items)
     return f"""<nav id="toc">
@@ -282,7 +282,9 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
     analyst_section = ""
     if entry.analyst_note:
         note = _sanitize(entry.analyst_note)
-        analyst_section = f'<h3>📝 Analyst Note</h3><div class="analyst-note">{note}</div>'
+        analyst_section = (
+            f'<h3>📝 Analyst Note</h3><div class="analyst-note">{note}</div>'
+        )
 
     category_badge = (
         f'<span class="cat-badge">{entry.category}</span>' if entry.category else ""
