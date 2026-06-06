@@ -248,7 +248,7 @@ def _render_toc_html(entries: list[ReportEntry]) -> str:
             )
         items_html = "\n".join(items)
         blocks.append(
-            f"<details open>\n"
+            f"<details>\n"
             f"  <summary>{cat}</summary>\n"
             f"  <ul>{items_html}</ul>\n"
             f"</details>"
@@ -256,7 +256,10 @@ def _render_toc_html(entries: list[ReportEntry]) -> str:
 
     groups_html = "\n".join(blocks)
     return f"""<nav id="toc">
-  <h2>Contents</h2>
+  <div id="toc-controls">
+    <button onclick="document.querySelectorAll('#toc details').forEach(d=>d.open=true)">Expand all</button>
+    <button onclick="document.querySelectorAll('#toc details').forEach(d=>d.open=false)">Collapse all</button>
+  </div>
   {groups_html}
 </nav>"""
 
@@ -349,7 +352,7 @@ body {
 #page-header p  { margin: 0; font-size: 0.85em; color: #555; }
 #layout {
     display: grid;
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: 320px 1fr;
     min-height: calc(100vh - 60px);
 }
 #toc {
@@ -357,11 +360,21 @@ body {
     top: 0;
     height: 100vh;
     overflow-y: auto;
+    overflow-x: auto;
     border-right: 1px solid #ccc;
     padding: 1em 0.8em;
     font-size: 0.85em;
 }
 #toc h2 { font-size: 0.95em; margin: 0 0 0.5em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
+#toc-controls { margin-bottom: 0.5em; display: flex; gap: 0.4em; }
+#toc-controls button {
+    font-size: 0.75em;
+    padding: 0.2em 0.6em;
+    cursor: pointer;
+    border: 1px solid #999;
+    background: #f4f4f4;
+}
+#toc-controls button:hover { background: #e0e0e0; }
 #toc details { margin-bottom: 0.4em; }
 #toc summary {
     cursor: pointer;
@@ -374,6 +387,7 @@ body {
 #toc details[open] > summary { list-style: disclosure-open; }
 #toc ul { margin: 0.2em 0 0.4em 1em; padding-left: 0; list-style: none; }
 #toc li { margin: 0.25em 0; }
+#toc li a { font-size: 0.78em; }
 #toc a { color: #000; text-decoration: none; }
 #toc a:hover { text-decoration: underline; }
 #content {
