@@ -259,7 +259,6 @@ def _make_html_report() -> str:
     return generate_html_report([entry])
 
 
-
 # ---------------------------------------------------------------------------
 # Tests #UI-RESIZE — Sidebar drag-to-resize
 # ---------------------------------------------------------------------------
@@ -401,5 +400,3 @@ def test_html_report_has_sql_highlight_css():
     assert ".sql-string" in result
     assert ".sql-comment" in result
     assert ".sql-number" in result
-
-

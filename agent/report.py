@@ -137,18 +137,14 @@ def _highlight_sql(sql: str) -> str:
 
         if comment_line is not None or comment_block is not None:
             token = comment_line if comment_line is not None else comment_block
-            parts.append(
-                f'<span class="sql-comment">{_html.escape(token)}</span>'
-            )
+            parts.append(f'<span class="sql-comment">{_html.escape(token)}</span>')
         elif string is not None:
             parts.append(f'<span class="sql-string">{_html.escape(string)}</span>')
         elif number is not None:
             parts.append(f'<span class="sql-number">{_html.escape(number)}</span>')
         elif word is not None:
             if word.upper() in _SQL_KEYWORDS:
-                parts.append(
-                    f'<span class="sql-keyword">{_html.escape(word)}</span>'
-                )
+                parts.append(f'<span class="sql-keyword">{_html.escape(word)}</span>')
             else:
                 parts.append(_html.escape(word))
         else:
@@ -159,6 +155,7 @@ def _highlight_sql(sql: str) -> str:
         parts.append(_html.escape(sql[pos:]))
 
     return "".join(parts)
+
 
 # ---------------------------------------------------------------------------
 # Sensitive data redaction patterns
