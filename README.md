@@ -21,6 +21,10 @@
 
 <img src="doc/img1.png" width="800" alt="AI Chat UI">
 
+### 📄 HTML Threat Hunting Report
+
+<img src="doc/img4.png" width="800" alt="HTML Threat Hunting Report">
+
 ### 📊 59 Pre-built Dashboard Charts
 
 <img src="doc/img2.png" width="800" alt="Superset Dashboard">
