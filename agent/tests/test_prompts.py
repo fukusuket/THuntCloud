@@ -59,9 +59,13 @@ def test_analysis_system_prompt_is_nonempty():
 
 
 def test_analysis_system_prompt_contains_findings_section():
-    """ANALYSIS_SYSTEM_PROMPT must define a Findings / Notable Observations section."""
+    """ANALYSIS_SYSTEM_PROMPT must surface notable findings from the data."""
+    lower = ANALYSIS_SYSTEM_PROMPT.lower()
     assert (
-        "Findings" in ANALYSIS_SYSTEM_PROMPT or "Observations" in ANALYSIS_SYSTEM_PROMPT
+        "findings" in lower
+        or "observations" in lower
+        or "observed" in lower
+        or "notable" in lower
     )
 
 
@@ -127,32 +131,33 @@ def test_analysis_user_template_renders_correctly():
 
 
 # ---------------------------------------------------------------------------
-# DFIR sections (new)
+# Structure sections
 # ---------------------------------------------------------------------------
 
 
-def test_analysis_system_prompt_contains_dfir_assessment_section():
-    """ANALYSIS_SYSTEM_PROMPT must include a DFIR Assessment section."""
-    assert "DFIR Assessment" in ANALYSIS_SYSTEM_PROMPT
+def test_analysis_system_prompt_contains_summary_section():
+    """ANALYSIS_SYSTEM_PROMPT must include a Summary section."""
+    assert "Summary" in ANALYSIS_SYSTEM_PROMPT
 
 
-def test_analysis_system_prompt_contains_mitre_attack_reference():
-    """ANALYSIS_SYSTEM_PROMPT must reference MITRE ATT&CK for tactic mapping."""
-    assert "MITRE ATT&CK" in ANALYSIS_SYSTEM_PROMPT
+def test_analysis_system_prompt_contains_api_overview_section():
+    """ANALYSIS_SYSTEM_PROMPT must include an API Overview section for non-experts."""
+    assert "API Overview" in ANALYSIS_SYSTEM_PROMPT
 
 
-def test_analysis_system_prompt_contains_investigation_leads_section():
-    """ANALYSIS_SYSTEM_PROMPT must include an Investigation Leads section."""
-    assert "Investigation Leads" in ANALYSIS_SYSTEM_PROMPT
-
-
-def test_analysis_system_prompt_contains_ioc_guidance():
-    """ANALYSIS_SYSTEM_PROMPT must instruct the LLM to surface indicators of compromise."""
+def test_analysis_system_prompt_contains_legitimate_use_guidance():
+    """ANALYSIS_SYSTEM_PROMPT must remind the LLM to note typical legitimate usage."""
     lower = ANALYSIS_SYSTEM_PROMPT.lower()
-    assert "indicator" in lower or "ioc" in lower
+    assert "legitimate" in lower
 
 
-def test_analysis_user_template_requests_dfir_sections():
-    """ANALYSIS_USER_TEMPLATE must ask for DFIR Assessment and Investigation Leads."""
-    assert "DFIR Assessment" in ANALYSIS_USER_TEMPLATE
-    assert "Investigation Leads" in ANALYSIS_USER_TEMPLATE
+def test_analysis_system_prompt_contains_observed_in_data_guidance():
+    """ANALYSIS_SYSTEM_PROMPT must ask the LLM to surface notable patterns from the data."""
+    lower = ANALYSIS_SYSTEM_PROMPT.lower()
+    assert "observed" in lower or "pattern" in lower
+
+
+def test_analysis_user_template_requests_report_sections():
+    """ANALYSIS_USER_TEMPLATE must ask for the two defined report sections."""
+    assert "Summary" in ANALYSIS_USER_TEMPLATE
+    assert "API Overview" in ANALYSIS_USER_TEMPLATE
