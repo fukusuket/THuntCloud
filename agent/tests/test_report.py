@@ -311,3 +311,95 @@ def test_html_report_resize_restores_width_on_load():
     assert "getItem" in html and "sidebar-width" in html
 
 
+# ---------------------------------------------------------------------------
+# Tests #SQL-HL — SQL syntax highlighting in HTML report
+# ---------------------------------------------------------------------------
+
+
+def test_highlight_sql_wraps_keywords():
+    """_highlight_sql wraps SQL keywords in sql-keyword spans.
+
+    Test #SQL-HL-1: SELECT and FROM must be highlighted.
+    """
+    from report import _highlight_sql
+
+    result = _highlight_sql("SELECT * FROM events")
+    assert 'class="sql-keyword"' in result
+    assert "SELECT" in result
+    assert "FROM" in result
+
+
+def test_highlight_sql_wraps_single_quoted_strings():
+    """_highlight_sql wraps single-quoted strings in sql-string spans.
+
+    Test #SQL-HL-2: quoted literals must receive the sql-string class.
+    """
+    from report import _highlight_sql
+
+    result = _highlight_sql("WHERE event_name = 'CreateUser'")
+    assert 'class="sql-string"' in result
+    assert "CreateUser" in result
+
+
+def test_highlight_sql_wraps_line_comments():
+    """_highlight_sql wraps -- comments in sql-comment spans.
+
+    Test #SQL-HL-3: line comments must receive the sql-comment class.
+    """
+    from report import _highlight_sql
+
+    result = _highlight_sql("SELECT 1 -- count rows")
+    assert 'class="sql-comment"' in result
+    assert "count rows" in result
+
+
+def test_highlight_sql_wraps_numbers():
+    """_highlight_sql wraps numeric literals in sql-number spans.
+
+    Test #SQL-HL-4: integer and decimal literals must receive the sql-number class.
+    """
+    from report import _highlight_sql
+
+    result = _highlight_sql("LIMIT 100")
+    assert 'class="sql-number"' in result
+    assert "100" in result
+
+
+def test_highlight_sql_escapes_html_special_chars():
+    """_highlight_sql HTML-escapes < and > inside SQL text.
+
+    Test #SQL-HL-5: raw angle brackets must appear as &lt; / &gt; in the output.
+    """
+    from report import _highlight_sql
+
+    result = _highlight_sql("WHERE count > 0 AND size < 10")
+    assert "&gt;" in result
+    assert "&lt;" in result
+
+
+def test_html_report_sql_block_has_highlighting_classes():
+    """HTML report SQL blocks must contain sql-keyword span elements.
+
+    Test #SQL-HL-6: the rendered HTML must include syntax-highlighted SQL.
+    """
+    entry = ReportEntry(
+        sql="SELECT event_name FROM cloudtrail_events LIMIT 5",
+        results=pd.DataFrame(),
+    )
+    result = generate_html_report([entry])
+    assert 'class="sql-keyword"' in result
+
+
+def test_html_report_has_sql_highlight_css():
+    """HTML report must include CSS rules for SQL syntax highlighting classes.
+
+    Test #SQL-HL-7: the style block must define .sql-keyword, .sql-string, etc.
+    """
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame())
+    result = generate_html_report([entry])
+    assert ".sql-keyword" in result
+    assert ".sql-string" in result
+    assert ".sql-comment" in result
+    assert ".sql-number" in result
+
+

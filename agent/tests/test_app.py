@@ -1307,7 +1307,7 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     """
     from tests.conftest import MockSessionState
 
-    custom_limit = 777  # Unique value distinct from DEFAULT_ROW_LIMIT (500)
+    custom_limit = 777  # Unique value distinct from DEFAULT_ROW_LIMIT (200)
     # Return exactly custom_limit rows so truncation is detected.
     result_df = pd.DataFrame({"event_name": ["A"] * custom_limit})
 
@@ -1340,7 +1340,7 @@ def test_truncation_message_shows_session_row_limit(tmp_duckdb):
     assert len(mock_state["messages"]) == 1
     content = mock_state["messages"][0]["content"]
     # The truncation notice must contain the session row_limit (777), not 1,000.
-    # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (500) → False,
+    # Before the fix, truncated = len(results) >= DEFAULT_ROW_LIMIT (200) → False,
     # so no truncation notice is emitted and "truncated to 777" is absent.
     assert "truncated to 777" in content
 

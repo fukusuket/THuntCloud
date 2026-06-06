@@ -4,11 +4,161 @@ Generates structured Markdown reports from investigation sessions,
 including queries, results, analysis, and sensitive data redaction.
 """
 
+import html as _html
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import pandas as pd
+
+# ---------------------------------------------------------------------------
+# SQL syntax highlighting
+# ---------------------------------------------------------------------------
+
+# SQL keywords to highlight (case-insensitive match, case-preserving output).
+_SQL_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "GROUP",
+        "ORDER",
+        "HAVING",
+        "BY",
+        "JOIN",
+        "LEFT",
+        "RIGHT",
+        "INNER",
+        "OUTER",
+        "CROSS",
+        "FULL",
+        "ON",
+        "AS",
+        "WITH",
+        "UNION",
+        "ALL",
+        "INTERSECT",
+        "EXCEPT",
+        "AND",
+        "OR",
+        "NOT",
+        "IN",
+        "LIKE",
+        "ILIKE",
+        "BETWEEN",
+        "IS",
+        "NULL",
+        "TRUE",
+        "FALSE",
+        "ASC",
+        "DESC",
+        "CASE",
+        "WHEN",
+        "THEN",
+        "ELSE",
+        "END",
+        "LIMIT",
+        "OFFSET",
+        "DISTINCT",
+        "INSERT",
+        "INTO",
+        "UPDATE",
+        "SET",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "TABLE",
+        "VIEW",
+        "INDEX",
+        "COUNT",
+        "SUM",
+        "AVG",
+        "MIN",
+        "MAX",
+        "COALESCE",
+        "CAST",
+        "OVER",
+        "PARTITION",
+        "ROWS",
+        "RANGE",
+        "UNBOUNDED",
+        "PRECEDING",
+        "FOLLOWING",
+        "CURRENT",
+        "ROW",
+        "FILTER",
+        "WITHIN",
+        "TIMESTAMP",
+        "DATE",
+        "INTERVAL",
+        "IF",
+        "EXISTS",
+        "EXPLAIN",
+        "USING",
+        "VALUES",
+    }
+)
+
+# Tokeniser: order matters — longer/more specific patterns must come first.
+_SQL_TOKEN_RE = re.compile(
+    r"(--[^\n]*)"  # line comment
+    r"|(\/\*.*?\*\/)"  # block comment
+    r"|('(?:[^'\\]|\\.)*')"  # single-quoted string
+    r"|(\b\d+(?:\.\d+)?\b)"  # numeric literal
+    r"|([A-Za-z_]\w*)",  # identifier or keyword
+    re.DOTALL,
+)
+
+
+def _highlight_sql(sql: str) -> str:
+    """Apply simple syntax highlighting to a SQL string for HTML display.
+
+    Tokenises the SQL and wraps keywords, string literals, comments, and
+    numeric literals in ``<span>`` elements with distinct CSS classes.
+    All text content is HTML-escaped before being included in the output.
+
+    Args:
+        sql: Plain SQL text (already sanitized of secrets).
+
+    Returns:
+        HTML string with ``<span class="sql-*">`` tags applied.
+    """
+    parts: list[str] = []
+    pos = 0
+
+    for m in _SQL_TOKEN_RE.finditer(sql):
+        # Append any unmatched gap (operators, punctuation, whitespace, etc.)
+        if m.start() > pos:
+            parts.append(_html.escape(sql[pos : m.start()]))
+        pos = m.end()
+
+        comment_line, comment_block, string, number, word = m.groups()
+
+        if comment_line is not None or comment_block is not None:
+            token = comment_line if comment_line is not None else comment_block
+            parts.append(
+                f'<span class="sql-comment">{_html.escape(token)}</span>'
+            )
+        elif string is not None:
+            parts.append(f'<span class="sql-string">{_html.escape(string)}</span>')
+        elif number is not None:
+            parts.append(f'<span class="sql-number">{_html.escape(number)}</span>')
+        elif word is not None:
+            if word.upper() in _SQL_KEYWORDS:
+                parts.append(
+                    f'<span class="sql-keyword">{_html.escape(word)}</span>'
+                )
+            else:
+                parts.append(_html.escape(word))
+        else:
+            parts.append(_html.escape(m.group()))
+
+    # Append any trailing unmatched text
+    if pos < len(sql):
+        parts.append(_html.escape(sql[pos:]))
+
+    return "".join(parts)
 
 # ---------------------------------------------------------------------------
 # Sensitive data redaction patterns
@@ -284,7 +434,8 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
     else:
         results_html = '<p class="no-results">No results returned.</p>'
 
-    sql_block = _sanitize(entry.sql)
+    sql_raw = _sanitize(entry.sql)
+    sql_highlighted = _highlight_sql(sql_raw)
     results_html_sanitized = _sanitize(results_html)
     summary_block = (
         f"<p>{_sanitize(entry.analysis)}</p>"
@@ -300,7 +451,7 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
     return f"""<section id="{anchor}">
   <h2>{heading_text}</h2>
   <h3>SQL</h3>
-  <pre><code>{sql_block}</code></pre>
+  <pre><code class="sql">{sql_highlighted}</code></pre>
   <h3>Results</h3>
   {results_html_sanitized}
   <h3>Summary</h3>
@@ -424,6 +575,10 @@ th { background: #eee; position: sticky; top: 0; }
 .table-wrap { overflow-x: auto; overflow-y: auto; max-height: 480px; }
 .no-results { color: #666; font-style: italic; }
 hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
+.sql-keyword { color: #00008b; font-weight: bold; }
+.sql-string  { color: #a31515; }
+.sql-number  { color: #098658; }
+.sql-comment { color: #6a737d; font-style: italic; }
 """
 
     js = """
