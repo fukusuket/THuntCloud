@@ -295,7 +295,7 @@ def _render_entry_html(index: int, entry: ReportEntry) -> str:
     analyst_section = ""
     if entry.analyst_note:
         note = _sanitize(entry.analyst_note)
-        analyst_section = f"<h3>Analyst Note</h3><pre class=\"analyst-note\">{note}</pre>"
+        analyst_section = f'<h3>Analyst Note</h3><pre class="analyst-note">{note}</pre>'
 
     return f"""<section id="{anchor}">
   <h2>{heading_text}</h2>
