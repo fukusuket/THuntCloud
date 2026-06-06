@@ -408,8 +408,8 @@ pre {
 code { font-family: monospace; }
 table { border-collapse: collapse; width: 100%; font-size: 0.85em; }
 th, td { border: 1px solid #999; padding: 0.3em 0.6em; text-align: left; }
-th { background: #eee; }
-.table-wrap { overflow-x: auto; }
+th { background: #eee; position: sticky; top: 0; }
+.table-wrap { overflow-x: auto; overflow-y: auto; max-height: 480px; }
 .no-results { color: #666; font-style: italic; }
 hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
 """
