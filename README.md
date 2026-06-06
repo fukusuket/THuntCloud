@@ -19,19 +19,19 @@
 ### Key Features
 ### 🔍 101 Built-in Hunts + AI Chat
 
-<img src="doc/img1.png" width="800" alt="AI Chat UI">
+<img src="doc/img-agent.png" width="800" alt="AI Chat UI">
 
 ### 📄 HTML Threat Hunting Report
 
-<img src="doc/img4.png" width="800" alt="HTML Threat Hunting Report">
+<img src="doc/img-html.png" width="800" alt="HTML Threat Hunting Report">
 
 ### 📊 59 Pre-built Dashboard Charts
 
-<img src="doc/img2.png" width="800" alt="Superset Dashboard">
+<img src="doc/img-dashboard.png" width="800" alt="Superset Dashboard">
 
 ### 🗺 AWS Config Resource Graph
 
-<img src="doc/img3.png" width="800" alt="AWS Config Resource Graph">
+<img src="doc/img-config.png" width="800" alt="AWS Config Resource Graph">
 
 
 ### Designed for
