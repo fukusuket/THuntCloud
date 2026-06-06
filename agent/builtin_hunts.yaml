@@ -651,7 +651,7 @@
     LIMIT 100
 
 - category: "\U0001faa3 Data & Storage"
-  label: "\U0001fab3 S3 Bucket Policy / ACL Changes"
+  label: "\U0001faa3 S3 Bucket Policy / ACL Changes"
   description: "Detects S3 bucket policy and ACL modifications. These can make a bucket publicly readable or grant access to attacker-controlled accounts."
   chart:
     type: timeseries

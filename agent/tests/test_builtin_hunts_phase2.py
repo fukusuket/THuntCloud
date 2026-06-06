@@ -259,13 +259,13 @@ def test_g09_ec2_keypair_excludes_benign(phase2_db: str):
 
 def test_g10_s3_policy_acl_label_exists():
     """G-10: The builtin hunt for S3 bucket policy/ACL changes must exist."""
-    sql = get_builtin_sql("\U0001fab3 S3 Bucket Policy / ACL Changes")
+    sql = get_builtin_sql("\U0001faa3 S3 Bucket Policy / ACL Changes")
     assert len(sql) > 10
 
 
 def test_g10_s3_policy_detects_put_bucket_policy(phase2_db: str):
     """G-10: SQL must detect PutBucketPolicy."""
-    sql = get_builtin_sql("\U0001fab3 S3 Bucket Policy / ACL Changes")
+    sql = get_builtin_sql("\U0001faa3 S3 Bucket Policy / ACL Changes")
     rows = _run_sql(phase2_db, sql)
     names = [r["event_name"] for r in rows]
     assert "PutBucketPolicy" in names, f"PutBucketPolicy not detected. Got: {names}"
@@ -273,7 +273,7 @@ def test_g10_s3_policy_detects_put_bucket_policy(phase2_db: str):
 
 def test_g10_s3_policy_detects_put_bucket_acl(phase2_db: str):
     """G-10: SQL must detect PutBucketAcl."""
-    sql = get_builtin_sql("\U0001fab3 S3 Bucket Policy / ACL Changes")
+    sql = get_builtin_sql("\U0001faa3 S3 Bucket Policy / ACL Changes")
     rows = _run_sql(phase2_db, sql)
     names = [r["event_name"] for r in rows]
     assert "PutBucketAcl" in names, f"PutBucketAcl not detected. Got: {names}"
@@ -541,7 +541,7 @@ def test_g18_excludes_benign(phase2_db: str):
 
 PHASE2_LABELS = [
     "\U0001f5dd\ufe0f EC2 Key Pair Creation",
-    "\U0001fab3 S3 Bucket Policy / ACL Changes",
+    "\U0001faa3 S3 Bucket Policy / ACL Changes",
     "\U0001f4c2 S3 Versioning / Logging Disabled",
     "\U0001f6a7 IAM Permission Boundary Changes",
     "\U0001f194 IAM Identity Center (SSO) Events",
