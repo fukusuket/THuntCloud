@@ -352,7 +352,7 @@ body {
 #page-header p  { margin: 0; font-size: 0.85em; color: #555; }
 #layout {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 320px 4px 1fr;
     min-height: calc(100vh - 60px);
 }
 #toc {
@@ -364,7 +364,19 @@ body {
     border-right: 1px solid #ccc;
     padding: 1em 0.8em;
     font-size: 0.85em;
+    min-width: 120px;
 }
+#sidebar-resizer {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: 4px;
+    background: #ddd;
+    cursor: col-resize;
+    user-select: none;
+    transition: background 0.15s;
+}
+#sidebar-resizer:hover, #sidebar-resizer.dragging { background: #999; }
 #toc h2 { font-size: 0.95em; margin: 0 0 0.5em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
 #toc-controls { margin-bottom: 0.5em; display: flex; gap: 0.4em; }
 #toc-controls button {
@@ -414,6 +426,52 @@ th { background: #eee; position: sticky; top: 0; }
 hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
 """
 
+    js = """
+(function () {
+  var SIDEBAR_WIDTH_KEY = 'thuntcloud-sidebar-width';
+  var DEFAULT_WIDTH = 320;
+  var MIN_WIDTH = 120;
+  var MAX_WIDTH = 640;
+
+  var resizer = document.getElementById('sidebar-resizer');
+  var layout = document.getElementById('layout');
+  var toc = document.getElementById('toc');
+
+  function applyWidth(px) {
+    layout.style.gridTemplateColumns = px + 'px 4px 1fr';
+  }
+
+  // --- Restore persisted width ---
+  var savedWidth = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+  if (savedWidth > 0) { applyWidth(savedWidth); }
+
+  // --- Drag-to-resize ---
+  resizer.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    resizer.classList.add('dragging');
+    var startX = e.clientX;
+    var startWidth = toc.getBoundingClientRect().width;
+
+    function onMove(ev) {
+      var delta = ev.clientX - startX;
+      var newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + delta));
+      applyWidth(newWidth);
+    }
+
+    function onUp() {
+      resizer.classList.remove('dragging');
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      var finalWidth = toc.getBoundingClientRect().width;
+      try { localStorage.setItem(SIDEBAR_WIDTH_KEY, Math.round(finalWidth)); } catch(e) {}
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+}());
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -429,10 +487,12 @@ hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
 </div>
 <div id="layout">
 {toc_html}
+<div id="sidebar-resizer" title="Drag to resize sidebar"></div>
 <div id="content">
   {sections_html}
 </div>
 </div>
+<script>{js}</script>
 </body>
 </html>
 """

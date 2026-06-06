@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from report import ReportEntry, generate_report
+from report import ReportEntry, generate_html_report, generate_report
 
 
 def test_generate_report_markdown():
@@ -246,3 +246,68 @@ def test_report_sanitizes_sensitive_data():
     assert "REDACTED" in report
     assert "### Summary" in report
     assert "### Analysis" not in report
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-SIDEBAR — Sidebar toggle (open/close left menu column)
+# ---------------------------------------------------------------------------
+
+
+def _make_html_report() -> str:
+    """Helper: generate a minimal HTML report for sidebar resize tests."""
+    entry = ReportEntry(sql="SELECT 1", results=pd.DataFrame(), analysis="test")
+    return generate_html_report([entry])
+
+
+
+# ---------------------------------------------------------------------------
+# Tests #UI-RESIZE — Sidebar drag-to-resize
+# ---------------------------------------------------------------------------
+
+
+def test_html_report_has_sidebar_resizer_element():
+    """HTML report must contain a resizer handle element with id='sidebar-resizer'.
+
+    Test #UI-RESIZE-1: the drag handle must exist between the sidebar and content.
+    """
+    html = _make_html_report()
+    assert 'id="sidebar-resizer"' in html
+
+
+def test_html_report_has_sidebar_resizer_css():
+    """HTML report CSS must define a style rule for #sidebar-resizer.
+
+    Test #UI-RESIZE-2: the resizer must be styled so users can see and grab it.
+    """
+    html = _make_html_report()
+    assert "#sidebar-resizer" in html
+
+
+def test_html_report_has_resize_pointerdown_script():
+    """HTML report JS must attach a pointerdown event to the resizer.
+
+    Test #UI-RESIZE-3: drag-to-resize requires a pointerdown handler on the handle.
+    """
+    html = _make_html_report()
+    assert "pointerdown" in html
+
+
+def test_html_report_resize_persists_to_localstorage():
+    """HTML report JS must persist the sidebar width to localStorage after resize.
+
+    Test #UI-RESIZE-4: width must survive page reload.
+    """
+    html = _make_html_report()
+    # Both the key used for width storage and the setItem call must be present.
+    assert "localStorage" in html and "sidebar-width" in html
+
+
+def test_html_report_resize_restores_width_on_load():
+    """HTML report JS must restore the saved width from localStorage on page load.
+
+    Test #UI-RESIZE-5: if a width is stored, it must be applied when the page opens.
+    """
+    html = _make_html_report()
+    assert "getItem" in html and "sidebar-width" in html
+
+
