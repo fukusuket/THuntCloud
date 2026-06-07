@@ -105,18 +105,6 @@ make ingest-config
 
 If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md#6-corporate-proxy--custom-ca-certificate) for setup instructions.
 
----
-
-## Modules
-
-| Module | Language | Role | README |
-|--------|----------|------|--------|
-| `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
-| `agent` | Python 3.14+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
-| `dashboard` | Apache Superset 6.1 | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
-| `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
-
-
 ## Built-in Query & Dashboard Reference
 
 > 💡 No SQL or deep AWS knowledge required — just select a hunt from the dropdown and get results instantly.
@@ -415,7 +403,14 @@ If you are behind a TLS-inspecting corporate proxy, see [doc/DEVELOPMENT.md](doc
 
 ---
 
+## Modules
 
+| Module | Language | Role | README |
+|--------|----------|------|--------|
+| `ingester` | Rust 1.85+ | CloudTrail log ingestion (READ_WRITE) | [ingester/README.md](ingester/README.md) |
+| `agent` | Python 3.14+ / Streamlit | AI-assisted interactive chat for threat hunting (READ_ONLY) | [agent/README.md](agent/README.md) |
+| `dashboard` | Apache Superset 6.1 | BI visualization (READ_ONLY) | [dashboard/README.md](dashboard/README.md) |
+| `config_viz` | FastAPI + React | AWS Config visualization (READ_ONLY) | [config_viz/README.md](config_viz/README.md) |
 
 ## Architecture
 
